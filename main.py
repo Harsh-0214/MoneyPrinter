@@ -461,7 +461,7 @@ def session_midday(alpaca_client, data_client) -> None:
     """12:00 PM EDT - check stops/targets. New entries only on extreme conviction."""
     console.rule("[bold blue]MIDDAY SESSION[/bold blue]")
 
-    from bot.portfolio import check_stops, check_targets, close_position_and_log
+    from bot.portfolio import check_stops, check_targets, check_time_exits, close_position_and_log
     macro = get_macro_context()
 
     # Check stops
@@ -477,6 +477,16 @@ def session_midday(alpaca_client, data_client) -> None:
         cp = pos.get("current_price") or pos.get("entry_price") or 0
         close_position_and_log(alpaca_client, pos, cp, "midday", status="closed")
         console.print(f"[green]TAKE PROFIT: {pos['ticker']} closed @ {cp}[/green]")
+
+    # Time-based exits — close stale positions regardless of P&L
+    expired = check_time_exits(alpaca_client)
+    for pos in expired:
+        cp     = pos.get("current_price") or pos.get("entry_price") or 0
+        pnl    = pos.get("pnl_pct", 0)
+        age    = pos.get("age_days", 0)
+        color  = "green" if pnl >= 0 else "yellow"
+        close_position_and_log(alpaca_client, pos, cp, "midday", status="time_exit")
+        console.print(f"[{color}]TIME EXIT: {pos['ticker']} age={age}d pnl={pnl:+.1f}% closed @ {cp}[/{color}]")
 
     # New entries only at extreme confidence — net_score > 80 AND confidence >= 0.85
     signals   = run_full_scan("midday", macro, alpaca_client, data_client)
@@ -496,10 +506,30 @@ def session_market_close(alpaca_client, data_client) -> None:
     """3:30 PM EDT - close scalps, re-score, decide what to hold overnight."""
     console.rule("[bold magenta]MARKET CLOSE SESSION[/bold magenta]")
 
-    from bot.portfolio import get_open_positions, close_position_and_log
+    from bot.portfolio import get_open_positions, close_position_and_log, check_time_exits, check_stops, check_targets
     macro = get_macro_context()
 
-    # Close all scalp positions
+    # Check stops and targets before anything else
+    for pos in check_stops(alpaca_client):
+        cp = pos.get("current_price") or pos.get("entry_price", 0)
+        close_position_and_log(alpaca_client, pos, cp, "market_close", status="stopped")
+        console.print(f"[red]STOP LOSS: {pos['ticker']} closed @ {cp}[/red]")
+
+    for pos in check_targets(alpaca_client):
+        cp = pos.get("current_price") or pos.get("entry_price") or 0
+        close_position_and_log(alpaca_client, pos, cp, "market_close", status="closed")
+        console.print(f"[green]TAKE PROFIT: {pos['ticker']} closed @ {cp}[/green]")
+
+    # Time-based exits
+    for pos in check_time_exits(alpaca_client):
+        cp    = pos.get("current_price") or pos.get("entry_price") or 0
+        pnl   = pos.get("pnl_pct", 0)
+        age   = pos.get("age_days", 0)
+        color = "green" if pnl >= 0 else "yellow"
+        close_position_and_log(alpaca_client, pos, cp, "market_close", status="time_exit")
+        console.print(f"[{color}]TIME EXIT: {pos['ticker']} age={age}d pnl={pnl:+.1f}% closed @ {cp}[/{color}]")
+
+    # Close all scalp positions at EOD regardless
     open_positions = get_open_positions(alpaca_client)
     for pos in open_positions:
         if pos.get("time_horizon") == "scalp":

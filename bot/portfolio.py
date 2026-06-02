@@ -1,11 +1,20 @@
 """Portfolio state — pulls live data from Alpaca and cross-references trades DB."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from bot.logger import get_open_trades, get_trades_today, update_trade_exit
 from bot.risk import record_trade_pnl
+
+# Time-based exit rules per strategy horizon.
+# If a trade reaches this age WITHOUT hitting stop or target, close it.
+# Profitable trades are closed to bank the gain.
+# Flat/losing trades are closed to free capital.
+MAX_HOLD_DAYS = {
+    "scalp": 2,    # scalp trades must resolve in 2 days
+    "swing": 10,   # swing trades get 10 trading days max
+}
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +102,54 @@ def check_targets(alpaca_client) -> list[dict]:
             logger.info(f"[portfolio] TARGET HIT (short): {pos['ticker']} price={cp} tp={tp}")
             targets_hit.append(pos)
     return targets_hit
+
+
+def check_time_exits(alpaca_client=None) -> list[dict]:
+    """
+    Return open positions that have exceeded their max hold period.
+    Doesn't close them — caller decides when to act (so dry-run is respected).
+
+    Rules:
+      - scalp: close after 2 calendar days regardless of P&L
+      - swing: close after 10 calendar days regardless of P&L
+    Both directions: if you're profitable take the gain, if you're flat/losing
+    cut the position and redeploy capital elsewhere.
+    """
+    positions = get_open_positions(alpaca_client)
+    expired = []
+    now = datetime.now(timezone.utc)
+
+    for pos in positions:
+        horizon   = pos.get("time_horizon", "swing")
+        max_days  = MAX_HOLD_DAYS.get(horizon, 10)
+        ts_raw    = pos.get("timestamp")
+        if not ts_raw:
+            continue
+        try:
+            # timestamp stored as ISO string, may or may not have tz info
+            ts = datetime.fromisoformat(ts_raw)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            age_days = (now - ts).days
+        except Exception:
+            continue
+
+        if age_days >= max_days:
+            cp     = pos.get("current_price") or pos.get("entry_price") or 0
+            entry  = float(pos.get("entry_price") or cp)
+            action = pos.get("action", "buy")
+            if action == "buy":
+                pnl_pct = (float(cp) - entry) / entry * 100 if entry else 0
+            else:
+                pnl_pct = (entry - float(cp)) / entry * 100 if entry else 0
+            pos["age_days"] = age_days
+            pos["pnl_pct"]  = round(pnl_pct, 2)
+            expired.append(pos)
+            logger.info(
+                f"[portfolio] TIME EXIT: {pos['ticker']} age={age_days}d "
+                f"horizon={horizon} max={max_days}d pnl={pnl_pct:+.1f}%"
+            )
+    return expired
 
 
 def get_daily_pnl() -> float:
