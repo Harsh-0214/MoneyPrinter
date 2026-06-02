@@ -759,34 +759,40 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
             stop   = score.get("stop_loss")
             target = score.get("take_profit")
 
-            # Hard max-loss cap: never lose more than 3× ATR from entry
-            # This mirrors the risk management live trading applies
+            # Hard max-loss cap: 3×ATR backstop (same guardrail as live risk module)
             if action == "buy":
                 hard_stop = entry_price - atr * 3
                 stop = max(stop, hard_stop) if stop else hard_stop
-            else:  # short
+            else:
                 hard_stop = entry_price + atr * 3
                 stop = min(stop, hard_stop) if stop else hard_stop
 
-            # Walk forward day-by-day until stop, target, or time exit
-            exit_price = float(hist["Close"].iloc[entry_idx + min(days - 1, len(hist) - entry_idx - 1)])
-            exit_day   = days - 1
+            # Max hold days by strategy time_horizon — mirrors live trading behavior.
+            # Live trades are not held for months; they exit at the strategy horizon.
+            horizon = score.get("time_horizon", "swing")
+            max_hold = 5 if horizon == "scalp" else 20   # scalp=5d, swing=20d
+
+            max_fwd  = min(max_hold, len(hist) - entry_idx - 1)
+
+            # Walk forward within the strategy horizon
+            exit_price = float(hist["Close"].iloc[entry_idx + max_fwd])
+            exit_day   = max_fwd
             status     = "time_exit"
 
-            for j in range(entry_idx, min(entry_idx + days, len(hist))):
-                day_low   = float(hist["Low"].iloc[j])
-                day_high  = float(hist["High"].iloc[j])
+            for j in range(entry_idx, entry_idx + max_fwd + 1):
+                day_low  = float(hist["Low"].iloc[j])
+                day_high = float(hist["High"].iloc[j])
 
                 if action == "buy":
                     if stop   and day_low  <= stop:
-                        exit_price = stop;  exit_day = j - entry_idx;  status = "stopped";      break
+                        exit_price = stop;   exit_day = j - entry_idx; status = "stopped";    break
                     if target and day_high >= target:
-                        exit_price = target; exit_day = j - entry_idx; status = "target_hit";   break
-                else:  # short
+                        exit_price = target; exit_day = j - entry_idx; status = "target_hit"; break
+                else:
                     if stop   and day_high >= stop:
-                        exit_price = stop;  exit_day = j - entry_idx;  status = "stopped";      break
+                        exit_price = stop;   exit_day = j - entry_idx; status = "stopped";    break
                     if target and day_low  <= target:
-                        exit_price = target; exit_day = j - entry_idx; status = "target_hit";   break
+                        exit_price = target; exit_day = j - entry_idx; status = "target_hit"; break
 
             pnl_pct = (
                 (exit_price - entry_price) / entry_price * 100
@@ -794,21 +800,35 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
                 else (entry_price - exit_price) / entry_price * 100
             )
 
+            # Also record where price ended up at max_hold regardless of stop/target
+            # This shows "did the direction call prove correct?" even if stopped early
+            natural_exit_idx   = entry_idx + max_fwd
+            natural_exit_price = float(hist["Close"].iloc[natural_exit_idx])
+            natural_pnl = (
+                (natural_exit_price - entry_price) / entry_price * 100
+                if action == "buy"
+                else (entry_price - natural_exit_price) / entry_price * 100
+            )
+
             sim_trades.append({
-                "ticker":     ticker,
-                "action":     action,
-                "strategy":   score["strategy"],
-                "confidence": score["confidence"],
-                "net_score":  score["net_score"],
-                "entry":      entry_price,
-                "exit":       exit_price,
-                "exit_day":   exit_day,
-                "status":     status,
-                "pnl_pct":    pnl_pct,
+                "ticker":          ticker,
+                "action":          action,
+                "strategy":        score["strategy"],
+                "horizon":         horizon,
+                "confidence":      score["confidence"],
+                "net_score":       score["net_score"],
+                "entry":           entry_price,
+                "exit":            exit_price,
+                "exit_day":        exit_day,
+                "status":          status,
+                "pnl_pct":         pnl_pct,
+                "natural_pnl":     natural_pnl,
+                "natural_exit":    natural_exit_price,
             })
             logger.info(
                 f"[backtest] {ticker} {action} entry=${entry_price:.2f} "
-                f"exit=${exit_price:.2f} pnl={pnl_pct:+.2f}% ({status})"
+                f"exit=${exit_price:.2f} pnl={pnl_pct:+.2f}% ({status}) "
+                f"| {max_hold}d natural={natural_pnl:+.2f}%"
             )
 
         except Exception as e:
@@ -857,16 +877,19 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
         table.add_column("Ticker",    style="bold")
         table.add_column("Action")
         table.add_column("Strategy")
-        table.add_column("Conf",    justify="right")
-        table.add_column("Entry",   justify="right")
-        table.add_column("Exit",    justify="right")
-        table.add_column("P&L %",   justify="right")
-        table.add_column("Days",    justify="right")
+        table.add_column("Conf",         justify="right")
+        table.add_column("Entry",        justify="right")
+        table.add_column("Exit",         justify="right")
+        table.add_column("P&L %",        justify="right")
+        table.add_column("Days",         justify="right")
         table.add_column("Status")
+        table.add_column("Natural P&L",  justify="right")
 
         for t in sorted(sim_trades, key=lambda x: x["pnl_pct"], reverse=True):
-            p = t["pnl_pct"]
-            c = "green" if p > 0 else "red"
+            p  = t["pnl_pct"]
+            np_ = t.get("natural_pnl", 0)
+            c  = "green" if p  > 0 else "red"
+            nc = "green" if np_ > 0 else "red"
             table.add_row(
                 t["ticker"],
                 t["action"],
@@ -877,6 +900,7 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
                 f"[{c}]{p:+.2f}%[/{c}]",
                 str(t["exit_day"]),
                 t["status"],
+                f"[{nc}]{np_:+.2f}%[/{nc}]",
             )
         console.print(table)
 
