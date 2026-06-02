@@ -39,7 +39,7 @@ WATCHLIST_PATH = Path(__file__).parent / "watchlist.json"
 with open(WATCHLIST_PATH) as f:
     WATCHLIST = json.load(f)
 
-ALL_TRADE_TICKERS = (
+STATIC_TICKERS = (
     WATCHLIST["trade"]["tech"]
     + WATCHLIST["trade"]["momentum"]
     + WATCHLIST["trade"]["financials"]
@@ -48,6 +48,17 @@ ALL_TRADE_TICKERS = (
 MACRO_TICKERS = WATCHLIST["macro_context_only"]
 COMPANY_NAMES = WATCHLIST["company_names"]
 DRY_RUN       = os.getenv("DRY_RUN", "true").lower() == "true"
+
+
+def get_all_trade_tickers() -> list[str]:
+    """Return static watchlist merged with any tickers promoted by discovery."""
+    from bot.discovery import get_discovered_tickers
+    discovered = get_discovered_tickers()
+    combined = list(STATIC_TICKERS)
+    for t in discovered:
+        if t not in combined:
+            combined.append(t)
+    return combined
 
 # Max trades per session to limit overexposure
 MAX_TRADES_PER_SESSION = 3
@@ -145,15 +156,15 @@ def run_full_scan(session: str, macro_context: dict,
     if bearish_market:
         console.print("[bold yellow]Bearish market (SPY below EMA50) — BUY signals suppressed[/bold yellow]")
 
-    console.print(f"[bold cyan]Scanning {len(ALL_TRADE_TICKERS)} tickers...[/bold cyan]")
-    indicators_map = get_indicators_batch(ALL_TRADE_TICKERS, max_workers=5)
-    news_map       = get_news_batch(ALL_TRADE_TICKERS, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
+    console.print(f"[bold cyan]Scanning {len(get_all_trade_tickers())} tickers...[/bold cyan]")
+    indicators_map = get_indicators_batch(get_all_trade_tickers(), max_workers=5)
+    news_map       = get_news_batch(get_all_trade_tickers(), COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
     signals    = []
     bull_count = 0
     bear_count = 0
 
-    for ticker in ALL_TRADE_TICKERS:
+    for ticker in get_all_trade_tickers():
         ind  = indicators_map.get(ticker, {})
         news = news_map.get(ticker, {})
 
@@ -210,7 +221,7 @@ def run_full_scan(session: str, macro_context: dict,
     from bot.logger import log_scan
     log_scan(
         session=session,
-        tickers_scanned=len(ALL_TRADE_TICKERS),
+        tickers_scanned=len(get_all_trade_tickers()),
         signals_generated=len(signals),
         trades_executed=0,
         total_bull=bull_count,
@@ -339,8 +350,49 @@ def execute_signals(signals: list, alpaca_client, data_client,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
 # SESSION HANDLERS
 # ══════════════════════════════════════════════════════════════════════════════
+
+def session_discovery() -> None:
+    """
+    8:30 AM EDT - screen large-cap universe for active movers.
+    Promotes up to 10 tickers into discovered_tickers.json.
+    These are automatically picked up by all subsequent sessions today.
+    """
+    from bot.discovery import run_discovery, get_discovered_meta
+    from rich.table import Table
+
+    console.rule("[bold magenta]DISCOVERY SESSION[/bold magenta]")
+    promoted = run_discovery(STATIC_TICKERS)
+
+    if not promoted:
+        console.print("[yellow]No new movers found today — trading static watchlist only.[/yellow]")
+        return
+
+    meta = get_discovered_meta()
+    table = Table(title=f"Discovered Movers ({len(promoted)})", show_header=True)
+    table.add_column("Ticker", style="bold magenta")
+    table.add_column("Price",      justify="right")
+    table.add_column("Chg %",      justify="right")
+    table.add_column("Vol Ratio",  justify="right")
+    table.add_column("Mkt Cap $B", justify="right")
+    table.add_column("Near 52wk?")
+
+    for t in promoted:
+        m = meta.get(t, {})
+        chg = m.get("pct_change", 0)
+        color = "green" if chg >= 0 else "red"
+        table.add_row(
+            t,
+            f"${m.get('price', 0):.2f}",
+            f"[{color}]{chg:+.1f}%[/{color}]",
+            f"{m.get('vol_ratio', 0):.1f}x",
+            f"${m.get('mkt_cap_b', 0):.0f}B" if m.get("mkt_cap_b") else "—",
+            "yes" if m.get("near_52wk") else "no",
+        )
+    console.print(table)
+
 
 def session_premarket() -> None:
     """9:00 AM EDT - fetch overnight news, flag gap moves. No trades."""
@@ -351,13 +403,13 @@ def session_premarket() -> None:
     from bot.news       import get_news_batch
 
     NEWS_API_KEY   = os.getenv("NEWS_API_KEY", "")
-    indicators_map = get_indicators_batch(ALL_TRADE_TICKERS, max_workers=5)
-    news_map       = get_news_batch(ALL_TRADE_TICKERS, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
+    indicators_map = get_indicators_batch(get_all_trade_tickers(), max_workers=5)
+    news_map       = get_news_batch(get_all_trade_tickers(), COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
     gap_ups   = []
     gap_downs = []
 
-    for ticker in ALL_TRADE_TICKERS:
+    for ticker in get_all_trade_tickers():
         ind  = indicators_map.get(ticker, {})
         news = news_map.get(ticker, {})
         gap  = ind.get("gap_pct")
@@ -383,7 +435,7 @@ def session_premarket() -> None:
                   f"BearishMarket={macro['bearish_market']}[/bold]")
 
     from bot.logger import log_scan
-    log_scan("premarket", len(ALL_TRADE_TICKERS), 0, 0, len(gap_ups), len(gap_downs))
+    log_scan("premarket", len(get_all_trade_tickers()), 0, 0, len(gap_ups), len(gap_downs))
 
 
 def session_market_open(alpaca_client, data_client) -> None:
@@ -588,7 +640,7 @@ def session_backtest(days: int = 30) -> None:
 
     sim_trades = []
 
-    for ticker in ALL_TRADE_TICKERS:
+    for ticker in get_all_trade_tickers():
         try:
             t    = yf.Ticker(ticker)
             hist = t.history(period=f"{days + 260}d", interval="1d", auto_adjust=True)
@@ -759,7 +811,7 @@ def main() -> None:
     parser.add_argument(
         "--session",
         required=True,
-        choices=["premarket", "market_open", "midday", "market_close", "eod_summary", "backtest"],
+        choices=["discovery", "premarket", "market_open", "midday", "market_close", "eod_summary", "backtest"],
         help="Which session to run",
     )
     parser.add_argument(
@@ -771,7 +823,13 @@ def main() -> None:
     args    = parser.parse_args()
     session = args.session
 
-    # Backtest skips market-open check and Alpaca setup
+    # Discovery and backtest skip market-open check and Alpaca setup
+    if session == "discovery":
+        from bot.logger import init_db
+        init_db()
+        session_discovery()
+        return
+
     if session == "backtest":
         from bot.logger import init_db
         init_db()

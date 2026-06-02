@@ -1,0 +1,42 @@
+name: Discovery (8:30 AM EDT)
+
+on:
+  schedule:
+    - cron: "30 12 * * 1-5"   # 12:30 UTC = 8:30 AM EDT
+  workflow_dispatch:
+
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install setuptools<67
+          pip install -r requirements.txt
+
+      - name: Download NLTK data
+        run: python -c "import nltk; nltk.download('punkt'); nltk.download('averaged_perceptron_tagger')"
+
+      - name: Run discovery
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL:   ${{ secrets.ALPACA_BASE_URL }}
+          NEWSAPI_KEY:       ${{ secrets.NEWSAPI_KEY }}
+          DRY_RUN:           "false"
+        run: python main.py --session discovery
+
+      - name: Commit discovered tickers
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add discovered_tickers.json || true
+          git diff --cached --quiet || git commit -m "chore: update discovered_tickers [skip ci]"
+          git push
