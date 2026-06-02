@@ -2,7 +2,7 @@ name: Midday — Stop/Target Check
 
 on:
   schedule:
-    - cron: '0 16 * * 1-5'   # 12:00 PM EDT (UTC-4). Nov-Mar EST: change to '0 17 * * 1-5'
+    - cron: '0 16 * * 1-5'   # 12:00 PM EDT (UTC-4)
   workflow_dispatch:
 
 jobs:
@@ -20,20 +20,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Cache pip dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Download NLTK data for TextBlob
-        run: python -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('averaged_perceptron_tagger', quiet=True)"
+      - name: Download NLTK data
+        run: |
+          python -c "
+          import nltk
+          for pkg in ['punkt', 'punkt_tab', 'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng']:
+              try: nltk.download(pkg, quiet=True)
+              except: pass
+          "
+
+      - name: Create data directory
+        run: mkdir -p data logs
 
       - name: Run midday session
         env:
@@ -48,7 +50,7 @@ jobs:
         run: |
           git config user.name "trading-bot"
           git config user.email "bot@trading.local"
-          git add data/trades.db logs/ || true
-          git diff --staged --quiet || git commit -m "bot: update trade log [skip ci]"
           git pull --rebase origin main || true
-          git push
+          git add data/trades.db || true
+          git diff --staged --quiet || git commit -m "bot: midday trade log [skip ci]"
+          git push || true
