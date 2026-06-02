@@ -452,6 +452,8 @@ def session_eod_summary(alpaca_client) -> None:
     from rich.panel import Panel
 
     pnl_color = "green" if gross_pnl >= 0 else "red"
+    best_str  = f"{best['ticker']} ${float(best.get('pnl_dollar') or 0):.2f}"  if best  else "N/A $0.00"
+    worst_str = f"{worst['ticker']} ${float(worst.get('pnl_dollar') or 0):.2f}" if worst else "N/A $0.00"
     console.print(Panel(
         f"[bold]Date:[/bold] {today}\n"
         f"[bold]Portfolio Value:[/bold] ${portfolio_value:,.2f}\n"
@@ -459,8 +461,8 @@ def session_eod_summary(alpaca_client) -> None:
         f"[bold]Daily P&L:[/bold] [{pnl_color}]${gross_pnl:,.2f}[/{pnl_color}]\n"
         f"[bold]Win Rate:[/bold] {win_rate*100:.1f}% ({len(winners)}W / {len(losers)}L)\n"
         f"[bold]Total Closed Trades:[/bold] {len(closed)}\n"
-        f"[bold]Best:[/bold] {best['ticker'] if best else 'N/A'} ${(best.get('pnl_dollar') or 0):.2f}\n"
-        f"[bold]Worst:[/bold] {worst['ticker'] if worst else 'N/A'} ${(worst.get('pnl_dollar') or 0):.2f}\n"
+        f"[bold]Best:[/bold] {best_str}\n"
+        f"[bold]Worst:[/bold] {worst_str}\n"
         f"[bold]VIX:[/bold] {macro['vix']:.1f}  [bold]Regime:[/bold] {macro['spy_regime']}",
         title="[bold]Daily Summary[/bold]",
         border_style=pnl_color,
