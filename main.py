@@ -72,11 +72,15 @@ def is_market_open_today() -> bool:
 
 
 def _has_open_position(ticker: str) -> bool:
-    """Return True if there is already an open or dry_run trade for this ticker in the DB."""
-    from bot.logger import get_open_trades
-    open_trades = get_open_trades()
-    for t in open_trades:
+    """Return True if ticker has an open position or was traded today (prevents same-day re-entry)."""
+    from bot.logger import get_open_trades, get_trades_today
+    for t in get_open_trades():
         if t.get("ticker") == ticker and t.get("status") in ("open", "dry_run"):
+            return True
+    # Also block if we already bought/shorted this ticker today
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    for t in get_trades_today():
+        if t.get("ticker") == ticker and t.get("action") in ("buy", "short"):
             return True
     return False
 
