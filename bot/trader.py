@@ -8,21 +8,26 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES   = 4
-BACKOFF_BASE  = 2  # seconds — waits 1s, 2s, 4s between attempts
+MAX_RETRIES    = 3
+BACKOFF_BASE   = 2   # seconds
+CALL_TIMEOUT   = 12  # seconds per attempt before giving up
 
 
 def _retry(fn, *args, **kwargs):
-    """Call fn with exponential backoff on failure. Socket timeout=10s per attempt."""
-    import socket
+    """Call fn with hard 12s timeout per attempt, exponential backoff on failure."""
+    import concurrent.futures
     for attempt in range(MAX_RETRIES):
         try:
-            old_timeout = socket.getdefaulttimeout()
-            socket.setdefaulttimeout(10)
-            try:
-                return fn(*args, **kwargs)
-            finally:
-                socket.setdefaulttimeout(old_timeout)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                future = ex.submit(fn, *args, **kwargs)
+                return future.result(timeout=CALL_TIMEOUT)
+        except concurrent.futures.TimeoutError:
+            e = TimeoutError(f"Alpaca API call timed out after {CALL_TIMEOUT}s")
+            if attempt == MAX_RETRIES - 1:
+                raise e
+            wait = BACKOFF_BASE ** attempt
+            logger.warning(f"[trader] attempt {attempt+1} timed out — retrying in {wait}s")
+            time.sleep(wait)
         except Exception as e:
             if attempt == MAX_RETRIES - 1:
                 raise
