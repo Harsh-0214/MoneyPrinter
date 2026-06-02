@@ -17,9 +17,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: |
-          pip install setuptools<67
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Download NLTK data
         run: python -c "import nltk; nltk.download('punkt'); nltk.download('averaged_perceptron_tagger')"
@@ -28,8 +26,8 @@ jobs:
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          ALPACA_BASE_URL:   ${{ secrets.ALPACA_BASE_URL }}
-          NEWS_API_KEY:       ${{ secrets.NEWS_API_KEY }}
+          ALPACA_BASE_URL:   https://paper-api.alpaca.markets
+          NEWS_API_KEY:      ${{ secrets.NEWS_API_KEY }}
           DRY_RUN:           "false"
         run: python main.py --session discovery
 
