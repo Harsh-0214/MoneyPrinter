@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas_market_calendars as mcal
@@ -25,7 +25,7 @@ log_file = LOG_DIR / f"bot_{datetime.utcnow().strftime('%Y%m%d')}.log"
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
     handlers=[
         RichHandler(rich_tracebacks=True, show_path=False),
         logging.FileHandler(log_file),
@@ -45,23 +45,33 @@ ALL_TRADE_TICKERS = (
     + WATCHLIST["trade"]["financials"]
     + WATCHLIST["trade"]["energy"]
 )
-MACRO_TICKERS   = WATCHLIST["macro_context_only"]
-COMPANY_NAMES   = WATCHLIST["company_names"]
-DRY_RUN         = os.getenv("DRY_RUN", "true").lower() == "true"
+MACRO_TICKERS = WATCHLIST["macro_context_only"]
+COMPANY_NAMES = WATCHLIST["company_names"]
+DRY_RUN       = os.getenv("DRY_RUN", "true").lower() == "true"
+
+# Max trades per session to limit overexposure
+MAX_TRADES_PER_SESSION = 3
 
 
 def is_market_open_today() -> bool:
-    """Check NYSE calendar to determine if today is a trading day."""
     nyse = mcal.get_calendar("NYSE")
     today = datetime.utcnow().strftime("%Y-%m-%d")
     schedule = nyse.schedule(start_date=today, end_date=today)
     return not schedule.empty
 
 
+def _has_open_position(ticker: str) -> bool:
+    """Return True if there is already an open or dry_run trade for this ticker in the DB."""
+    from bot.logger import get_open_trades
+    open_trades = get_open_trades()
+    for t in open_trades:
+        if t.get("ticker") == ticker and t.get("status") in ("open", "dry_run"):
+            return True
+    return False
+
+
 def get_macro_context() -> dict:
-    """
-    Compute macro context: VIX level, SPY regime, position size multiplier.
-    """
+    """Compute macro context: VIX, SPY regime, bearish_market flag, position size multiplier."""
     import yfinance as yf
     from bot.indicators import get_indicators
     from bot.risk import get_vix_multiplier
@@ -69,7 +79,11 @@ def get_macro_context() -> dict:
     macro = {
         "vix": 20.0,
         "spy_regime": "bull",
+        "bearish_market": False,
         "vix_multiplier": 1.0,
+        "spy_ema50": None,
+        "spy_ema200": None,
+        "spy_price": None,
     }
 
     # VIX
@@ -86,40 +100,56 @@ def get_macro_context() -> dict:
         ema50  = spy_ind.get("ema50")
         ema200 = spy_ind.get("ema200")
         price  = spy_ind.get("current_price")
+        macro["spy_ema50"]  = ema50
+        macro["spy_ema200"] = ema200
+        macro["spy_price"]  = price
+
         if price and ema50 and ema200:
             if price > ema50 and price > ema200:
-                macro["spy_regime"] = "bull"
+                macro["spy_regime"]      = "bull"
+                macro["bearish_market"]  = False
             elif price < ema50 and price > ema200:
-                macro["spy_regime"] = "caution"
+                macro["spy_regime"]      = "caution"
+                macro["bearish_market"]  = True   # below EMA50 = bearish_market
             else:
-                macro["spy_regime"] = "bear"
+                macro["spy_regime"]      = "bear"
+                macro["bearish_market"]  = True
     except Exception as e:
         logger.warning(f"SPY regime check failed: {e}")
 
     macro["vix_multiplier"] = get_vix_multiplier(macro["vix"])
     logger.info(
         f"[macro] VIX={macro['vix']:.1f} regime={macro['spy_regime']} "
+        f"bearish_market={macro['bearish_market']} "
         f"size_mult={macro['vix_multiplier']:.2f}"
     )
     return macro
 
 
-def run_full_scan(session: str, macro_context: dict, alpaca_client=None, data_client=None) -> list[dict]:
+def run_full_scan(session: str, macro_context: dict,
+                  alpaca_client=None, data_client=None) -> list[dict]:
     """
-    Score all tickers. Returns list of actionable signal dicts.
+    Score all tickers and return actionable signal list.
+
+    Applies SPY trend filter: if bearish_market=True, all buy signals are
+    dropped and only shorts with confidence > 0.80 pass through.
     """
-    from bot.indicators  import get_indicators_batch
+    from bot.indicators import get_indicators_batch
     from bot.news        import get_news_batch
     from bot.scorer      import score_ticker
     from bot.strategies  import classify_strategy
 
-    NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
+    NEWS_API_KEY    = os.getenv("NEWS_API_KEY", "")
+    bearish_market  = macro_context.get("bearish_market", False)
+
+    if bearish_market:
+        console.print("[bold yellow]Bearish market (SPY below EMA50) — BUY signals suppressed[/bold yellow]")
 
     console.print(f"[bold cyan]Scanning {len(ALL_TRADE_TICKERS)} tickers...[/bold cyan]")
     indicators_map = get_indicators_batch(ALL_TRADE_TICKERS, max_workers=5)
-    news_map = get_news_batch(ALL_TRADE_TICKERS, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
+    news_map       = get_news_batch(ALL_TRADE_TICKERS, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
-    signals = []
+    signals    = []
     bull_count = 0
     bear_count = 0
 
@@ -138,13 +168,25 @@ def run_full_scan(session: str, macro_context: dict, alpaca_client=None, data_cl
             logger.warning(f"Scoring failed for {ticker}: {e}")
             continue
 
-        action = score.get("action", "hold")
-        net    = score.get("net_score", 0)
+        action     = score.get("action", "hold")
+        net        = score.get("net_score", 0)
+        confidence = score.get("confidence", 0.0)
+
+        # ── SPY trend filter ───────────────────────────────────────────────
+        if bearish_market and action == "buy":
+            logger.info(f"[{ticker}] buy suppressed — bearish market")
+            action = "hold"
+            score["action"] = "hold"
+
+        if bearish_market and action in ("short", "sell") and confidence < 0.80:
+            logger.info(f"[{ticker}] short suppressed in bearish market — confidence {confidence:.2f} < 0.80")
+            action = "hold"
+            score["action"] = "hold"
 
         logger.info(
             f"[{ticker}] action={action} net={net} bull={score.get('bull_score')} "
-            f"bear={score.get('bear_score')} conf={score.get('confidence'):.2f} "
-            f"strategy={score.get('strategy')}"
+            f"bear={score.get('bear_score')} conf={confidence:.2f} "
+            f"strategy={score.get('strategy')} src={ind.get('price_source','?')}"
         )
 
         if action != "hold":
@@ -166,9 +208,14 @@ def run_full_scan(session: str, macro_context: dict, alpaca_client=None, data_cl
     return signals
 
 
-def execute_signals(signals: list, alpaca_client, data_client, macro_context: dict, session: str) -> int:
-    """Submit orders for actionable signals. Returns number of trades executed."""
-    from bot.logger import log_scan, log_trade
+def execute_signals(signals: list, alpaca_client, data_client,
+                    macro_context: dict, session: str,
+                    max_trades: int = MAX_TRADES_PER_SESSION) -> int:
+    """
+    Submit orders for the top-N signals by confidence.
+    Skips duplicates (ticker already has an open position in the DB).
+    """
+    from bot.logger import log_trade
     from bot.risk   import calculate_position, is_kill_switch_active, init_daily_state
     from bot.trader import (
         get_account, submit_order, compute_limit_price,
@@ -176,27 +223,36 @@ def execute_signals(signals: list, alpaca_client, data_client, macro_context: di
     )
 
     if is_kill_switch_active():
-        logger.warning("[execute] Kill switch active — no orders will be placed")
+        logger.warning("[execute] Kill switch active - no orders will be placed")
         return 0
 
-    account = get_account(alpaca_client)
+    account         = get_account(alpaca_client)
     portfolio_value = account.get("portfolio_value", 100_000)
-    init_daily_state(portfolio_value)  # called once before the trade loop
+    init_daily_state(portfolio_value)
+
+    # Sort by confidence descending, cap at max_trades
+    ranked  = sorted(signals, key=lambda s: s.get("confidence", 0), reverse=True)
+    ranked  = ranked[:max_trades]
 
     executed = 0
-    for sig in signals:
+    for sig in ranked:
         if is_kill_switch_active():
             break
 
-        ticker     = sig["ticker"]
-        action     = sig["action"]
-        confidence = sig["confidence"]
-        atr        = sig.get("atr") or (sig.get("entry_price", 100) * 0.02)
+        ticker      = sig["ticker"]
+        action      = sig["action"]
+        confidence  = sig["confidence"]
+        atr         = sig.get("atr") or (sig.get("entry_price", 100) * 0.02)
         entry_price = sig.get("entry_price") or 0
-        strategy   = sig.get("strategy", "mixed")
-        high_vol   = sig.get("high_vol_flag", False)
+        strategy    = sig.get("strategy", "mixed")
+        high_vol    = sig.get("high_vol_flag", False)
 
         if entry_price == 0:
+            continue
+
+        # ── Duplicate position guard ───────────────────────────────────────
+        if _has_open_position(ticker):
+            logger.info(f"[SKIP] Already have open position in {ticker}")
             continue
 
         pos = calculate_position(
@@ -210,13 +266,13 @@ def execute_signals(signals: list, alpaca_client, data_client, macro_context: di
 
         shares = pos["shares"]
         if shares <= 0:
-            logger.info(f"[execute] {ticker}: 0 shares — skipping ({pos['reason']})")
+            logger.info(f"[execute] {ticker}: 0 shares - skipping ({pos['reason']})")
             continue
 
-        # Get quote for limit price
-        quote = get_latest_quote(data_client, ticker)
-        alpaca_side   = "buy" if action == "buy" else "sell"
-        limit_price   = compute_limit_price(alpaca_side, quote, entry_price)
+        # Quote for limit price calculation; entry_price stays as the real-time price
+        quote       = get_latest_quote(data_client, ticker)
+        alpaca_side = "buy" if action == "buy" else "sell"
+        limit_price = compute_limit_price(alpaca_side, quote, entry_price)
 
         try:
             order_id = submit_order(
@@ -232,6 +288,7 @@ def execute_signals(signals: list, alpaca_client, data_client, macro_context: di
             if not DRY_RUN:
                 fill = check_order_filled(alpaca_client, order_id, timeout=60)
                 fill_status = fill.get("status", "open")
+                # Update entry_price to actual fill if available; keep original otherwise
                 if fill.get("filled_avg_price"):
                     entry_price = fill["filled_avg_price"]
 
@@ -242,8 +299,8 @@ def execute_signals(signals: list, alpaca_client, data_client, macro_context: di
                 strategy=strategy,
                 time_horizon=sig.get("time_horizon", "swing"),
                 quantity=shares,
-                entry_price=entry_price,
-                limit_price=limit_price,
+                entry_price=entry_price,     # real-time price (or actual fill)
+                limit_price=limit_price,     # what was submitted to the exchange
                 stop_loss=sig.get("stop_loss"),
                 take_profit=sig.get("take_profit"),
                 confidence=confidence,
@@ -261,8 +318,8 @@ def execute_signals(signals: list, alpaca_client, data_client, macro_context: di
             )
             executed += 1
             console.print(
-                f"[green]✓ {action.upper()} {shares}x {ticker} @ ${limit_price:.2f} "
-                f"| strat={strategy} conf={confidence:.2f}[/green]"
+                f"[green]✓ {action.upper()} {shares}x {ticker} @ ${entry_price:.2f} "
+                f"(limit ${limit_price:.2f}) | strat={strategy} conf={confidence:.2f}[/green]"
             )
         except Exception as e:
             logger.error(f"[execute] Order failed for {ticker}: {e}")
@@ -275,17 +332,16 @@ def execute_signals(signals: list, alpaca_client, data_client, macro_context: di
 # ══════════════════════════════════════════════════════════════════════════════
 
 def session_premarket() -> None:
-    """9:00 AM EDT — fetch overnight news, flag gap moves. No trades."""
+    """9:00 AM EDT - fetch overnight news, flag gap moves. No trades."""
     console.rule("[bold yellow]PRE-MARKET SESSION[/bold yellow]")
-
     macro = get_macro_context()
 
     from bot.indicators import get_indicators_batch
     from bot.news       import get_news_batch
 
-    NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
+    NEWS_API_KEY   = os.getenv("NEWS_API_KEY", "")
     indicators_map = get_indicators_batch(ALL_TRADE_TICKERS, max_workers=5)
-    news_map = get_news_batch(ALL_TRADE_TICKERS, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
+    news_map       = get_news_batch(ALL_TRADE_TICKERS, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
     gap_ups   = []
     gap_downs = []
@@ -305,36 +361,40 @@ def session_premarket() -> None:
 
         pol = news.get("avg_polarity", 0)
         if abs(pol) > 0.3:
-            logger.info(f"[premarket] News signal: {ticker} polarity={pol:.2f} headlines={news.get('headline_count',0)}")
+            logger.info(
+                f"[premarket] News signal: {ticker} polarity={pol:.2f} "
+                f"headlines={news.get('headline_count', 0)}"
+            )
 
-    console.print(f"[cyan]Gap Ups (>2%):   {gap_ups}[/cyan]")
+    console.print(f"[cyan]Gap Ups (>2%):    {gap_ups}[/cyan]")
     console.print(f"[red]Gap Downs (<-2%): {gap_downs}[/red]")
-    console.print(f"[bold]VIX={macro['vix']:.1f}  Regime={macro['spy_regime']}[/bold]")
+    console.print(f"[bold]VIX={macro['vix']:.1f}  Regime={macro['spy_regime']}  "
+                  f"BearishMarket={macro['bearish_market']}[/bold]")
 
     from bot.logger import log_scan
     log_scan("premarket", len(ALL_TRADE_TICKERS), 0, 0, len(gap_ups), len(gap_downs))
 
 
 def session_market_open(alpaca_client, data_client) -> None:
-    """9:35 AM EDT — full score run, execute all signals above threshold."""
+    """9:35 AM EDT - full score run, execute top-3 signals above threshold."""
     console.rule("[bold green]MARKET OPEN SESSION[/bold green]")
     macro = get_macro_context()
 
-    # VIX extreme: no longs
     if macro["vix"] > 35:
-        console.print("[bold red]VIX > 35 — EXTREME FEAR. No new long positions.[/bold red]")
+        console.print("[bold red]VIX > 35 - EXTREME FEAR. No new positions.[/bold red]")
         return
 
-    signals = run_full_scan("market_open", macro, alpaca_client, data_client)
-    executed = execute_signals(signals, alpaca_client, data_client, macro, "market_open")
+    signals  = run_full_scan("market_open", macro, alpaca_client, data_client)
+    executed = execute_signals(signals, alpaca_client, data_client, macro, "market_open",
+                               max_trades=MAX_TRADES_PER_SESSION)
     console.print(f"[bold green]Market open complete: {executed} trades executed[/bold green]")
 
 
 def session_midday(alpaca_client, data_client) -> None:
-    """12:00 PM EDT — check stops/targets, no new entries unless score > 80."""
+    """12:00 PM EDT - check stops/targets. New entries only on extreme conviction."""
     console.rule("[bold blue]MIDDAY SESSION[/bold blue]")
 
-    from bot.portfolio import check_stops, check_targets, close_position_and_log, get_open_positions
+    from bot.portfolio import check_stops, check_targets, close_position_and_log
     macro = get_macro_context()
 
     # Check stops
@@ -351,18 +411,22 @@ def session_midday(alpaca_client, data_client) -> None:
         close_position_and_log(alpaca_client, pos, cp, "midday", status="closed")
         console.print(f"[green]TAKE PROFIT: {pos['ticker']} closed @ {cp}[/green]")
 
-    # New entries only for very high confidence
-    signals = run_full_scan("midday", macro, alpaca_client, data_client)
-    high_conf = [s for s in signals if s.get("net_score", 0) > 80]
+    # New entries only at extreme confidence — net_score > 80 AND confidence >= 0.85
+    signals   = run_full_scan("midday", macro, alpaca_client, data_client)
+    high_conf = [
+        s for s in signals
+        if s.get("net_score", 0) > 80 and s.get("confidence", 0) >= 0.85
+    ]
     if high_conf:
-        executed = execute_signals(high_conf, alpaca_client, data_client, macro, "midday")
-        console.print(f"[bold]High-confidence midday entries: {executed}[/bold]")
+        executed = execute_signals(high_conf, alpaca_client, data_client, macro, "midday",
+                                   max_trades=1)   # only 1 new trade midday max
+        console.print(f"[bold]High-conviction midday entry: {executed}[/bold]")
     else:
-        console.print("[dim]No high-confidence entries (net > 80) found at midday[/dim]")
+        console.print("[dim]No extreme-conviction entries (net>80, conf>=0.85) at midday[/dim]")
 
 
 def session_market_close(alpaca_client, data_client) -> None:
-    """3:30 PM EDT — close scalps, re-score, decide what to hold overnight."""
+    """3:30 PM EDT - close scalps, re-score, decide what to hold overnight."""
     console.rule("[bold magenta]MARKET CLOSE SESSION[/bold magenta]")
 
     from bot.portfolio import get_open_positions, close_position_and_log
@@ -376,58 +440,54 @@ def session_market_close(alpaca_client, data_client) -> None:
             close_position_and_log(alpaca_client, pos, cp, "market_close", status="closed")
             console.print(f"[yellow]EOD scalp close: {pos['ticker']} @ {cp}[/yellow]")
 
-    # Re-score remaining tickers
+    # Re-score
     signals = run_full_scan("market_close", macro, alpaca_client, data_client)
 
-    # Only execute if score is strong enough to hold overnight
-    overnight_candidates = [s for s in signals if abs(s.get("net_score", 0)) >= 40 and s.get("confidence", 0) >= 0.60]
-    if overnight_candidates:
-        executed = execute_signals(overnight_candidates, alpaca_client, data_client, macro, "market_close")
+    # Overnight entries: raised thresholds vs market_open
+    overnight = [
+        s for s in signals
+        if abs(s.get("net_score", 0)) >= 50 and s.get("confidence", 0) >= 0.70
+    ]
+    if overnight:
+        executed = execute_signals(overnight, alpaca_client, data_client, macro,
+                                   "market_close", max_trades=MAX_TRADES_PER_SESSION)
         console.print(f"[bold]Overnight holds initiated: {executed}[/bold]")
 
-    # Close open positions where score has turned against them
+    # Close positions where signal has flipped
     open_positions = get_open_positions(alpaca_client)
     scored_map = {s["ticker"]: s for s in signals}
     for pos in open_positions:
         ticker = pos["ticker"]
         if ticker in scored_map:
             s = scored_map[ticker]
-            pos_action = pos.get("action", "buy")
-            sig_action = s.get("action", "hold")
-            # Flip signal: was long, now bearish
-            if pos_action == "buy" and sig_action in ("short", "sell"):
+            if pos.get("action") == "buy" and s.get("action") in ("short", "sell"):
                 cp = pos.get("current_price") or pos.get("entry_price", 0)
                 close_position_and_log(alpaca_client, pos, cp, "market_close", status="closed")
                 console.print(f"[red]Signal flip close: {ticker}[/red]")
 
 
 def session_eod_summary(alpaca_client) -> None:
-    """4:15 PM EDT — compute daily P&L, write summary, print Rich report."""
+    """4:15 PM EDT - compute daily P&L, write summary, print Rich report."""
     console.rule("[bold white]END OF DAY SUMMARY[/bold white]")
 
-    from bot.logger import (
-        get_trades_today, get_daily_summaries, log_daily_summary,
-    )
-    from bot.portfolio import get_daily_pnl
-    from bot.risk import is_kill_switch_active
+    from bot.logger import get_trades_today, get_daily_summaries, log_daily_summary
+    from bot.risk   import is_kill_switch_active
     from bot.trader import get_account
 
-    account = get_account(alpaca_client)
+    account         = get_account(alpaca_client)
     portfolio_value = account.get("portfolio_value", 0)
-    cash = account.get("cash", 0)
+    cash            = account.get("cash", 0)
 
     trades_today = get_trades_today()
-    closed = [t for t in trades_today if t.get("pnl_dollar") is not None]
-    winners = [t for t in closed if (t.get("pnl_dollar") or 0) > 0]
-    losers  = [t for t in closed if (t.get("pnl_dollar") or 0) <= 0]
+    closed   = [t for t in trades_today if t.get("pnl_dollar") is not None]
+    winners  = [t for t in closed if (t.get("pnl_dollar") or 0) > 0]
+    losers   = [t for t in closed if (t.get("pnl_dollar") or 0) <= 0]
     gross_pnl = sum(float(t.get("pnl_dollar") or 0) for t in closed)
     win_rate  = len(winners) / len(closed) if closed else 0
 
     best  = max(closed, key=lambda t: t.get("pnl_dollar") or 0, default=None)
     worst = min(closed, key=lambda t: t.get("pnl_dollar") or 0, default=None)
-
     today = datetime.utcnow().strftime("%Y-%m-%d")
-
     macro = get_macro_context()
 
     log_daily_summary(
@@ -440,14 +500,13 @@ def session_eod_summary(alpaca_client) -> None:
         losing_trades=len(losers),
         gross_pnl=gross_pnl,
         win_rate=win_rate,
-        best_trade=f"{best['ticker']} ${best['pnl_dollar']:.2f}" if best else "N/A",
+        best_trade=f"{best['ticker']} ${best['pnl_dollar']:.2f}"  if best  else "N/A",
         worst_trade=f"{worst['ticker']} ${worst['pnl_dollar']:.2f}" if worst else "N/A",
         macro_bias=macro.get("spy_regime", "unknown"),
         vix_level=macro.get("vix", 0),
         kill_switch_triggered=is_kill_switch_active(),
     )
 
-    # Rich report
     from rich.table import Table
     from rich.panel import Panel
 
@@ -468,7 +527,6 @@ def session_eod_summary(alpaca_client) -> None:
         border_style=pnl_color,
     ))
 
-    # 7-day P&L bar
     summaries = get_daily_summaries(7)
     if summaries:
         table = Table(title="Last 7 Days P&L")
@@ -489,6 +547,199 @@ def session_eod_summary(alpaca_client) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# BACKTEST SESSION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def session_backtest(days: int = 30) -> None:
+    """
+    Simplified walk-forward backtest over the last N calendar days.
+
+    For each ticker:
+      - Score using historical data as-of `days` ago (full indicator engine)
+      - If signal: simulate entry at next-day open, walk forward to stop/target or time exit
+      - Report aggregate stats and compare to SPY buy-and-hold over the same period
+    """
+    import yfinance as yf
+    import numpy as np
+    from bot.indicators import compute_indicators_from_df
+    from bot.scorer     import score_ticker
+    from bot.strategies import classify_strategy
+    from rich.table     import Table
+    from rich.panel     import Panel
+
+    console.rule(f"[bold]BACKTEST - Last {days} Trading Days[/bold]")
+    console.print("[dim]Scoring each ticker as-of the start of the window, simulating forward...[/dim]")
+
+    # Neutral macro for backtest (no live VIX/SPY dependency)
+    sim_macro = {"vix": 18.0, "spy_regime": "bull", "bearish_market": False, "vix_multiplier": 1.0}
+    sim_news  = {"avg_polarity": 0.0, "headline_count": 0, "top_headlines": [],
+                 "sec_8k_flag": False, "earnings_risk": False}
+
+    sim_trades = []
+
+    for ticker in ALL_TRADE_TICKERS:
+        try:
+            t    = yf.Ticker(ticker)
+            hist = t.history(period=f"{days + 260}d", interval="1d", auto_adjust=True)
+            if hist is None or len(hist) < days + 50:
+                logger.warning(f"[backtest] {ticker}: insufficient history")
+                continue
+
+            # Slice to "as of days ago" for scoring
+            hist_at_entry = hist.iloc[:-days].copy()
+            if len(hist_at_entry) < 50:
+                continue
+
+            # Compute indicators on the historical window
+            ind = compute_indicators_from_df(ticker, hist_at_entry,
+                                              intraday=None, realtime_price=False)
+            if ind.get("error"):
+                continue
+
+            score = score_ticker(ticker, ind, sim_news, sim_macro)
+            score = classify_strategy(score, ind)
+
+            action = score["action"]
+            if action not in ("buy", "short"):
+                continue
+
+            # Entry: next-day open after the scoring date
+            entry_idx = len(hist) - days
+            if entry_idx >= len(hist):
+                continue
+            entry_price = float(hist["Open"].iloc[entry_idx])
+            if entry_price <= 0:
+                continue
+
+            stop   = score.get("stop_loss")
+            target = score.get("take_profit")
+
+            # Walk forward day-by-day until stop, target, or time exit
+            exit_price = float(hist["Close"].iloc[-1])
+            exit_day   = days - 1
+            status     = "time_exit"
+
+            for j in range(entry_idx, len(hist)):
+                day_low  = float(hist["Low"].iloc[j])
+                day_high = float(hist["High"].iloc[j])
+                day_close = float(hist["Close"].iloc[j])
+
+                if action == "buy":
+                    if stop   and day_low  <= stop:
+                        exit_price = stop
+                        exit_day   = j - entry_idx
+                        status     = "stopped"
+                        break
+                    if target and day_high >= target:
+                        exit_price = target
+                        exit_day   = j - entry_idx
+                        status     = "target_hit"
+                        break
+                else:  # short
+                    if stop   and day_high >= stop:
+                        exit_price = stop
+                        exit_day   = j - entry_idx
+                        status     = "stopped"
+                        break
+                    if target and day_low  <= target:
+                        exit_price = target
+                        exit_day   = j - entry_idx
+                        status     = "target_hit"
+                        break
+
+            pnl_pct = (
+                (exit_price - entry_price) / entry_price * 100
+                if action == "buy"
+                else (entry_price - exit_price) / entry_price * 100
+            )
+
+            sim_trades.append({
+                "ticker":     ticker,
+                "action":     action,
+                "strategy":   score["strategy"],
+                "confidence": score["confidence"],
+                "net_score":  score["net_score"],
+                "entry":      entry_price,
+                "exit":       exit_price,
+                "exit_day":   exit_day,
+                "status":     status,
+                "pnl_pct":    pnl_pct,
+            })
+            logger.info(
+                f"[backtest] {ticker} {action} entry=${entry_price:.2f} "
+                f"exit=${exit_price:.2f} pnl={pnl_pct:+.2f}% ({status})"
+            )
+
+        except Exception as e:
+            logger.warning(f"[backtest] {ticker}: {e}")
+
+    # SPY buy-and-hold comparison
+    spy_return = 0.0
+    try:
+        spy_hist = yf.Ticker("SPY").history(period=f"{days + 10}d", interval="1d")
+        if spy_hist is not None and len(spy_hist) >= days:
+            spy_entry  = float(spy_hist["Close"].iloc[-days])
+            spy_exit_p = float(spy_hist["Close"].iloc[-1])
+            spy_return = (spy_exit_p - spy_entry) / spy_entry * 100
+    except Exception:
+        pass
+
+    # ── Report ─────────────────────────────────────────────────────────────
+    winners = [t for t in sim_trades if t["pnl_pct"] > 0]
+    losers  = [t for t in sim_trades if t["pnl_pct"] <= 0]
+    total   = len(sim_trades)
+    avg_win  = float(np.mean([t["pnl_pct"] for t in winners])) if winners else 0
+    avg_loss = float(np.mean([t["pnl_pct"] for t in losers]))  if losers  else 0
+    avg_pnl  = float(np.mean([t["pnl_pct"] for t in sim_trades])) if sim_trades else 0
+    win_rate = len(winners) / total if total else 0
+
+    best_trade  = max(sim_trades, key=lambda t: t["pnl_pct"], default=None)
+    worst_trade = min(sim_trades, key=lambda t: t["pnl_pct"], default=None)
+
+    bot_color = "green" if avg_pnl >= spy_return else "red"
+    console.print(Panel(
+        f"[bold]Period:[/bold] Last {days} trading days\n"
+        f"[bold]Total Signals:[/bold] {total}\n"
+        f"[bold]Win Rate:[/bold] {win_rate*100:.1f}% ({len(winners)}W / {len(losers)}L)\n"
+        f"[bold]Avg Trade P&L:[/bold] [{bot_color}]{avg_pnl:+.2f}%[/{bot_color}]\n"
+        f"[bold]Avg Winner:[/bold] +{avg_win:.2f}%   [bold]Avg Loser:[/bold] {avg_loss:.2f}%\n"
+        f"[bold]Best:[/bold]  {best_trade['ticker']} {best_trade['pnl_pct']:+.2f}% ({best_trade['status']})" if best_trade else "[bold]Best:[/bold] N/A\n"
+        f"\n[bold]Worst:[/bold] {worst_trade['ticker']} {worst_trade['pnl_pct']:+.2f}% ({worst_trade['status']})" if worst_trade else "[bold]Worst:[/bold] N/A\n"
+        f"\n[bold]SPY Buy-and-Hold:[/bold] {spy_return:+.2f}%",
+        title=f"[bold]Backtest Results ({days}d)[/bold]",
+        border_style="cyan",
+    ))
+
+    if sim_trades:
+        table = Table(title="Simulated Trades")
+        table.add_column("Ticker",    style="bold")
+        table.add_column("Action")
+        table.add_column("Strategy")
+        table.add_column("Conf",    justify="right")
+        table.add_column("Entry",   justify="right")
+        table.add_column("Exit",    justify="right")
+        table.add_column("P&L %",   justify="right")
+        table.add_column("Days",    justify="right")
+        table.add_column("Status")
+
+        for t in sorted(sim_trades, key=lambda x: x["pnl_pct"], reverse=True):
+            p = t["pnl_pct"]
+            c = "green" if p > 0 else "red"
+            table.add_row(
+                t["ticker"],
+                t["action"],
+                t["strategy"],
+                f"{t['confidence']:.2f}",
+                f"${t['entry']:.2f}",
+                f"${t['exit']:.2f}",
+                f"[{c}]{p:+.2f}%[/{c}]",
+                str(t["exit_day"]),
+                t["status"],
+            )
+        console.print(table)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -497,23 +748,35 @@ def main() -> None:
     parser.add_argument(
         "--session",
         required=True,
-        choices=["premarket", "market_open", "midday", "market_close", "eod_summary"],
+        choices=["premarket", "market_open", "midday", "market_close", "eod_summary", "backtest"],
         help="Which session to run",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="Number of days for backtest window (default: 30)",
+    )
+    args    = parser.parse_args()
     session = args.session
 
-    # Market holiday check
+    # Backtest skips market-open check and Alpaca setup
+    if session == "backtest":
+        from bot.logger import init_db
+        init_db()
+        session_backtest(days=args.days)
+        return
+
+    # Market holiday check for all live sessions
     if not is_market_open_today():
-        console.print(f"[bold yellow]Market closed today — skipping {session}.[/bold yellow]")
+        console.print(f"[bold yellow]Market closed today - skipping {session}.[/bold yellow]")
         sys.exit(0)
 
     if DRY_RUN:
-        console.print("[bold yellow]DRY_RUN=true — orders will be simulated[/bold yellow]")
+        console.print("[bold yellow]DRY_RUN=true - orders will be simulated[/bold yellow]")
 
     logger.info(f"Starting session: {session}")
 
-    # Initialize DB
     from bot.logger import init_db
     init_db()
 

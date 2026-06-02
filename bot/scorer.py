@@ -5,6 +5,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# ── Trading thresholds ─────────────────────────────────────────────────────
+MIN_NET_SCORE_BUY      = 50    # raised from 30
+MIN_CONFIDENCE_BUY     = 0.70  # raised from 0.60
+MIN_NET_SCORE_SHORT    = 60    # absolute value; shorts need higher conviction
+MIN_CONFIDENCE_SHORT   = 0.75  # shorts are riskier
+
 
 def _v(val, default=0.0):
     """Safe value getter with default."""
@@ -41,12 +47,16 @@ def score_ticker(
     e50  = _v(ind.get("ema50"))
     e200 = _v(ind.get("ema200"))
     adx  = _v(ind.get("adx"))
+    di_plus  = _v(ind.get("adx_di_plus"))
+    di_minus = _v(ind.get("adx_di_minus"))
 
     ema_bull_base = 0.0
     ema_bear_base = 0.0
+    ema_full_bull = False
     if e9 > 0 and e21 > 0 and e50 > 0 and e200 > 0:
         if e9 > e21 > e50 > e200:
             ema_bull_base = 25
+            ema_full_bull = True
             signals_triggered.append("ema_full_bull_alignment")
             reasoning_parts.append("EMA9>EMA21>EMA50>EMA200 full bull alignment")
         elif e9 < e21 < e50 < e200:
@@ -82,8 +92,6 @@ def score_ticker(
     bear += ema_bear_base * adx_mult
 
     # DI signals
-    di_plus  = _v(ind.get("adx_di_plus"))
-    di_minus = _v(ind.get("adx_di_minus"))
     if adx > 25 and di_plus > 0 and di_minus > 0:
         if di_plus > di_minus:
             bull += 8
@@ -194,7 +202,6 @@ def score_ticker(
         if sk > 80 and sk < sd:
             bear += 10
             signals_triggered.append("stochrsi_turning_down_overbought")
-        # Strong reversal: K crossed above D below 30 in last 2 bars
         if sk_prev > 0 and sd_prev > 0:
             if sk > sd and sk_prev <= sd_prev and sk < 30:
                 bull += 12
@@ -279,7 +286,7 @@ def score_ticker(
         signals_triggered.append("bb_squeeze_detected")
         reasoning_parts.append("Bollinger Band squeeze — breakout watch")
 
-    # Keltner Channel breakout (especially powerful after squeeze)
+    # Keltner Channel breakout
     kc_upper = _v(ind.get("kc_upper"))
     kc_lower = _v(ind.get("kc_lower"))
     if kc_upper > 0 and cp > kc_upper and bb_squeeze:
@@ -301,7 +308,7 @@ def score_ticker(
     # VOLUME SIGNALS
     # ──────────────────────────────────────────────────────────────
     vol_ratio = _v(ind.get("volume_ratio"), default=None)
-    price_up = cp > _v(ind.get("prev_close"), default=cp)
+    price_up  = cp > _v(ind.get("prev_close"), default=cp)
 
     vol_mult = 1.0
     if vol_ratio is not None:
@@ -326,7 +333,6 @@ def score_ticker(
                 bear += 12
                 signals_triggered.append("volume_confirm_bear")
 
-    # Apply low-volume multiplier
     if vol_mult != 1.0:
         bull *= vol_mult
         bear *= vol_mult
@@ -366,7 +372,6 @@ def score_ticker(
             return False
         return abs(price - level) / level <= pct
 
-    P  = _v(ind.get("P"))
     R1 = _v(ind.get("R1"))
     R2 = _v(ind.get("R2"))
     S1 = _v(ind.get("S1"))
@@ -386,7 +391,6 @@ def score_ticker(
         bear += 12
         signals_against.append("near_r2_strong_resistance")
 
-    # Pivot breakouts (need volume)
     if vol_ratio and vol_ratio > 1.5:
         if R1 > 0 and cp > R1:
             bull += 15
@@ -399,7 +403,6 @@ def score_ticker(
     # 52-week range
     pct_52h = _v(ind.get("pct_from_52wk_high"), default=None)
     pct_52l = _v(ind.get("pct_from_52wk_low"),  default=None)
-    wk52_h  = _v(ind.get("wk52_high"))
 
     if pct_52h is not None:
         if pct_52h >= -2:
@@ -418,8 +421,8 @@ def score_ticker(
     # NEWS SENTIMENT
     # ──────────────────────────────────────────────────────────────
     news = news_sentiment or {}
-    avg_pol = _v(news.get("avg_polarity"))
-    sec_8k  = news.get("sec_8k_flag") or False
+    avg_pol   = _v(news.get("avg_polarity"))
+    sec_8k    = news.get("sec_8k_flag") or False
     earn_risk = news.get("earnings_risk") or False
 
     if avg_pol > 0.5:
@@ -447,11 +450,18 @@ def score_ticker(
         reasoning_parts.append("SEC 8-K filing detected — catalyst amplifier")
 
     # ──────────────────────────────────────────────────────────────
+    # SHORT FILTERS — penalise / block shorts in uptrending stocks
+    # ──────────────────────────────────────────────────────────────
+    # Penalty: price above EMA200 — don't fight the macro trend
+    if e200 > 0 and cp > e200:
+        bear = max(0, bear - 20)
+        signals_against.append("above_ema200_short_penalty")
+
+    # ──────────────────────────────────────────────────────────────
     # MACRO FILTER
     # ──────────────────────────────────────────────────────────────
-    vix       = _v(macro_context.get("vix"), default=15)
+    vix        = _v(macro_context.get("vix"), default=15)
     spy_regime = macro_context.get("spy_regime", "bull")
-    vix_mult  = macro_context.get("vix_multiplier", 1.0)
 
     if spy_regime == "caution":
         bull *= 0.80
@@ -479,23 +489,46 @@ def score_ticker(
     # VIX high fear gates
     if vix > 35 and net > 0:
         return _no_signal(ticker, "vix_extreme_fear_no_longs")
-
     if vix > 25 and abs(confidence) < 0.80:
         return _no_signal(ticker, "vix_high_below_confidence_threshold")
 
-    # Determine action
-    if net > 30 and confidence >= 0.30:
+    # ── Determine action with raised thresholds ────────────────────────────
+    if net >= MIN_NET_SCORE_BUY and confidence >= MIN_CONFIDENCE_BUY:
         action = "buy"
-    elif net < -30 and abs(confidence) >= 0.30:
+    elif net <= -MIN_NET_SCORE_SHORT and abs(confidence) >= MIN_CONFIDENCE_SHORT:
         action = "short" if vix < 25 else "sell"
     else:
         action = "hold"
 
-    # ATR for stop/target
-    atr    = _v(ind.get("atr"), default=cp * 0.02)
-    rr     = 2.5
+    # ── Short-specific filters (after action is tentatively set) ───────────
+    if action in ("short", "sell"):
+        # Must have at least one extreme condition to justify a short
+        short_extreme = (
+            (e50 > 0 and cp < e50) or       # price already below EMA50
+            (rsi > 75) or                    # RSI deeply overbought
+            (bb_pctb is not None and bb_pctb > 0.95)  # BB deeply overbought
+        )
+        if not short_extreme:
+            action = "hold"
+            signals_against.append("short_blocked_no_extreme_condition")
+            logger.info(f"[scorer] {ticker}: short blocked — no extreme overbought condition present")
+        elif adx > 30 and di_plus > 0 and di_plus > di_minus:
+            # Strong confirmed uptrend — never short into it
+            action = "hold"
+            signals_against.append("short_blocked")
+            reasoning_parts.append(
+                f"Short blocked: ADX {adx:.1f}>30 with +DI {di_plus:.1f}>-DI {di_minus:.1f} (strong uptrend)"
+            )
+            logger.info(
+                f"[scorer] {ticker}: short blocked — strong uptrend "
+                f"ADX={adx:.1f} +DI={di_plus:.1f} > -DI={di_minus:.1f}"
+            )
 
-    if action in ("buy",):
+    # ── Stops and targets ─────────────────────────────────────────────────
+    atr = _v(ind.get("atr"), default=cp * 0.02)
+    rr  = 2.5
+
+    if action == "buy":
         stop_loss   = round(cp - atr * 1.5, 2)
         take_profit = round(cp + atr * 1.5 * rr, 2)
     elif action in ("short", "sell"):
@@ -505,10 +538,7 @@ def score_ticker(
         stop_loss   = None
         take_profit = None
 
-    # Determine strategy hint (strategies.py will classify formally)
-    strategy = _pick_strategy_hint(signals_triggered, ind, vol_ratio)
-
-    # Build reasoning string
+    strategy  = _pick_strategy_hint(signals_triggered, ind, vol_ratio, ema_full_bull)
     reasoning = ". ".join(reasoning_parts[:8]) if reasoning_parts else "No strong directional signals."
 
     return {
@@ -532,6 +562,7 @@ def score_ticker(
         "earnings_risk": earn_risk,
         "vix": vix,
         "macro_bias": spy_regime,
+        "ema_full_bull": ema_full_bull,
     }
 
 
@@ -557,20 +588,21 @@ def _no_signal(ticker: str, reason: str) -> dict:
         "earnings_risk": False,
         "vix": None,
         "macro_bias": "unknown",
+        "ema_full_bull": False,
     }
 
 
-def _pick_strategy_hint(signals: list, ind: dict, vol_ratio) -> str:
+def _pick_strategy_hint(signals: list, ind: dict, vol_ratio, ema_full_bull: bool) -> str:
     sigs = set(signals)
     ema_aligned = "ema_full_bull_alignment" in sigs or "ema_partial_bull_alignment" in sigs
-    adx = _v(ind.get("adx"))
-    macd_rising = "macd_hist_rising_2bars" in sigs
+    adx         = _v(ind.get("adx"))
+    macd_hist   = _v(ind.get("macd_hist"))
+    squeeze     = "bb_squeeze_detected" in sigs
+    kc_break    = "kc_breakout_bull" in sigs
+    news_pos    = "news_positive" in sigs or "news_very_positive" in sigs
+    r1_break    = "broke_above_r1_with_volume" in sigs or "breaking_52wk_high" in sigs
     vol_confirm = "volume_confirm_bull" in sigs or "volume_surge_bull" in sigs
-    squeeze = "bb_squeeze_detected" in sigs
-    kc_break = "kc_breakout_bull" in sigs
-    news_pos = "news_positive" in sigs or "news_very_positive" in sigs
-    r1_break = "broke_above_r1_with_volume" in sigs or "breaking_52wk_high" in sigs
-    mean_rev = ("rsi_oversold" in sigs or "bb_deeply_oversold" in sigs or "cci_oversold" in sigs)
+    mean_rev    = "rsi_oversold" in sigs or "bb_deeply_oversold" in sigs or "cci_oversold" in sigs
 
     if squeeze and kc_break:
         return "squeeze_breakout"
@@ -578,9 +610,9 @@ def _pick_strategy_hint(signals: list, ind: dict, vol_ratio) -> str:
         return "breakout"
     if "broke_below_s1_with_volume" in sigs:
         return "breakdown"
-    if ema_aligned and adx > 25 and macd_rising and vol_confirm:
+    if ema_aligned and adx > 22 and macd_hist > 0 and vol_confirm:
         return "trend_follow"
-    if mean_rev:
+    if mean_rev and not ema_full_bull:   # never assign mean_rev to a full-bull-aligned stock
         return "mean_reversion"
     if news_pos and (ema_aligned or vol_confirm):
         return "news_momentum"
@@ -590,14 +622,13 @@ def _pick_strategy_hint(signals: list, ind: dict, vol_ratio) -> str:
 
 
 def _time_horizon(strategy: str) -> str:
-    mapping = {
-        "trend_follow": "swing",
-        "mean_reversion": "scalp",
-        "breakout": "swing",
-        "breakdown": "swing",
-        "squeeze_breakout": "swing",
-        "news_momentum": "scalp",
-        "mixed": "swing",
-        "none": "none",
-    }
-    return mapping.get(strategy, "swing")
+    return {
+        "trend_follow":    "swing",
+        "mean_reversion":  "scalp",
+        "breakout":        "swing",
+        "breakdown":       "swing",
+        "squeeze_breakout":"swing",
+        "news_momentum":   "scalp",
+        "mixed":           "swing",
+        "none":            "none",
+    }.get(strategy, "swing")

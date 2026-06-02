@@ -57,6 +57,44 @@ def _fetch_intraday(ticker: str) -> Optional[pd.DataFrame]:
         return None
 
 
+def _fetch_realtime_price(ticker: str, df: pd.DataFrame) -> tuple[Optional[float], str]:
+    """
+    Get the most accurate current price available.
+    Tries fast_info.last_price first (real-time), falls back to last daily close.
+    Applies a 10% sanity check against the 5-day average close.
+    Returns (price, source) or (None, "sanity_fail") to signal skip.
+    """
+    avg5 = float(df["Close"].iloc[-5:].mean()) if len(df) >= 5 else float(df["Close"].iloc[-1])
+
+    # Attempt real-time price from fast_info
+    try:
+        fi = yf.Ticker(ticker).fast_info
+        last = getattr(fi, "last_price", None)
+        if last is not None:
+            last = float(last)
+            if last > 0:
+                if avg5 > 0 and abs(last - avg5) / avg5 <= 0.10:
+                    return last, "fast_info"
+                elif avg5 > 0:
+                    logger.warning(
+                        f"[indicators] {ticker}: fast_info ${last:.2f} is "
+                        f"{abs(last-avg5)/avg5*100:.1f}% from 5d-avg ${avg5:.2f} — ignoring"
+                    )
+    except Exception as e:
+        logger.debug(f"[indicators] {ticker}: fast_info unavailable: {e}")
+
+    # Fall back to last close
+    fallback = float(df["Close"].iloc[-1])
+    if avg5 > 0 and abs(fallback - avg5) / avg5 > 0.10:
+        logger.warning(
+            f"[indicators] {ticker}: last_close ${fallback:.2f} also "
+            f"{abs(fallback-avg5)/avg5*100:.1f}% from 5d-avg ${avg5:.2f} — skipping ticker"
+        )
+        return None, "sanity_fail"
+
+    return fallback, "last_close"
+
+
 def compute_vwap(intraday: pd.DataFrame) -> Optional[float]:
     """Compute VWAP from intraday 5-min data for today."""
     try:
@@ -92,37 +130,43 @@ def compute_pivot_points(df: pd.DataFrame) -> dict:
         return {"P": None, "R1": None, "R2": None, "S1": None, "S2": None}
 
 
-def get_indicators(ticker: str) -> dict:
-    """Fetch and compute all indicators for a ticker. Returns clean dict."""
-
-    cache_key = f"{ticker}_{datetime.now().strftime('%Y%m%d_%H')}"
-    if cache_key in _cache:
-        logger.debug(f"[indicators] cache hit for {ticker}")
-        return _cache[cache_key]
-
+def compute_indicators_from_df(ticker: str, df: pd.DataFrame,
+                                intraday: Optional[pd.DataFrame] = None,
+                                realtime_price: bool = True) -> dict:
+    """
+    Compute all indicators from a pre-fetched daily DataFrame.
+    Used by both get_indicators() and the backtest engine.
+    When realtime_price=False (backtest), uses df's last close directly.
+    """
     result = {"ticker": ticker, "error": None}
 
-    daily    = _fetch_daily(ticker)
-    intraday = _fetch_intraday(ticker)
-
-    if daily is None or len(daily) < 30:
+    if df is None or len(df) < 30:
         result["error"] = "insufficient_data"
         return result
 
-    df    = daily.copy()
     close = df["Close"]
     high  = df["High"]
     low   = df["Low"]
     vol   = df["Volume"]
 
-    # Current price context
-    current_price = _safe(close.iloc[-1])
-    prev_close    = _safe(close.iloc[-2]) if len(close) >= 2 else None
-    open_today    = _safe(df["Open"].iloc[-1])
+    # ── Current price — real-time or historical ────────────────────────────
+    if realtime_price:
+        current_price, price_source = _fetch_realtime_price(ticker, df)
+        if current_price is None:
+            result["error"] = "price_sanity_fail"
+            return result
+        logger.info(f"[indicators] {ticker}: price=${current_price:.2f} source={price_source}")
+    else:
+        current_price = _safe(close.iloc[-1])
+        price_source  = "historical_close"
+
+    prev_close = _safe(close.iloc[-2]) if len(close) >= 2 else None
+    open_today = _safe(df["Open"].iloc[-1])
 
     result["current_price"] = current_price
     result["open_today"]    = open_today
     result["prev_close"]    = prev_close
+    result["price_source"]  = price_source
 
     if open_today and prev_close and prev_close != 0:
         result["gap_pct"] = (open_today - prev_close) / prev_close * 100
@@ -133,10 +177,8 @@ def get_indicators(ticker: str) -> dict:
     for period in [9, 21, 50, 200]:
         try:
             ema_ind = ta_trend.EMAIndicator(close=close, window=period, fillna=False)
-            series  = ema_ind.ema_indicator()
-            result[f"ema{period}"] = _safe(series.iloc[-1])
-        except Exception as e:
-            logger.debug(f"[indicators] EMA{period} failed for {ticker}: {e}")
+            result[f"ema{period}"] = _safe(ema_ind.ema_indicator().iloc[-1])
+        except Exception:
             result[f"ema{period}"] = None
 
     # ── TREND: MACD ────────────────────────────────────────────────────────
@@ -152,12 +194,8 @@ def get_indicators(ticker: str) -> dict:
         result["macd_hist"]   = _safe(macd_hist.iloc[-1])
 
         h = macd_hist.dropna()
-        if len(h) >= 3:
-            result["macd_hist_prev1"] = _safe(h.iloc[-2])
-            result["macd_hist_prev2"] = _safe(h.iloc[-3])
-        else:
-            result["macd_hist_prev1"] = None
-            result["macd_hist_prev2"] = None
+        result["macd_hist_prev1"] = _safe(h.iloc[-2]) if len(h) >= 2 else None
+        result["macd_hist_prev2"] = _safe(h.iloc[-3]) if len(h) >= 3 else None
 
         ml = macd_line.dropna()
         ms = macd_signal.dropna()
@@ -196,12 +234,8 @@ def get_indicators(ticker: str) -> dict:
     try:
         psar_ind  = ta_trend.PSARIndicator(high=high, low=low, close=close,
                                             step=0.02, max_step=0.2, fillna=False)
-        psar_up   = psar_ind.psar_up()    # NaN when bearish
-        psar_down = psar_ind.psar_down()  # NaN when bullish
-
-        psar_up_val   = _safe(psar_up.iloc[-1])
-        psar_down_val = _safe(psar_down.iloc[-1])
-
+        psar_up_val   = _safe(psar_ind.psar_up().iloc[-1])
+        psar_down_val = _safe(psar_ind.psar_down().iloc[-1])
         if psar_up_val is not None:
             result["psar"]         = psar_up_val
             result["psar_bullish"] = True
@@ -209,7 +243,7 @@ def get_indicators(ticker: str) -> dict:
             result["psar"]         = psar_down_val
             result["psar_bullish"] = False
         else:
-            result["psar"]         = None
+            result["psar"] = None
             result["psar_bullish"] = None
     except Exception as e:
         logger.warning(f"[indicators] PSAR failed for {ticker}: {e}")
@@ -218,8 +252,9 @@ def get_indicators(ticker: str) -> dict:
 
     # ── MOMENTUM: RSI ──────────────────────────────────────────────────────
     try:
-        rsi_ind     = ta_momentum.RSIIndicator(close=close, window=14, fillna=False)
-        result["rsi"] = _safe(rsi_ind.rsi().iloc[-1])
+        result["rsi"] = _safe(
+            ta_momentum.RSIIndicator(close=close, window=14, fillna=False).rsi().iloc[-1]
+        )
     except Exception:
         result["rsi"] = None
 
@@ -229,18 +264,12 @@ def get_indicators(ticker: str) -> dict:
                                                   smooth1=3, smooth2=3, fillna=False)
         k_series = srsi_ind.stochrsi_k()
         d_series = srsi_ind.stochrsi_d()
-
         result["stoch_k"] = _safe(k_series.iloc[-1])
         result["stoch_d"] = _safe(d_series.iloc[-1])
-
         k_clean = k_series.dropna()
         d_clean = d_series.dropna()
-        if len(k_clean) >= 2 and len(d_clean) >= 2:
-            result["stoch_k_prev"] = _safe(k_clean.iloc[-2])
-            result["stoch_d_prev"] = _safe(d_clean.iloc[-2])
-        else:
-            result["stoch_k_prev"] = None
-            result["stoch_d_prev"] = None
+        result["stoch_k_prev"] = _safe(k_clean.iloc[-2]) if len(k_clean) >= 2 else None
+        result["stoch_d_prev"] = _safe(d_clean.iloc[-2]) if len(d_clean) >= 2 else None
     except Exception as e:
         logger.warning(f"[indicators] StochRSI failed for {ticker}: {e}")
         result["stoch_k"] = result["stoch_d"] = \
@@ -248,36 +277,39 @@ def get_indicators(ticker: str) -> dict:
 
     # ── MOMENTUM: CCI ──────────────────────────────────────────────────────
     try:
-        cci_ind     = ta_trend.CCIIndicator(high=high, low=low, close=close,
-                                             window=20, constant=0.015, fillna=False)
-        result["cci"] = _safe(cci_ind.cci().iloc[-1])
+        result["cci"] = _safe(
+            ta_trend.CCIIndicator(high=high, low=low, close=close,
+                                  window=20, constant=0.015, fillna=False).cci().iloc[-1]
+        )
     except Exception:
         result["cci"] = None
 
     # ── MOMENTUM: Williams %R ──────────────────────────────────────────────
     try:
-        wr_ind        = ta_momentum.WilliamsRIndicator(high=high, low=low, close=close,
-                                                        lbp=14, fillna=False)
-        result["willr"] = _safe(wr_ind.williams_r().iloc[-1])
+        result["willr"] = _safe(
+            ta_momentum.WilliamsRIndicator(high=high, low=low, close=close,
+                                           lbp=14, fillna=False).williams_r().iloc[-1]
+        )
     except Exception:
         result["willr"] = None
 
     # ── MOMENTUM: Rate of Change ───────────────────────────────────────────
     try:
-        roc_ind     = ta_momentum.ROCIndicator(close=close, window=10, fillna=False)
-        result["roc"] = _safe(roc_ind.roc().iloc[-1])
+        result["roc"] = _safe(
+            ta_momentum.ROCIndicator(close=close, window=10, fillna=False).roc().iloc[-1]
+        )
     except Exception:
         result["roc"] = None
 
     # ── VOLATILITY: Bollinger Bands ────────────────────────────────────────
     try:
-        bb_ind = ta_volatility.BollingerBands(close=close, window=20, window_dev=2,
-                                               fillna=False)
+        bb_ind   = ta_volatility.BollingerBands(close=close, window=20, window_dev=2,
+                                                 fillna=False)
         bb_upper = bb_ind.bollinger_hband()
         bb_mid   = bb_ind.bollinger_mavg()
         bb_lower = bb_ind.bollinger_lband()
-        bb_pctb  = bb_ind.bollinger_pband()   # %B: 0–1 range
-        bb_wband = bb_ind.bollinger_wband()   # bandwidth
+        bb_pctb  = bb_ind.bollinger_pband()
+        bb_wband = bb_ind.bollinger_wband()
 
         result["bb_upper"] = _safe(bb_upper.iloc[-1])
         result["bb_mid"]   = _safe(bb_mid.iloc[-1])
@@ -285,7 +317,6 @@ def get_indicators(ticker: str) -> dict:
         result["bb_pctb"]  = _safe(bb_pctb.iloc[-1])
         result["bb_bw"]    = _safe(bb_wband.iloc[-1])
 
-        # Squeeze: bandwidth in bottom 20% of 20-bar range
         bw_clean = bb_wband.dropna()
         if len(bw_clean) >= 20:
             bw_min = bw_clean.iloc[-20:].min()
@@ -295,11 +326,9 @@ def get_indicators(ticker: str) -> dict:
         else:
             result["bb_squeeze"] = False
 
-        # Bandwidth expanding
-        if len(bw_clean) >= 2:
-            result["bb_bw_expanding"] = bool(bw_clean.iloc[-1] > bw_clean.iloc[-2])
-        else:
-            result["bb_bw_expanding"] = None
+        result["bb_bw_expanding"] = (
+            bool(bw_clean.iloc[-1] > bw_clean.iloc[-2]) if len(bw_clean) >= 2 else None
+        )
     except Exception as e:
         logger.warning(f"[indicators] BBands failed for {ticker}: {e}")
         for k in ["bb_upper", "bb_mid", "bb_lower", "bb_pctb",
@@ -308,10 +337,12 @@ def get_indicators(ticker: str) -> dict:
 
     # ── VOLATILITY: ATR ────────────────────────────────────────────────────
     try:
-        atr_ind = ta_volatility.AverageTrueRange(high=high, low=low, close=close,
-                                                  window=14, fillna=False)
-        atr_val         = _safe(atr_ind.average_true_range().iloc[-1])
-        result["atr"]   = atr_val
+        atr_val = _safe(
+            ta_volatility.AverageTrueRange(high=high, low=low, close=close,
+                                           window=14, fillna=False)
+            .average_true_range().iloc[-1]
+        )
+        result["atr"] = atr_val
         result["atr_pct"] = (
             atr_val / current_price * 100
             if (atr_val and current_price and current_price != 0)
@@ -340,8 +371,9 @@ def get_indicators(ticker: str) -> dict:
 
     # ── VOLUME: OBV ────────────────────────────────────────────────────────
     try:
-        obv_ind  = ta_volume.OnBalanceVolumeIndicator(close=close, volume=vol, fillna=False)
-        obv_series = obv_ind.on_balance_volume()
+        obv_series = ta_volume.OnBalanceVolumeIndicator(
+            close=close, volume=vol, fillna=False
+        ).on_balance_volume()
         result["obv"] = _safe(obv_series.iloc[-1])
 
         obv_clean = obv_series.dropna()
@@ -354,19 +386,17 @@ def get_indicators(ticker: str) -> dict:
             result["obv_rising"] = None
 
         if len(obv_clean) >= 20:
-            obv_hi_20    = float(obv_clean.iloc[-20:].max())
-            obv_lo_20    = float(obv_clean.iloc[-20:].min())
-            price_hi_20  = float(close.iloc[-20:].max())
-            price_lo_20  = float(close.iloc[-20:].min())
-            obv_now      = float(obv_clean.iloc[-1])
-            price_now    = float(close.iloc[-1])
+            obv_hi_20   = float(obv_clean.iloc[-20:].max())
+            obv_lo_20   = float(obv_clean.iloc[-20:].min())
+            price_hi_20 = float(close.iloc[-20:].max())
+            price_lo_20 = float(close.iloc[-20:].min())
+            obv_now     = float(obv_clean.iloc[-1])
+            price_now   = float(close.iloc[-1])
             result["obv_bull_divergence"] = (
-                obv_now >= obv_hi_20 * 0.9999 and
-                price_now < price_hi_20 * 0.99
+                obv_now >= obv_hi_20 * 0.9999 and price_now < price_hi_20 * 0.99
             )
             result["obv_bear_divergence"] = (
-                obv_now <= obv_lo_20 * 1.0001 and
-                price_now > price_lo_20 * 1.01
+                obv_now <= obv_lo_20 * 1.0001 and price_now > price_lo_20 * 1.01
             )
         else:
             result["obv_bull_divergence"] = False
@@ -389,9 +419,11 @@ def get_indicators(ticker: str) -> dict:
 
     # ── VOLUME: MFI ────────────────────────────────────────────────────────
     try:
-        mfi_ind     = ta_volume.MFIIndicator(high=high, low=low, close=close,
-                                              volume=vol, window=14, fillna=False)
-        result["mfi"] = _safe(mfi_ind.money_flow_index().iloc[-1])
+        result["mfi"] = _safe(
+            ta_volume.MFIIndicator(high=high, low=low, close=close,
+                                   volume=vol, window=14, fillna=False)
+            .money_flow_index().iloc[-1]
+        )
     except Exception:
         result["mfi"] = None
 
@@ -421,7 +453,24 @@ def get_indicators(ticker: str) -> dict:
     # ── PRICE CONTEXT: Pivot Points ───────────────────────────────────────
     result.update(compute_pivot_points(df))
 
-    _cache[cache_key] = result
+    return result
+
+
+def get_indicators(ticker: str) -> dict:
+    """Fetch data and compute all indicators for a ticker. Returns clean dict."""
+
+    cache_key = f"{ticker}_{datetime.now().strftime('%Y%m%d_%H')}"
+    if cache_key in _cache:
+        logger.debug(f"[indicators] cache hit for {ticker}")
+        return _cache[cache_key]
+
+    daily    = _fetch_daily(ticker)
+    intraday = _fetch_intraday(ticker)
+
+    result = compute_indicators_from_df(ticker, daily, intraday, realtime_price=True)
+
+    if not result.get("error"):
+        _cache[cache_key] = result
     return result
 
 
