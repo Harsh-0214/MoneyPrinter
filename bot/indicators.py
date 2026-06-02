@@ -61,7 +61,7 @@ def _fetch_realtime_price(ticker: str, df: pd.DataFrame) -> tuple[Optional[float
     """
     Get the most accurate current price available.
     Tries fast_info.last_price first (real-time), falls back to last daily close.
-    Applies a 20% sanity check against the 5-day average close.
+    Applies a 40% sanity check against the 5-day average close.
     Returns (price, source) or (None, "sanity_fail") to signal skip.
     """
     avg5 = float(df["Close"].iloc[-5:].mean()) if len(df) >= 5 else float(df["Close"].iloc[-1])
@@ -73,7 +73,7 @@ def _fetch_realtime_price(ticker: str, df: pd.DataFrame) -> tuple[Optional[float
         if last is not None:
             last = float(last)
             if last > 0:
-                if avg5 > 0 and abs(last - avg5) / avg5 <= 0.20:
+                if avg5 > 0 and abs(last - avg5) / avg5 <= 0.40:
                     return last, "fast_info"
                 elif avg5 > 0:
                     logger.warning(
@@ -85,7 +85,7 @@ def _fetch_realtime_price(ticker: str, df: pd.DataFrame) -> tuple[Optional[float
 
     # Fall back to last close
     fallback = float(df["Close"].iloc[-1])
-    if avg5 > 0 and abs(fallback - avg5) / avg5 > 0.20:
+    if avg5 > 0 and abs(fallback - avg5) / avg5 > 0.40:
         logger.warning(
             f"[indicators] {ticker}: last_close ${fallback:.2f} also "
             f"{abs(fallback-avg5)/avg5*100:.1f}% from 5d-avg ${avg5:.2f} — skipping ticker"

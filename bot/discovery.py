@@ -33,7 +33,7 @@ UNIVERSE = [
     # Large-cap consumer/retail
     "AMZN", "WMT", "COST", "TGT", "HD", "LOW", "NKE", "SBUX", "MCD", "YUM",
     # Financials
-    "MS", "BLK", "SCHW", "C", "WFC", "AXP", "V", "MA", "PYPL", "SQ",
+    "MS", "BLK", "SCHW", "C", "WFC", "AXP", "V", "MA", "PYPL", "XYZ",
     # Healthcare/biotech (liquid large-caps only)
     "JNJ", "PFE", "MRNA", "ABBV", "LLY", "UNH", "CVS", "BMY", "GILD", "BIIB",
     # Industrials/defense
@@ -41,7 +41,7 @@ UNIVERSE = [
     # Energy
     "SLB", "HAL", "MPC", "VLO", "PSX",
     # Media/telecom
-    "NFLX", "DIS", "CMCSA", "T", "VZ", "PARA", "WBD",
+    "NFLX", "DIS", "CMCSA", "T", "VZ", "WBD",
     # EV / clean energy
     "RIVN", "LCID", "NIO", "XPEV", "LI", "ENPH", "FSLR",
     # Commodities / materials
