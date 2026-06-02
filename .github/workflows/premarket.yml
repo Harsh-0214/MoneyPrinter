@@ -50,4 +50,5 @@ jobs:
           git config user.email "bot@trading.local"
           git add data/trades.db logs/ || true
           git diff --staged --quiet || git commit -m "bot: update trade log [skip ci]"
+          git pull --rebase origin main || true
           git push

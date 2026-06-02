@@ -474,11 +474,16 @@ def get_indicators(ticker: str) -> dict:
     return result
 
 
-def get_indicators_batch(tickers: list, max_workers: int = 5) -> dict:
-    """Fetch indicators for multiple tickers concurrently."""
+def get_indicators_batch(tickers: list, max_workers: int = 2) -> dict:
+    """Fetch indicators for multiple tickers concurrently with staggered submission."""
+    import time
     results = {}
     with ThreadPoolExecutor(max_workers=max_workers) as exe:
-        futures = {exe.submit(get_indicators, t): t for t in tickers}
+        futures = {}
+        for i, t in enumerate(tickers):
+            futures[exe.submit(get_indicators, t)] = t
+            if i % max_workers == max_workers - 1:
+                time.sleep(0.5)  # brief pause every batch to avoid Yahoo 429s
         for fut, ticker in futures.items():
             try:
                 results[ticker] = fut.result()

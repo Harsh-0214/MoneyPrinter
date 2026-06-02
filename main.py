@@ -161,7 +161,7 @@ def run_full_scan(session: str, macro_context: dict,
         console.print("[bold yellow]Bearish market (SPY below EMA50) — BUY signals suppressed[/bold yellow]")
 
     console.print(f"[bold cyan]Scanning {len(get_all_trade_tickers())} tickers...[/bold cyan]")
-    indicators_map = get_indicators_batch(get_all_trade_tickers(), max_workers=5)
+    indicators_map = get_indicators_batch(get_all_trade_tickers(), max_workers=2)
     news_map       = get_news_batch(get_all_trade_tickers(), COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
     signals    = []
@@ -410,7 +410,7 @@ def session_premarket() -> None:
     from bot.news       import get_news_batch
 
     NEWS_API_KEY   = os.getenv("NEWS_API_KEY", "")
-    indicators_map = get_indicators_batch(get_all_trade_tickers(), max_workers=5)
+    indicators_map = get_indicators_batch(get_all_trade_tickers(), max_workers=2)
     news_map       = get_news_batch(get_all_trade_tickers(), COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
     gap_ups   = []
