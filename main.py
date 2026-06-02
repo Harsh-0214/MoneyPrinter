@@ -871,7 +871,7 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
                     "natural_exit": nat_price,
                     "entry_step":   step_num,
                 })
-                logger.info(
+                logger.debug(
                     f"[backtest] CLOSE {tk} {action} entry=${entry_p:.2f} "
                     f"exit=${exit_price:.2f} pnl={pnl_pct:+.2f}% ({exit_status}) day={exit_days}"
                 )
@@ -944,7 +944,7 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
                     "last_checked_bar":  entry_bar,
                     "score_meta":        score,
                 }
-                logger.info(
+                logger.debug(
                     f"[backtest] ENTER {ticker} {action} @ ${entry_price:.2f} "
                     f"stop={stop:.2f} target={target:.2f if target else 0:.2f} "
                     f"horizon={horizon} step={step_num}"
