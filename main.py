@@ -617,7 +617,7 @@ def session_eod_summary(alpaca_client) -> None:
 # BACKTEST SESSION
 # ══════════════════════════════════════════════════════════════════════════════
 
-def session_backtest(days: int = 30) -> None:
+def session_backtest(days: int = 30, relaxed: bool = False) -> None:
     """
     Simplified walk-forward backtest over the last N calendar days.
 
@@ -625,6 +625,9 @@ def session_backtest(days: int = 30) -> None:
       - Score using historical data as-of `days` ago (full indicator engine)
       - If signal: simulate entry at next-day open, walk forward to stop/target or time exit
       - Report aggregate stats and compare to SPY buy-and-hold over the same period
+
+    relaxed=True lowers thresholds to net_score>=40 / confidence>=0.60 to surface
+    more historical signals for evaluating scoring direction. Live trading is unaffected.
     """
     import yfinance as yf
     import numpy as np
@@ -634,8 +637,11 @@ def session_backtest(days: int = 30) -> None:
     from rich.table     import Table
     from rich.panel     import Panel
 
-    console.rule(f"[bold]BACKTEST - Last {days} Trading Days[/bold]")
+    mode_label = "RELAXED" if relaxed else "STRICT"
+    console.rule(f"[bold]BACKTEST - Last {days} Trading Days ({mode_label})[/bold]")
     console.print("[dim]Scoring each ticker as-of the start of the window, simulating forward...[/dim]")
+    if relaxed:
+        console.print("[yellow]Relaxed mode: net_score>=40, confidence>=0.60 — for signal evaluation only[/yellow]")
 
     # Neutral macro for backtest (no live VIX/SPY dependency)
     sim_macro = {"vix": 18.0, "spy_regime": "bull", "bearish_market": False, "vix_multiplier": 1.0}
@@ -667,6 +673,16 @@ def session_backtest(days: int = 30) -> None:
             score = classify_strategy(score, ind)
 
             action = score["action"]
+            # In relaxed mode, override the scorer's strict thresholds
+            if relaxed and action == "hold":
+                net  = score.get("net_score", 0)
+                conf = score.get("confidence", 0.0)
+                if net >= 40 and conf >= 0.60:
+                    action = "buy"
+                    score["action"] = "buy"
+                elif net <= -40 and conf >= 0.60:
+                    action = "short"
+                    score["action"] = "short"
             if action not in ("buy", "short"):
                 continue
 
@@ -824,6 +840,12 @@ def main() -> None:
         default=30,
         help="Number of days for backtest window (default: 30)",
     )
+    parser.add_argument(
+        "--relaxed",
+        action="store_true",
+        default=False,
+        help="Backtest only: lower thresholds to net>=40/conf>=0.60 to surface more signals",
+    )
     args    = parser.parse_args()
     session = args.session
 
@@ -837,7 +859,7 @@ def main() -> None:
     if session == "backtest":
         from bot.logger import init_db
         init_db()
-        session_backtest(days=args.days)
+        session_backtest(days=args.days, relaxed=args.relaxed)
         return
 
     # Market holiday check for all live sessions
