@@ -189,6 +189,17 @@ def run_full_scan(session: str, macro_context: dict,
             f"strategy={score.get('strategy')} src={ind.get('price_source','?')}"
         )
 
+        # Re-read confidence after classify_strategy may have applied penalties
+        confidence = score.get("confidence", 0.0)
+        if action == "buy" and confidence < 0.70:
+            logger.info(f"[{ticker}] buy dropped after strategy penalty — conf={confidence:.2f} < 0.70")
+            action = "hold"
+            score["action"] = "hold"
+        elif action in ("short", "sell") and confidence < 0.75:
+            logger.info(f"[{ticker}] short dropped after strategy penalty — conf={confidence:.2f} < 0.75")
+            action = "hold"
+            score["action"] = "hold"
+
         if action != "hold":
             signals.append(score)
             if action == "buy":
