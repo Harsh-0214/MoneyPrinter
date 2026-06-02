@@ -652,15 +652,16 @@ def session_eod_summary(alpaca_client) -> None:
 
 def session_backtest(days: int = 30, relaxed: bool = False) -> None:
     """
-    Simplified walk-forward backtest over the last N calendar days.
+    Walk-forward backtest over the last N trading days.
 
-    For each ticker:
-      - Score using historical data as-of `days` ago (full indicator engine)
-      - If signal: simulate entry at next-day open, walk forward to stop/target or time exit
-      - Report aggregate stats and compare to SPY buy-and-hold over the same period
+    Re-scores every SCAN_STEP trading days throughout the full window.
+    At each step: compute SPY regime, check existing positions for exits,
+    then score free tickers and enter new positions.
+    This avoids the single-point-in-time problem where one bad entry date
+    suppresses all signals for the entire window.
 
-    relaxed=True lowers thresholds to net_score>=40 / confidence>=0.60 to surface
-    more historical signals for evaluating scoring direction. Live trading is unaffected.
+    relaxed=True lowers thresholds to net_score>=40 / confidence>=0.60.
+    Live trading is unaffected.
     """
     import yfinance as yf
     import numpy as np
@@ -669,216 +670,323 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
     from bot.strategies import classify_strategy
     from rich.table     import Table
     from rich.panel     import Panel
+    from rich.progress  import Progress, SpinnerColumn, TextColumn
+
+    SCAN_STEP = 5   # re-score every 5 trading days (weekly)
 
     mode_label = "RELAXED" if relaxed else "STRICT"
-    console.rule(f"[bold]BACKTEST - Last {days} Trading Days ({mode_label})[/bold]")
-    console.print("[dim]Scoring each ticker as-of the start of the window, simulating forward...[/dim]")
+    console.rule(f"[bold]WALK-FORWARD BACKTEST - Last {days} Trading Days ({mode_label})[/bold]")
+    console.print("[dim]Re-scoring every 5 trading days throughout the window...[/dim]")
     if relaxed:
         console.print("[yellow]Relaxed mode: net_score>=40, confidence>=0.60 — for signal evaluation only[/yellow]")
 
     sim_news = {"avg_polarity": 0.0, "headline_count": 0, "top_headlines": [],
                 "sec_8k_flag": False, "earnings_risk": False}
 
-    # ── Compute historical SPY regime at the entry window ─────────────────
-    spy_regime_hist   = "bull"
-    spy_bearish_hist  = False
-    try:
-        spy_hist = yf.Ticker("SPY").history(period=f"{days + 260}d", interval="1d", auto_adjust=True)
-        if spy_hist is not None and len(spy_hist) >= days + 50:
-            spy_at_entry = spy_hist.iloc[:-days].copy()
-            spy_close    = spy_at_entry["Close"]
-            spy_ema50    = float(spy_close.ewm(span=50, adjust=False).mean().iloc[-1])
-            spy_ema200   = float(spy_close.ewm(span=200, adjust=False).mean().iloc[-1])
-            spy_price    = float(spy_close.iloc[-1])
-            if spy_price > spy_ema50 and spy_price > spy_ema200:
-                spy_regime_hist  = "bull"
-                spy_bearish_hist = False
-            elif spy_price < spy_ema50:
-                spy_regime_hist  = "caution"
-                spy_bearish_hist = True
-            else:
-                spy_regime_hist  = "bear"
-                spy_bearish_hist = True
-            logger.info(f"[backtest] SPY regime at entry: {spy_regime_hist} (price={spy_price:.2f} ema50={spy_ema50:.2f})")
-    except Exception as e:
-        logger.warning(f"[backtest] SPY regime fetch failed: {e}")
+    # ── Fetch full history upfront ────────────────────────────────────────
+    fetch_period = f"{days + 300}d"
+    tickers_to_fetch = get_all_trade_tickers()
 
-    # Historical VIX at entry window
-    vix_hist = 18.0
-    try:
-        vix_hist_data = yf.Ticker("^VIX").history(period=f"{days + 30}d", interval="1d", auto_adjust=True)
-        if vix_hist_data is not None and len(vix_hist_data) >= days:
-            vix_hist = float(vix_hist_data["Close"].iloc[-(days)])
-    except Exception:
-        pass
-
-    sim_macro = {
-        "vix":            vix_hist,
-        "spy_regime":     spy_regime_hist,
-        "bearish_market": spy_bearish_hist,
-        "vix_multiplier": 1.0,
-    }
-    logger.info(f"[backtest] sim_macro: vix={vix_hist:.1f} regime={spy_regime_hist} bearish={spy_bearish_hist}")
-
-    sim_trades = []
-
-    for ticker in get_all_trade_tickers():
+    console.print(f"[dim]Fetching {len(tickers_to_fetch)} tickers + SPY/VIX history...[/dim]")
+    all_hist: dict = {}
+    for ticker in tickers_to_fetch:
         try:
-            t    = yf.Ticker(ticker)
-            hist = t.history(period=f"{days + 260}d", interval="1d", auto_adjust=True)
-            if hist is None or len(hist) < days + 50:
-                logger.warning(f"[backtest] {ticker}: insufficient history")
+            h = yf.Ticker(ticker).history(period=fetch_period, interval="1d", auto_adjust=True)
+            if h is not None and len(h) >= 60:
+                all_hist[ticker] = h
+        except Exception as e:
+            logger.warning(f"[backtest] fetch {ticker}: {e}")
+
+    try:
+        spy_full = yf.Ticker("SPY").history(period=fetch_period, interval="1d", auto_adjust=True)
+    except Exception:
+        spy_full = None
+
+    try:
+        vix_full = yf.Ticker("^VIX").history(period=fetch_period, interval="1d", auto_adjust=True)
+    except Exception:
+        vix_full = None
+
+    # SPY buy-and-hold over full window
+    spy_return = 0.0
+    if spy_full is not None and len(spy_full) >= days:
+        spy_bh_entry = float(spy_full["Close"].iloc[-days])
+        spy_bh_exit  = float(spy_full["Close"].iloc[-1])
+        spy_return   = (spy_bh_exit - spy_bh_entry) / spy_bh_entry * 100
+
+    # ── Walk-forward engine ───────────────────────────────────────────────
+    sim_trades: list[dict] = []
+    # open_positions: ticker -> {entry_price, stop, target, action, horizon,
+    #                            max_hold, entry_step_idx, score_meta}
+    open_positions: dict = {}
+
+    # Total trading bars available (use SPY as timeline anchor)
+    if spy_full is None or len(spy_full) < days + 10:
+        console.print("[red]Insufficient SPY history for walk-forward backtest.[/red]")
+        return
+
+    total_bars = len(spy_full)
+    # window_start_idx: index into spy_full where the backtest window begins
+    window_start_idx = total_bars - days
+
+    def _spy_regime_at(bar_idx: int) -> tuple[str, bool, float]:
+        """Compute SPY regime and VIX at a given bar index."""
+        if bar_idx < 50:
+            return "bull", False, 18.0
+        spy_slice = spy_full["Close"].iloc[:bar_idx]
+        ema50  = float(spy_slice.ewm(span=50,  adjust=False).mean().iloc[-1])
+        ema200 = float(spy_slice.ewm(span=200, adjust=False).mean().iloc[-1])
+        price  = float(spy_slice.iloc[-1])
+        if price > ema50 and price > ema200:
+            regime, bearish = "bull", False
+        elif price < ema50:
+            regime, bearish = "caution", True
+        else:
+            regime, bearish = "bear", True
+        vix_val = 18.0
+        if vix_full is not None and bar_idx < len(vix_full):
+            try:
+                vix_val = float(vix_full["Close"].iloc[bar_idx - 1])
+            except Exception:
+                pass
+        return regime, bearish, vix_val
+
+    def _try_promote_relaxed(action, score, ind):
+        """In relaxed mode, promote a 'hold' to buy/short if nearly qualified."""
+        if not relaxed or action != "hold":
+            return action
+        net  = score.get("net_score", 0)
+        conf = score.get("confidence", 0.0)
+        if net >= 40 and conf >= 0.60:
+            return "buy"
+        if net <= -40 and conf >= 0.60:
+            e50   = ind.get("ema50") or 0
+            cp    = ind.get("current_price") or 0
+            rsi   = ind.get("rsi") or 50
+            adx   = ind.get("adx") or 0
+            dip   = ind.get("adx_di_plus") or 0
+            dim   = ind.get("adx_di_minus") or 0
+            bb_pb = ind.get("bb_pctb")
+            short_extreme = (
+                (e50 > 0 and cp < e50) or (rsi > 75) or
+                (bb_pb is not None and bb_pb > 0.95)
+            )
+            if short_extreme and not (adx > 30 and dip > 0 and dip > dim):
+                return "short"
+        return action
+
+    # Scan steps: every SCAN_STEP bars from window_start_idx to end
+    scan_steps = list(range(window_start_idx, total_bars, SCAN_STEP))
+    if not scan_steps or scan_steps[-1] < total_bars - 1:
+        scan_steps.append(total_bars - 1)
+
+    console.print(f"[dim]{len(scan_steps)} scan steps over {days} trading days[/dim]")
+
+    for step_num, bar_idx in enumerate(scan_steps):
+        regime, bearish, vix_val = _spy_regime_at(bar_idx)
+        sim_macro = {
+            "vix":            vix_val,
+            "spy_regime":     regime,
+            "bearish_market": bearish,
+            "vix_multiplier": 1.0,
+        }
+
+        # ── Check exits for open positions ────────────────────────────────
+        closed_tickers = []
+        for tk, pos in open_positions.items():
+            hist = all_hist.get(tk)
+            if hist is None:
+                closed_tickers.append(tk)
                 continue
 
-            # Slice to "as of days ago" for scoring
-            hist_at_entry = hist.iloc[:-days].copy()
-            if len(hist_at_entry) < 50:
-                continue
+            # Map the walk-forward bar_idx to this ticker's history
+            # (SPY and individual ticker bars may differ slightly; align by count)
+            # We stored entry_bar_abs (absolute index into this ticker's history)
+            entry_bar = pos["entry_bar_abs"]
+            age_days  = bar_idx - pos["entry_bar_spy"]
 
-            # Compute indicators on the historical window (no real-time price)
-            ind = compute_indicators_from_df(ticker, hist_at_entry,
-                                              intraday=None, realtime_price=False)
-            if ind.get("error"):
-                continue
+            action    = pos["action"]
+            stop      = pos["stop"]
+            target    = pos["target"]
+            max_hold  = pos["max_hold"]
 
-            score = score_ticker(ticker, ind, sim_news, sim_macro)
-            score = classify_strategy(score, ind)
+            # Check each day since last scan
+            last_checked = pos.get("last_checked_bar", entry_bar)
+            check_end    = min(entry_bar + age_days + 1, len(hist))
+            exit_price   = None
+            exit_status  = None
 
-            action = score["action"]
-
-            # Relaxed mode: surface signals that nearly qualified
-            if relaxed and action == "hold":
-                net  = score.get("net_score", 0)
-                conf = score.get("confidence", 0.0)
-                if net >= 40 and conf >= 0.60:
-                    action = "buy"
-                    score["action"] = "buy"
-                elif net <= -40 and conf >= 0.60:
-                    # Apply same short filters as live trading
-                    e50   = ind.get("ema50") or 0
-                    cp    = ind.get("current_price") or 0
-                    rsi   = ind.get("rsi") or 50
-                    adx   = ind.get("adx") or 0
-                    dip   = ind.get("adx_di_plus") or 0
-                    dim   = ind.get("adx_di_minus") or 0
-                    bb_pb = ind.get("bb_pctb")
-                    short_extreme = (
-                        (e50 > 0 and cp < e50) or
-                        (rsi > 75) or
-                        (bb_pb is not None and bb_pb > 0.95)
-                    )
-                    strong_uptrend = adx > 30 and dip > 0 and dip > dim
-                    if short_extreme and not strong_uptrend:
-                        action = "short"
-                        score["action"] = "short"
-
-            if action not in ("buy", "short"):
-                continue
-
-            # Mirror live bearish_market filter: suppress buys in bearish regime
-            if spy_bearish_hist and action == "buy":
-                logger.info(f"[backtest] {ticker}: buy suppressed — historical bearish market")
-                continue
-
-            # Entry: next-day open after the scoring date
-            entry_idx = len(hist) - days
-            if entry_idx >= len(hist):
-                continue
-            entry_price = float(hist["Open"].iloc[entry_idx])
-            if entry_price <= 0:
-                continue
-
-            atr    = ind.get("atr") or (entry_price * 0.02)
-            stop   = score.get("stop_loss")
-            target = score.get("take_profit")
-
-            # Hard max-loss cap: 3×ATR backstop (same guardrail as live risk module)
-            if action == "buy":
-                hard_stop = entry_price - atr * 3
-                stop = max(stop, hard_stop) if stop else hard_stop
-            else:
-                hard_stop = entry_price + atr * 3
-                stop = min(stop, hard_stop) if stop else hard_stop
-
-            # Max hold days by strategy time_horizon — mirrors live trading behavior.
-            # Live trades are not held for months; they exit at the strategy horizon.
-            horizon  = score.get("time_horizon", "swing")
-            max_hold = {"scalp": 5, "swing": 20, "position": 45}.get(horizon, 20)
-
-            max_fwd  = min(max_hold, len(hist) - entry_idx - 1)
-
-            # Walk forward within the strategy horizon
-            exit_price = float(hist["Close"].iloc[entry_idx + max_fwd])
-            exit_day   = max_fwd
-            status     = "time_exit"
-
-            for j in range(entry_idx, entry_idx + max_fwd + 1):
+            for j in range(last_checked, check_end):
+                if j >= len(hist):
+                    break
                 day_low  = float(hist["Low"].iloc[j])
                 day_high = float(hist["High"].iloc[j])
-
                 if action == "buy":
                     if stop   and day_low  <= stop:
-                        exit_price = stop;   exit_day = j - entry_idx; status = "stopped";    break
+                        exit_price = stop;   exit_status = "stopped";    break
                     if target and day_high >= target:
-                        exit_price = target; exit_day = j - entry_idx; status = "target_hit"; break
+                        exit_price = target; exit_status = "target_hit"; break
                 else:
                     if stop   and day_high >= stop:
-                        exit_price = stop;   exit_day = j - entry_idx; status = "stopped";    break
+                        exit_price = stop;   exit_status = "stopped";    break
                     if target and day_low  <= target:
-                        exit_price = target; exit_day = j - entry_idx; status = "target_hit"; break
+                        exit_price = target; exit_status = "target_hit"; break
+            else:
+                pos["last_checked_bar"] = check_end
 
-            pnl_pct = (
-                (exit_price - entry_price) / entry_price * 100
-                if action == "buy"
-                else (entry_price - exit_price) / entry_price * 100
-            )
+            if exit_price is None and age_days >= max_hold:
+                close_bar  = min(entry_bar + max_hold, len(hist) - 1)
+                exit_price  = float(hist["Close"].iloc[close_bar])
+                exit_status = "time_exit"
 
-            # Also record where price ended up at max_hold regardless of stop/target
-            # This shows "did the direction call prove correct?" even if stopped early
-            natural_exit_idx   = entry_idx + max_fwd
-            natural_exit_price = float(hist["Close"].iloc[natural_exit_idx])
-            natural_pnl = (
-                (natural_exit_price - entry_price) / entry_price * 100
-                if action == "buy"
-                else (entry_price - natural_exit_price) / entry_price * 100
-            )
+            if exit_price is not None:
+                entry_p = pos["entry_price"]
+                if action == "buy":
+                    pnl_pct = (exit_price - entry_p) / entry_p * 100
+                else:
+                    pnl_pct = (entry_p - exit_price) / entry_p * 100
 
-            sim_trades.append({
-                "ticker":          ticker,
-                "action":          action,
-                "strategy":        score["strategy"],
-                "horizon":         horizon,
-                "confidence":      score["confidence"],
-                "net_score":       score["net_score"],
-                "entry":           entry_price,
-                "exit":            exit_price,
-                "exit_day":        exit_day,
-                "status":          status,
-                "pnl_pct":         pnl_pct,
-                "natural_pnl":     natural_pnl,
-                "natural_exit":    natural_exit_price,
-            })
-            logger.info(
-                f"[backtest] {ticker} {action} entry=${entry_price:.2f} "
-                f"exit=${exit_price:.2f} pnl={pnl_pct:+.2f}% ({status}) "
-                f"| {max_hold}d natural={natural_pnl:+.2f}%"
-            )
+                nat_bar   = min(entry_bar + max_hold, len(hist) - 1)
+                nat_price = float(hist["Close"].iloc[nat_bar])
+                if action == "buy":
+                    natural_pnl = (nat_price - entry_p) / entry_p * 100
+                else:
+                    natural_pnl = (entry_p - nat_price) / entry_p * 100
 
-        except Exception as e:
-            logger.warning(f"[backtest] {ticker}: {e}")
+                exit_days = age_days
+                meta = pos["score_meta"]
+                sim_trades.append({
+                    "ticker":       tk,
+                    "action":       action,
+                    "strategy":     meta.get("strategy", "?"),
+                    "horizon":      pos["horizon"],
+                    "confidence":   meta.get("confidence", 0),
+                    "net_score":    meta.get("net_score", 0),
+                    "entry":        entry_p,
+                    "exit":         exit_price,
+                    "exit_day":     exit_days,
+                    "status":       exit_status,
+                    "pnl_pct":      pnl_pct,
+                    "natural_pnl":  natural_pnl,
+                    "natural_exit": nat_price,
+                    "entry_step":   step_num,
+                })
+                logger.info(
+                    f"[backtest] CLOSE {tk} {action} entry=${entry_p:.2f} "
+                    f"exit=${exit_price:.2f} pnl={pnl_pct:+.2f}% ({exit_status}) day={exit_days}"
+                )
+                closed_tickers.append(tk)
 
-    # SPY buy-and-hold comparison
-    spy_return = 0.0
-    try:
-        spy_hist = yf.Ticker("SPY").history(period=f"{days + 10}d", interval="1d")
-        if spy_hist is not None and len(spy_hist) >= days:
-            spy_entry  = float(spy_hist["Close"].iloc[-days])
-            spy_exit_p = float(spy_hist["Close"].iloc[-1])
-            spy_return = (spy_exit_p - spy_entry) / spy_entry * 100
-    except Exception:
-        pass
+        for tk in closed_tickers:
+            open_positions.pop(tk, None)
 
-    # ── Report ─────────────────────────────────────────────────────────────
+        # ── Score free tickers ────────────────────────────────────────────
+        for ticker in tickers_to_fetch:
+            if ticker in open_positions:
+                continue
+            hist = all_hist.get(ticker)
+            if hist is None or bar_idx >= len(hist):
+                continue
+            hist_slice = hist.iloc[:bar_idx].copy()
+            if len(hist_slice) < 50:
+                continue
+
+            try:
+                ind = compute_indicators_from_df(ticker, hist_slice,
+                                                 intraday=None, realtime_price=False)
+                if ind.get("error"):
+                    continue
+
+                score  = score_ticker(ticker, ind, sim_news, sim_macro)
+                score  = classify_strategy(score, ind)
+                action = score["action"]
+                action = _try_promote_relaxed(action, score, ind)
+
+                if relaxed:
+                    score["action"] = action
+
+                if action not in ("buy", "short"):
+                    continue
+                if bearish and action == "buy":
+                    continue
+
+                # Entry price: next bar's open
+                entry_bar = bar_idx
+                if entry_bar >= len(hist):
+                    continue
+                entry_price = float(hist["Open"].iloc[entry_bar])
+                if entry_price <= 0:
+                    continue
+
+                atr    = ind.get("atr") or (entry_price * 0.02)
+                stop   = score.get("stop_loss")
+                target = score.get("take_profit")
+
+                if action == "buy":
+                    hard_stop = entry_price - atr * 3
+                    stop = max(stop, hard_stop) if stop else hard_stop
+                else:
+                    hard_stop = entry_price + atr * 3
+                    stop = min(stop, hard_stop) if stop else hard_stop
+
+                horizon  = score.get("time_horizon", "swing")
+                max_hold = {"scalp": 5, "swing": 20, "position": 45}.get(horizon, 20)
+
+                open_positions[ticker] = {
+                    "entry_price":       entry_price,
+                    "stop":              stop,
+                    "target":            target,
+                    "action":            action,
+                    "horizon":           horizon,
+                    "max_hold":          max_hold,
+                    "entry_bar_abs":     entry_bar,
+                    "entry_bar_spy":     bar_idx,
+                    "last_checked_bar":  entry_bar,
+                    "score_meta":        score,
+                }
+                logger.info(
+                    f"[backtest] ENTER {ticker} {action} @ ${entry_price:.2f} "
+                    f"stop={stop:.2f} target={target:.2f if target else 0:.2f} "
+                    f"horizon={horizon} step={step_num}"
+                )
+            except Exception as e:
+                logger.debug(f"[backtest] score {ticker} step {step_num}: {e}")
+
+    # ── Close any still-open positions at end of window ──────────────────
+    for tk, pos in open_positions.items():
+        hist = all_hist.get(tk)
+        if hist is None:
+            continue
+        entry_p     = pos["entry_price"]
+        action      = pos["action"]
+        close_bar   = min(pos["entry_bar_abs"] + pos["max_hold"], len(hist) - 1)
+        exit_price  = float(hist["Close"].iloc[close_bar])
+        age_days    = total_bars - pos["entry_bar_spy"]
+
+        if action == "buy":
+            pnl_pct = (exit_price - entry_p) / entry_p * 100
+        else:
+            pnl_pct = (entry_p - exit_price) / entry_p * 100
+
+        meta = pos["score_meta"]
+        sim_trades.append({
+            "ticker":       tk,
+            "action":       action,
+            "strategy":     meta.get("strategy", "?"),
+            "horizon":      pos["horizon"],
+            "confidence":   meta.get("confidence", 0),
+            "net_score":    meta.get("net_score", 0),
+            "entry":        entry_p,
+            "exit":         exit_price,
+            "exit_day":     age_days,
+            "status":       "open_at_end",
+            "pnl_pct":      pnl_pct,
+            "natural_pnl":  pnl_pct,
+            "natural_exit": exit_price,
+            "entry_step":   -1,
+        })
+
+    # ── Report ────────────────────────────────────────────────────────────
     winners = [t for t in sim_trades if t["pnl_pct"] > 0]
     losers  = [t for t in sim_trades if t["pnl_pct"] <= 0]
     total   = len(sim_trades)
@@ -891,17 +999,21 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
     worst_trade = min(sim_trades, key=lambda t: t["pnl_pct"], default=None)
 
     bot_color = "green" if avg_pnl >= spy_return else "red"
+
+    best_line  = (f"[bold]Best:[/bold]  {best_trade['ticker']} {best_trade['pnl_pct']:+.2f}% ({best_trade['status']})"
+                  if best_trade else "[bold]Best:[/bold]  N/A")
+    worst_line = (f"[bold]Worst:[/bold] {worst_trade['ticker']} {worst_trade['pnl_pct']:+.2f}% ({worst_trade['status']})"
+                  if worst_trade else "[bold]Worst:[/bold] N/A")
+
     console.print(Panel(
-        f"[bold]Period:[/bold] Last {days} trading days\n"
-        f"[bold]SPY Regime at Entry:[/bold] {spy_regime_hist}  VIX: {vix_hist:.1f}  Bearish Filter: {spy_bearish_hist}\n"
-        f"[bold]Total Signals:[/bold] {total}\n"
+        f"[bold]Period:[/bold] Last {days} trading days  |  Scan step: every {SCAN_STEP} days\n"
+        f"[bold]Total Trades:[/bold] {total}\n"
         f"[bold]Win Rate:[/bold] {win_rate*100:.1f}% ({len(winners)}W / {len(losers)}L)\n"
         f"[bold]Avg Trade P&L:[/bold] [{bot_color}]{avg_pnl:+.2f}%[/{bot_color}]\n"
         f"[bold]Avg Winner:[/bold] +{avg_win:.2f}%   [bold]Avg Loser:[/bold] {avg_loss:.2f}%\n"
-        f"[bold]Best:[/bold]  {best_trade['ticker']} {best_trade['pnl_pct']:+.2f}% ({best_trade['status']})" if best_trade else "[bold]Best:[/bold] N/A\n"
-        f"\n[bold]Worst:[/bold] {worst_trade['ticker']} {worst_trade['pnl_pct']:+.2f}% ({worst_trade['status']})" if worst_trade else "[bold]Worst:[/bold] N/A\n"
-        f"\n[bold]SPY Buy-and-Hold:[/bold] {spy_return:+.2f}%",
-        title=f"[bold]Backtest Results ({days}d)[/bold]",
+        f"{best_line}\n{worst_line}\n"
+        f"[bold]SPY Buy-and-Hold:[/bold] {spy_return:+.2f}%",
+        title=f"[bold]Walk-Forward Backtest Results ({days}d)[/bold]",
         border_style="cyan",
     ))
 
@@ -919,10 +1031,10 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
         table.add_column("Natural P&L",  justify="right")
 
         for t in sorted(sim_trades, key=lambda x: x["pnl_pct"], reverse=True):
-            p  = t["pnl_pct"]
+            p   = t["pnl_pct"]
             np_ = t.get("natural_pnl", 0)
-            c  = "green" if p  > 0 else "red"
-            nc = "green" if np_ > 0 else "red"
+            c   = "green" if p   > 0 else "red"
+            nc  = "green" if np_ > 0 else "red"
             table.add_row(
                 t["ticker"],
                 t["action"],
