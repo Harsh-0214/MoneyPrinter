@@ -8,15 +8,21 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES   = 3
-BACKOFF_BASE  = 2  # seconds
+MAX_RETRIES   = 4
+BACKOFF_BASE  = 2  # seconds — waits 1s, 2s, 4s between attempts
 
 
 def _retry(fn, *args, **kwargs):
-    """Call fn with exponential backoff on failure."""
+    """Call fn with exponential backoff on failure. Socket timeout=10s per attempt."""
+    import socket
     for attempt in range(MAX_RETRIES):
         try:
-            return fn(*args, **kwargs)
+            old_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(10)
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                socket.setdefaulttimeout(old_timeout)
         except Exception as e:
             if attempt == MAX_RETRIES - 1:
                 raise
