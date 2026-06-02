@@ -1,0 +1,33 @@
+{
+  "trade": {
+    "tech": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD"],
+    "momentum": ["PLTR", "COIN", "SOFI", "MSTR", "SMCI"],
+    "financials": ["JPM", "GS", "BAC"],
+    "energy": ["XOM", "CVX"]
+  },
+  "macro_context_only": ["SPY", "QQQ", "IWM"],
+  "vix": ["^VIX"],
+  "company_names": {
+    "AAPL": "Apple Inc",
+    "MSFT": "Microsoft Corporation",
+    "NVDA": "NVIDIA Corporation",
+    "GOOGL": "Alphabet Inc",
+    "AMZN": "Amazon.com Inc",
+    "META": "Meta Platforms Inc",
+    "TSLA": "Tesla Inc",
+    "AMD": "Advanced Micro Devices",
+    "PLTR": "Palantir Technologies",
+    "COIN": "Coinbase Global",
+    "SOFI": "SoFi Technologies",
+    "MSTR": "MicroStrategy Inc",
+    "SMCI": "Super Micro Computer",
+    "JPM": "JPMorgan Chase",
+    "GS": "Goldman Sachs",
+    "BAC": "Bank of America",
+    "XOM": "Exxon Mobil",
+    "CVX": "Chevron Corporation",
+    "SPY": "SPDR S&P 500 ETF",
+    "QQQ": "Invesco QQQ Trust",
+    "IWM": "iShares Russell 2000 ETF"
+  }
+}
