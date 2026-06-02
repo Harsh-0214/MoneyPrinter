@@ -142,7 +142,8 @@ def get_macro_context() -> dict:
 
 
 def run_full_scan(session: str, macro_context: dict,
-                  alpaca_client=None, data_client=None) -> list[dict]:
+                  alpaca_client=None, data_client=None,
+                  extra_tickers: list | None = None) -> list[dict]:
     """
     Score all tickers and return actionable signal list.
 
@@ -160,15 +161,21 @@ def run_full_scan(session: str, macro_context: dict,
     if bearish_market:
         console.print("[bold yellow]Bearish market (SPY below EMA50) — BUY signals suppressed[/bold yellow]")
 
-    console.print(f"[bold cyan]Scanning {len(get_all_trade_tickers())} tickers...[/bold cyan]")
-    indicators_map = get_indicators_batch(get_all_trade_tickers(), max_workers=2)
-    news_map       = get_news_batch(get_all_trade_tickers(), COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
+    all_tickers = get_all_trade_tickers()
+    if extra_tickers:
+        for t in extra_tickers:
+            if t not in all_tickers:
+                all_tickers.append(t)
+
+    console.print(f"[bold cyan]Scanning {len(all_tickers)} tickers...[/bold cyan]")
+    indicators_map = get_indicators_batch(all_tickers, max_workers=2)
+    news_map       = get_news_batch(all_tickers, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
     signals    = []
     bull_count = 0
     bear_count = 0
 
-    for ticker in get_all_trade_tickers():
+    for ticker in all_tickers:
         ind  = indicators_map.get(ticker, {})
         news = news_map.get(ticker, {})
 
@@ -582,8 +589,10 @@ def session_continuous(alpaca_client, data_client) -> None:
     from datetime import datetime, timezone, timedelta
     from bot.portfolio import (check_stops, check_targets, check_time_exits,
                                get_open_positions, close_position_and_log)
+    from bot.discovery import scan_rising_movers
 
-    SCAN_INTERVAL = 15          # minutes between scans
+    SCAN_INTERVAL = 5           # minutes between scans
+    MOVER_SCAN_EVERY = 3        # run rising-movers screen every N cycles (~15 min)
     MARKET_OPEN_ET  = (9,  30)  # 9:30 AM ET
     SCALP_CLOSE_ET  = (15, 45)  # 3:45 PM ET — close scalps before market close
     LOOP_END_ET     = (16, 0)   # 4:00 PM ET — stop looping
@@ -601,6 +610,7 @@ def session_continuous(alpaca_client, data_client) -> None:
     console.print(f"[dim]Scanning every {SCAN_INTERVAL} min from 9:30 AM to 4:00 PM ET[/dim]")
 
     cycle = 0
+    extra_tickers: list[str] = []   # rising movers appended each mover-scan cycle
     while True:
         now_hm = _et_hm()
 
@@ -622,6 +632,12 @@ def session_continuous(alpaca_client, data_client) -> None:
         console.rule(f"[dim]Cycle {cycle} — {ts} ET[/dim]")
 
         macro = get_macro_context()
+
+        # ── Rising movers screen (every MOVER_SCAN_EVERY cycles) ──────────
+        if cycle % MOVER_SCAN_EVERY == 1:
+            extra_tickers = scan_rising_movers(STATIC_TICKERS)
+            if extra_tickers:
+                console.print(f"[bold cyan]Rising movers: {extra_tickers}[/bold cyan]")
 
         # ── Exit checks on all open positions ─────────────────────────────
         stopped  = check_stops(alpaca_client)
@@ -655,7 +671,8 @@ def session_continuous(alpaca_client, data_client) -> None:
 
         # ── Scan for new signals ───────────────────────────────────────────
         session_label = "market_open" if cycle == 1 else "continuous"
-        signals = run_full_scan(session_label, macro, alpaca_client, data_client)
+        signals = run_full_scan(session_label, macro, alpaca_client, data_client,
+                                extra_tickers=extra_tickers)
         if signals:
             execute_signals(signals, alpaca_client, data_client, macro,
                             session_label, max_trades=MAX_TRADES_PER_SESSION)

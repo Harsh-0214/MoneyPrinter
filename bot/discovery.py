@@ -151,3 +151,48 @@ def get_discovered_tickers() -> list[str]:
 def get_discovered_meta() -> dict:
     """Load metadata for discovered tickers."""
     return _load_discovered().get("meta", {})
+
+
+def scan_rising_movers(static_tickers: list[str], top_n: int = 5) -> list[str]:
+    """
+    Lightweight intraday momentum screen — runs quickly during the continuous
+    session to surface UNIVERSE tickers that are surging right now.
+
+    Criteria (looser than full discovery, meant for same-day trades):
+      - Up >= 1.5% on the day OR within 1% of 52-week high
+      - Volume ratio >= 1.3x average
+      - Price >= $5
+
+    Returns list of ticker symbols (not persisted — just returned for the
+    current scan cycle).
+    """
+    static_set = set(t.upper() for t in static_tickers)
+    movers = []
+
+    for ticker in UNIVERSE:
+        if ticker in static_set:
+            continue
+        try:
+            info = yf.Ticker(ticker).fast_info
+            price      = getattr(info, "last_price", None) or getattr(info, "previous_close", None)
+            prev_close = getattr(info, "previous_close", None)
+            avg_vol    = getattr(info, "three_month_average_volume", None)
+            last_vol   = getattr(info, "last_volume", None)
+            wk52_high  = getattr(info, "year_high", None)
+
+            if not price or price < 5:
+                continue
+            pct_change = ((price - prev_close) / prev_close * 100) if prev_close else 0
+            vol_ratio  = (last_vol / avg_vol) if last_vol and avg_vol else 0
+            near_52wk  = wk52_high and price >= wk52_high * 0.99
+
+            if vol_ratio >= 1.3 and (pct_change >= 1.5 or near_52wk):
+                movers.append((ticker, pct_change, vol_ratio))
+        except Exception:
+            continue
+
+    movers.sort(key=lambda x: x[1], reverse=True)  # rank by % gain
+    result = [t for t, _, _ in movers[:top_n]]
+    if result:
+        logger.info(f"[discovery] rising movers this cycle: {result}")
+    return result
