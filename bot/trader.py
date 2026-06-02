@@ -123,7 +123,7 @@ def submit_order(
     """
     if dry_run:
         fake_id = f"dry-{uuid.uuid4().hex[:8]}"
-        logger.info(f"[trader] DRY_RUN: would submit {side} {qty} {ticker} @ ${limit_price:.2f} → fake_id={fake_id}")
+        logger.info(f"[trader] DRY_RUN: would submit {side} {qty} {ticker} @ ${limit_price:.2f} -> fake_id={fake_id}")
         return fake_id
 
     from alpaca.trading.requests import LimitOrderRequest
