@@ -56,7 +56,7 @@ STRATEGY_CONFIGS = {
 }
 
 # Confidence penalty when no clean strategy is identifiable
-MIXED_CONFIDENCE_PENALTY = 0.10
+MIXED_CONFIDENCE_PENALTY = 0.05
 
 
 def classify_strategy(score_result: dict, indicators: dict) -> dict:
@@ -131,24 +131,24 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     news_sig   = "news_positive" in sigs or "news_very_positive" in sigs or \
                  "news_negative" in sigs or "news_very_negative" in sigs
 
-    # Breakout: within 1% above R1 or 52wk high AND volume > 1.4x
+    # Breakout: within 2% above R1 or 52wk high AND volume > 1.3x
     cp   = float(score.get("entry_price") or 0)
     R1   = float(ind.get("R1") or 0)
     w52h = float(ind.get("wk52_high") or 0)
-    at_r1_break   = R1   > 0 and cp > R1   and cp <= R1   * 1.01 and vol_ratio > 1.4
-    at_52wk_break = w52h > 0 and cp >= w52h * 0.99 and vol_ratio > 1.4
+    at_r1_break   = R1   > 0 and cp > R1   and cp <= R1   * 1.02 and vol_ratio > 1.3
+    at_52wk_break = w52h > 0 and cp >= w52h * 0.99 and vol_ratio > 1.3
     r1_break = at_r1_break or at_52wk_break or "broke_above_r1_with_volume" in sigs or "breaking_52wk_high" in sigs
 
-    # Trend follow: EMA9>EMA21>EMA50, ADX>22, MACD hist positive
+    # Trend follow: EMA9>EMA21>EMA50, ADX>18, MACD hist positive
     ema9_gt_ema21_gt_ema50 = (
         "ema_full_bull_alignment" in sigs or "ema_partial_bull_alignment" in sigs
     )
-    trend_follow_ok = ema9_gt_ema21_gt_ema50 and adx > 22 and macd_hist > 0
+    trend_follow_ok = ema9_gt_ema21_gt_ema50 and adx > 18 and macd_hist > 0
 
-    # Mean reversion: (RSI < 35 OR RSI > 72) AND (bb_pctb extreme) AND NOT full bull
-    bb_extreme = bb_pctb is not None and (bb_pctb < 0.1 or bb_pctb > 0.9)
-    rsi_extreme = rsi < 35 or rsi > 72
-    mean_rev_ok = rsi_extreme and bb_extreme and not ema_full_bull
+    # Mean reversion: (RSI < 38 OR RSI > 68) OR (bb_pctb extreme) AND NOT full bull
+    bb_extreme  = bb_pctb is not None and (bb_pctb < 0.15 or bb_pctb > 0.85)
+    rsi_extreme = rsi < 38 or rsi > 68
+    mean_rev_ok = (rsi_extreme or bb_extreme) and not ema_full_bull
 
     # ── Long-term position trade: all EMAs stacked, price above EMA200, healthy RSI ──
     e200       = float(ind.get("ema200") or 0)
