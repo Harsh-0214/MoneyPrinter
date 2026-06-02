@@ -8,8 +8,13 @@ logger = logging.getLogger(__name__)
 # ── Trading thresholds ─────────────────────────────────────────────────────
 MIN_NET_SCORE_BUY      = 50    # raised from 30
 MIN_CONFIDENCE_BUY     = 0.70  # raised from 0.60
-MIN_NET_SCORE_SHORT    = 60    # absolute value; shorts need higher conviction
-MIN_CONFIDENCE_SHORT   = 0.75  # shorts are riskier
+MIN_NET_SCORE_SHORT    = 70    # raised: shorts need strong conviction, especially in bull markets
+MIN_CONFIDENCE_SHORT   = 0.82  # raised: shorts are riskier and mostly unprofitable in bull regimes
+
+# High-volatility tickers that need extra stop room (4x ATR instead of strategy default)
+HIGH_VOLATILITY_TICKERS = {
+    "NVDA", "TSLA", "COIN", "MSTR", "SMCI", "PLTR", "AMD", "SOFI", "LI", "MDB",
+}
 
 
 def _v(val, default=0.0):
@@ -470,6 +475,11 @@ def score_ticker(
         bull *= 0.60
         reasoning_parts.append("SPY bear regime — bull signals discounted 40%")
 
+    # In a confirmed bull market, heavily discount bear signals — shorts rarely work
+    if spy_regime == "bull":
+        bear *= 0.50
+        reasoning_parts.append("SPY bull regime — bear signals discounted 50%")
+
     # ──────────────────────────────────────────────────────────────
     # FINAL SCORING
     # ──────────────────────────────────────────────────────────────
@@ -500,27 +510,33 @@ def score_ticker(
 
     # ── Short-specific filters (after action is tentatively set) ───────────
     if action in ("short", "sell"):
-        # Must have at least one extreme condition to justify a short
-        short_extreme = (
-            (e50 > 0 and cp < e50) or       # price already below EMA50
-            (rsi > 75) or                    # RSI deeply overbought
-            (bb_pctb is not None and bb_pctb > 0.95)  # BB deeply overbought
-        )
-        if not short_extreme:
+        # Hard block: never short in a confirmed bull market — it's fighting the tide
+        if spy_regime == "bull":
             action = "hold"
-            signals_against.append("short_blocked_no_extreme_condition")
-            logger.info(f"[scorer] {ticker}: short blocked — no extreme overbought condition present")
-        elif adx > 30 and di_plus > 0 and di_plus > di_minus:
-            # Strong confirmed uptrend — never short into it
-            action = "hold"
-            signals_against.append("short_blocked")
-            reasoning_parts.append(
-                f"Short blocked: ADX {adx:.1f}>30 with +DI {di_plus:.1f}>-DI {di_minus:.1f} (strong uptrend)"
+            signals_against.append("short_blocked_bull_market")
+            logger.info(f"[scorer] {ticker}: short blocked — SPY in bull regime")
+        else:
+            # Must have at least one extreme condition to justify a short
+            short_extreme = (
+                (e50 > 0 and cp < e50) or       # price already below EMA50
+                (rsi > 75) or                    # RSI deeply overbought
+                (bb_pctb is not None and bb_pctb > 0.95)  # BB deeply overbought
             )
-            logger.info(
-                f"[scorer] {ticker}: short blocked — strong uptrend "
-                f"ADX={adx:.1f} +DI={di_plus:.1f} > -DI={di_minus:.1f}"
-            )
+            if not short_extreme:
+                action = "hold"
+                signals_against.append("short_blocked_no_extreme_condition")
+                logger.info(f"[scorer] {ticker}: short blocked — no extreme overbought condition present")
+            elif adx > 30 and di_plus > 0 and di_plus > di_minus:
+                # Strong confirmed uptrend — never short into it
+                action = "hold"
+                signals_against.append("short_blocked")
+                reasoning_parts.append(
+                    f"Short blocked: ADX {adx:.1f}>30 with +DI {di_plus:.1f}>-DI {di_minus:.1f} (strong uptrend)"
+                )
+                logger.info(
+                    f"[scorer] {ticker}: short blocked — strong uptrend "
+                    f"ADX={adx:.1f} +DI={di_plus:.1f} > -DI={di_minus:.1f}"
+                )
 
     # ── Stops and targets ─────────────────────────────────────────────────
     atr = _v(ind.get("atr"), default=cp * 0.02)

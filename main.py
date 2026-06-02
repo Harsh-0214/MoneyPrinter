@@ -794,6 +794,16 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
         stop_early.set()
     threading.Thread(target=_watch_enter, daemon=True).start()
 
+    # Silence all INFO logs to terminal during the scan — they'd drown the progress.
+    # Logs still go to the log file. Warnings/errors remain visible.
+    _bt_handler = None
+    for h in logging.getLogger().handlers:
+        if isinstance(h, RichHandler):
+            _bt_handler = h
+            break
+    if _bt_handler:
+        _bt_handler.setLevel(logging.WARNING)
+
     for step_num, bar_idx in enumerate(scan_steps):
         if stop_early.is_set():
             console.print(f"[yellow]Stopped early at step {step_num}/{len(scan_steps)} — showing results so far.[/yellow]")
@@ -805,6 +815,15 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
             "bearish_market": bearish,
             "vix_multiplier": 1.0,
         }
+
+        if step_num % 10 == 0:
+            pct = step_num / len(scan_steps) * 100
+            console.print(
+                f"[dim]  Step {step_num+1}/{len(scan_steps)} ({pct:.0f}%)  "
+                f"open={len(open_positions)}  closed={len(sim_trades)}  "
+                f"regime={regime}[/dim]",
+                end="\r",
+            )
 
         # ── Check exits for open positions ────────────────────────────────
         closed_tickers = []
@@ -937,11 +956,13 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
                 stop   = score.get("stop_loss")
                 target = score.get("take_profit")
 
+                # High-volatility tickers need 4× ATR stops to survive normal noise
+                stop_mult = 4.0 if score.get("high_vol_flag") else 3.0
                 if action == "buy":
-                    hard_stop = entry_price - atr * 3
+                    hard_stop = entry_price - atr * stop_mult
                     stop = max(stop, hard_stop) if stop else hard_stop
                 else:
-                    hard_stop = entry_price + atr * 3
+                    hard_stop = entry_price + atr * stop_mult
                     stop = min(stop, hard_stop) if stop else hard_stop
 
                 horizon  = score.get("time_horizon", "swing")
@@ -1000,6 +1021,11 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
             "natural_exit": exit_price,
             "entry_step":   -1,
         })
+
+    # Restore terminal log level
+    if _bt_handler:
+        _bt_handler.setLevel(logging.INFO)
+    console.print()  # newline after progress line
 
     # ── Report ────────────────────────────────────────────────────────────
     winners = [t for t in sim_trades if t["pnl_pct"] > 0]
