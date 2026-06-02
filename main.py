@@ -71,17 +71,25 @@ def is_market_open_today() -> bool:
     return not schedule.empty
 
 
-def _has_open_position(ticker: str) -> bool:
-    """Return True if ticker has an open position or was traded today (prevents same-day re-entry)."""
+def _has_open_position(ticker: str, alpaca_client=None) -> bool:
+    """Return True if ticker has an open position (DB or live Alpaca) or was traded today."""
     from bot.logger import get_open_trades, get_trades_today
     for t in get_open_trades():
         if t.get("ticker") == ticker and t.get("status") in ("open", "dry_run"):
             return True
     # Also block if we already bought/shorted this ticker today
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
     for t in get_trades_today():
         if t.get("ticker") == ticker and t.get("action") in ("buy", "short"):
             return True
+    # Cross-check Alpaca live positions (catches positions from previous runs not in DB)
+    if alpaca_client:
+        try:
+            from bot.trader import get_positions
+            live = {p["symbol"] for p in get_positions(alpaca_client)}
+            if ticker in live:
+                return True
+        except Exception:
+            pass
     return False
 
 
@@ -286,7 +294,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
             continue
 
         # ── Duplicate position guard ───────────────────────────────────────
-        if _has_open_position(ticker):
+        if _has_open_position(ticker, alpaca_client):
             logger.info(f"[SKIP] Already have open position in {ticker}")
             continue
 
@@ -691,10 +699,8 @@ def session_continuous(alpaca_client, data_client) -> None:
                     close_position_and_log(alpaca_client, pos, cp, "continuous", status="closed")
                     console.print(f"[red]Signal flip: {ticker}[/red]")
 
-        # Past 3:45 PM — one final scan done, exit after scalp closes
-        if now_hm >= SCALP_CLOSE_ET:
-            console.print("[dim]Post 3:45 PM — exiting loop.[/dim]")
-            break
+        # Sleep until next scan (loop exits at LOOP_END_ET = 4:00 PM)
+
 
         # Sleep until next scan
         _time.sleep(SCAN_INTERVAL * 60)
