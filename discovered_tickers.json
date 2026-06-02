@@ -1,4 +1,96 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "MDB",
+    "NOW",
+    "ZS",
+    "SNOW",
+    "DDOG",
+    "LI",
+    "CRM",
+    "NET",
+    "ORCL",
+    "BMY"
+  ],
+  "meta": {
+    "MDB": {
+      "ticker": "MDB",
+      "price": 403.88,
+      "pct_change": 21.29,
+      "vol_ratio": 2.94,
+      "mkt_cap_b": 32.5,
+      "near_52wk": false
+    },
+    "NOW": {
+      "ticker": "NOW",
+      "price": 135.86,
+      "pct_change": 5.47,
+      "vol_ratio": 2.66,
+      "mkt_cap_b": 140.1,
+      "near_52wk": false
+    },
+    "ZS": {
+      "ticker": "ZS",
+      "price": 155.71,
+      "pct_change": 12.01,
+      "vol_ratio": 2.61,
+      "mkt_cap_b": 25.2,
+      "near_52wk": false
+    },
+    "SNOW": {
+      "ticker": "SNOW",
+      "price": 280.16,
+      "pct_change": 9.63,
+      "vol_ratio": 2.56,
+      "mkt_cap_b": 97.1,
+      "near_52wk": true
+    },
+    "DDOG": {
+      "ticker": "DDOG",
+      "price": 277.49,
+      "pct_change": 12.73,
+      "vol_ratio": 2.03,
+      "mkt_cap_b": 98.8,
+      "near_52wk": true
+    },
+    "LI": {
+      "ticker": "LI",
+      "price": 14.54,
+      "pct_change": 3.32,
+      "vol_ratio": 2.02,
+      "mkt_cap_b": 14.8,
+      "near_52wk": false
+    },
+    "CRM": {
+      "ticker": "CRM",
+      "price": 209.6,
+      "pct_change": 8.65,
+      "vol_ratio": 1.99,
+      "mkt_cap_b": 171.7,
+      "near_52wk": false
+    },
+    "NET": {
+      "ticker": "NET",
+      "price": 270.82,
+      "pct_change": 11.96,
+      "vol_ratio": 1.94,
+      "mkt_cap_b": 95.7,
+      "near_52wk": true
+    },
+    "ORCL": {
+      "ticker": "ORCL",
+      "price": 248.15,
+      "pct_change": 9.7,
+      "vol_ratio": 1.76,
+      "mkt_cap_b": 713.7,
+      "near_52wk": false
+    },
+    "BMY": {
+      "ticker": "BMY",
+      "price": 54.95,
+      "pct_change": 3.88,
+      "vol_ratio": 1.76,
+      "mkt_cap_b": 112.2,
+      "near_52wk": false
+    }
+  }
 }
