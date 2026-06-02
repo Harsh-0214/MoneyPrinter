@@ -201,7 +201,8 @@ def run_full_scan(session: str, macro_context: dict,
         logger.info(
             f"[{ticker}] action={action} net={net} bull={score.get('bull_score')} "
             f"bear={score.get('bear_score')} conf={confidence:.2f} "
-            f"strategy={score.get('strategy')} src={ind.get('price_source','?')}"
+            f"strategy={score.get('strategy')} horizon={score.get('time_horizon','?')} "
+            f"src={ind.get('price_source','?')}"
         )
 
         # Re-read confidence after classify_strategy may have applied penalties
@@ -343,9 +344,11 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 status=fill_status,
             )
             executed += 1
+            horizon    = sig.get("time_horizon", "swing")
+            trade_type = {"position": "POSITION TRADE", "swing": "SWING TRADE", "scalp": "SCALP"}.get(horizon, "SWING TRADE")
             console.print(
                 f"[green]✓ {action.upper()} {shares}x {ticker} @ ${entry_price:.2f} "
-                f"(limit ${limit_price:.2f}) | strat={strategy} conf={confidence:.2f}[/green]"
+                f"(limit ${limit_price:.2f}) | {trade_type} strat={strategy} conf={confidence:.2f}[/green]"
             )
         except Exception as e:
             logger.error(f"[execute] Order failed for {ticker}: {e}")
@@ -799,8 +802,8 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
 
             # Max hold days by strategy time_horizon — mirrors live trading behavior.
             # Live trades are not held for months; they exit at the strategy horizon.
-            horizon = score.get("time_horizon", "swing")
-            max_hold = 5 if horizon == "scalp" else 20   # scalp=5d, swing=20d
+            horizon  = score.get("time_horizon", "swing")
+            max_hold = {"scalp": 5, "swing": 20, "position": 45}.get(horizon, 20)
 
             max_fwd  = min(max_hold, len(hist) - entry_idx - 1)
 

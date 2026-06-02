@@ -12,8 +12,9 @@ from bot.risk import record_trade_pnl
 # Profitable trades are closed to bank the gain.
 # Flat/losing trades are closed to free capital.
 MAX_HOLD_DAYS = {
-    "scalp": 2,    # scalp trades must resolve in 2 days
-    "swing": 10,   # swing trades get 10 trading days max
+    "scalp":    2,    # scalp trades must resolve in 2 days
+    "swing":    10,   # swing trades get 10 trading days max
+    "position": 45,   # position trades can hold through corrections — ~9 calendar weeks
 }
 
 logger = logging.getLogger(__name__)

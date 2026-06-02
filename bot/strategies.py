@@ -5,6 +5,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 STRATEGY_CONFIGS = {
+    "position": {
+        "description": "Full EMA stack + price>EMA200 + ADX>25 + RSI 45-70: multi-week trend trade",
+        "time_horizon": "position",
+        "sl_atr_mult": 3.0,   # wide — designed to survive corrections up to ~8-10%
+        "tp_rr": 4.0,         # go for bigger moves when the trend is strong
+    },
     "trend_follow": {
         "description": "EMA9>EMA21>EMA50 + ADX>22 + MACD hist positive + volume confirm",
         "time_horizon": "swing",
@@ -144,7 +150,22 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     rsi_extreme = rsi < 35 or rsi > 72
     mean_rev_ok = rsi_extreme and bb_extreme and not ema_full_bull
 
+    # ── Long-term position trade: all EMAs stacked, price above EMA200, healthy RSI ──
+    e200       = float(ind.get("ema200") or 0)
+    above_e200 = e200 > 0 and cp > e200
+    rsi_healthy = 45 <= rsi <= 70
+    position_ok = (
+        "ema_full_bull_alignment" in sigs   # 9>21>50 stacked
+        and above_e200                       # also above the 200 — secular uptrend
+        and adx > 25                         # trend is strong
+        and macd_hist > 0                    # momentum still positive
+        and rsi_healthy                      # not overbought, not oversold
+        and vol_ratio >= 0.8                 # at least normal volume
+    )
+
     # Classify
+    if position_ok:
+        return "position"
     if squeeze and kc_break:
         return "squeeze_breakout"
     if r1_break:
