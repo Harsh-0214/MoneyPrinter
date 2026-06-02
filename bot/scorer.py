@@ -6,8 +6,8 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ── Trading thresholds ─────────────────────────────────────────────────────
-MIN_NET_SCORE_BUY      = 50    # raised from 30
-MIN_CONFIDENCE_BUY     = 0.70  # raised from 0.60
+MIN_NET_SCORE_BUY      = 50    # net score threshold
+MIN_CONFIDENCE_BUY     = 0.50  # conf = net/100, so this matches net>=50
 MIN_NET_SCORE_SHORT    = 70    # raised: shorts need strong conviction, especially in bull markets
 MIN_CONFIDENCE_SHORT   = 0.82  # raised: shorts are riskier and mostly unprofitable in bull regimes
 

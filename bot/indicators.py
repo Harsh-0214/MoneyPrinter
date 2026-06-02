@@ -459,7 +459,9 @@ def compute_indicators_from_df(ticker: str, df: pd.DataFrame,
 def get_indicators(ticker: str) -> dict:
     """Fetch data and compute all indicators for a ticker. Returns clean dict."""
 
-    cache_key = f"{ticker}_{datetime.now().strftime('%Y%m%d_%H')}"
+    _now = datetime.now()
+    _bucket = (_now.minute // 15) * 15
+    cache_key = f"{ticker}_{_now.strftime('%Y%m%d_%H')}_{_bucket:02d}"
     if cache_key in _cache:
         logger.debug(f"[indicators] cache hit for {ticker}")
         return _cache[cache_key]
