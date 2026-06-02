@@ -8,43 +8,43 @@ STRATEGY_CONFIGS = {
     "trend_follow": {
         "description": "EMA9>EMA21>EMA50 + ADX>22 + MACD hist positive + volume confirm",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.5,
+        "sl_atr_mult": 2.5,   # wide enough to survive normal daily swings
         "tp_rr": 2.5,
     },
     "mean_reversion": {
         "description": "RSI<35 or >72 AND Bollinger %B extreme + NOT in full bull alignment",
         "time_horizon": "scalp",
-        "sl_atr_mult": 2.0,
+        "sl_atr_mult": 2.5,
         "tp_rr": 2.0,
     },
     "breakout": {
         "description": "Price within 1% above R1 or 52-week high AND volume ratio > 1.4x",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.0,
+        "sl_atr_mult": 2.0,   # breakouts often retest before continuing
         "tp_rr": 3.0,
     },
     "breakdown": {
         "description": "Price breaks S1 or 52-week low with volume",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.0,
+        "sl_atr_mult": 2.0,
         "tp_rr": 2.5,
     },
     "squeeze_breakout": {
         "description": "BB squeeze resolved + KC breakout",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.5,
+        "sl_atr_mult": 2.5,   # squeezes can snap back sharply before the real move
         "tp_rr": 2.5,
     },
     "news_momentum": {
         "description": "Sentiment > 0.4 + trend/breakout confirmation",
         "time_horizon": "scalp",
-        "sl_atr_mult": 1.0,
+        "sl_atr_mult": 2.0,
         "tp_rr": 2.0,
     },
     "mixed": {
         "description": "Mixed signals — no dominant strategy pattern",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.5,
+        "sl_atr_mult": 2.5,
         "tp_rr": 2.0,
     },
 }

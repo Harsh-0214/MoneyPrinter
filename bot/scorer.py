@@ -480,11 +480,9 @@ def score_ticker(
     confidence_raw = net / 100.0
     confidence     = max(-1.0, min(1.0, confidence_raw))
 
-    # Earnings risk: reduce confidence
+    # Earnings risk: block entry entirely — binary outcome, not tradeable
     if earn_risk:
-        confidence *= 0.85
-        signals_against.append("earnings_within_3_days")
-        reasoning_parts.append("Earnings within 3 days — confidence reduced, binary risk")
+        return _no_signal(ticker, "earnings_within_3_days")
 
     # VIX high fear gates
     if vix > 35 and net > 0:
