@@ -1,0 +1,54 @@
+name: Trading Day (All Day)
+
+on:
+  schedule:
+    - cron: '30 13 * * 1-5'   # 9:30 AM EDT (UTC-4)
+  workflow_dispatch:
+
+jobs:
+  trading_day:
+    runs-on: ubuntu-latest
+    timeout-minutes: 390        # 6.5 hours covers full trading day
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download NLTK data
+        run: |
+          python -c "
+          import nltk
+          for pkg in ['punkt', 'punkt_tab', 'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng']:
+              try: nltk.download(pkg, quiet=True)
+              except: pass
+          "
+
+      - name: Create data directory
+        run: mkdir -p data logs
+
+      - name: Run all-day continuous session
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL:   https://paper-api.alpaca.markets
+          NEWS_API_KEY:      ${{ secrets.NEWS_API_KEY }}
+          DRY_RUN:           ${{ vars.DRY_RUN || 'false' }}
+        run: python main.py --session continuous
+
+      - name: Commit trade log
+        run: |
+          git config user.name "trading-bot"
+          git config user.email "bot@trading.local"
+          git pull --rebase origin main || true
+          git add data/trades.db || true
+          git diff --staged --quiet || git commit -m "bot: trading_day trade log [skip ci]"
+          git push || true

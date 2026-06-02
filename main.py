@@ -566,6 +566,119 @@ def session_market_close(alpaca_client, data_client) -> None:
                 console.print(f"[red]Signal flip close: {ticker}[/red]")
 
 
+def session_continuous(alpaca_client, data_client) -> None:
+    """
+    Runs all day from market open to close, scanning every SCAN_INTERVAL minutes.
+    Replaces the separate market_open + midday + market_close jobs when running
+    as a long-lived GitHub Actions job (timeout-minutes: 390).
+
+    Loop behaviour:
+      - Every cycle: check stops/targets/time-exits on open positions
+      - Every cycle: scan all tickers for new signals and execute if qualified
+      - First cycle (9:30-9:45 AM): treated as market_open — wider signal net
+      - 3:45 PM onward: close all scalps, check signal flips, then exit loop
+    """
+    import time as _time
+    from datetime import datetime, timezone, timedelta
+
+    SCAN_INTERVAL = 15          # minutes between scans
+    MARKET_OPEN_ET  = (9,  30)  # 9:30 AM ET
+    SCALP_CLOSE_ET  = (15, 45)  # 3:45 PM ET — close scalps before market close
+    LOOP_END_ET     = (16, 0)   # 4:00 PM ET — stop looping
+
+    ET = timezone(timedelta(hours=-4))  # EDT; Nov-Mar use -5
+
+    def _et_now():
+        return datetime.now(ET)
+
+    def _et_hm():
+        n = _et_now()
+        return (n.hour, n.minute)
+
+    console.rule("[bold cyan]CONTINUOUS TRADING SESSION[/bold cyan]")
+    console.print(f"[dim]Scanning every {SCAN_INTERVAL} min from 9:30 AM to 4:00 PM ET[/dim]")
+
+    cycle = 0
+    while True:
+        now_hm = _et_hm()
+
+        # Wait for market open
+        if now_hm < MARKET_OPEN_ET:
+            wait_sec = ((MARKET_OPEN_ET[0] - now_hm[0]) * 60 +
+                        (MARKET_OPEN_ET[1] - now_hm[1])) * 60
+            console.print(f"[dim]Pre-open — waiting {wait_sec//60}m for 9:30 AM ET...[/dim]")
+            _time.sleep(min(wait_sec, 60))
+            continue
+
+        # Past 4 PM — done
+        if now_hm >= LOOP_END_ET:
+            console.print("[bold]4:00 PM ET reached — continuous session complete.[/bold]")
+            break
+
+        cycle += 1
+        ts = _et_now().strftime("%H:%M")
+        console.rule(f"[dim]Cycle {cycle} — {ts} ET[/dim]")
+
+        macro = get_macro_context()
+
+        # ── Exit checks on all open positions ─────────────────────────────
+        stopped  = check_stops(alpaca_client)
+        targeted = check_targets(alpaca_client)
+        timed    = check_time_exits(alpaca_client)
+
+        for pos in stopped:
+            cp = pos.get("current_price") or pos.get("entry_price", 0)
+            close_position_and_log(alpaca_client, pos, cp, "continuous", status="stopped")
+            console.print(f"[red]STOP: {pos['ticker']} @ {cp}[/red]")
+
+        for pos in targeted:
+            cp = pos.get("current_price") or pos.get("entry_price", 0)
+            close_position_and_log(alpaca_client, pos, cp, "continuous", status="target_hit")
+            console.print(f"[green]TARGET: {pos['ticker']} @ {cp}[/green]")
+
+        for pos in timed:
+            cp = pos.get("current_price") or pos.get("entry_price", 0)
+            pnl = pos.get("pnl_pct", 0)
+            close_position_and_log(alpaca_client, pos, cp, "continuous", status="time_exit")
+            console.print(f"[yellow]TIME EXIT: {pos['ticker']} age={pos.get('age_days')}d pnl={pnl:+.1f}%[/yellow]")
+
+        # ── Scalp close at 3:45 PM ─────────────────────────────────────────
+        if now_hm >= SCALP_CLOSE_ET:
+            open_pos = get_open_positions(alpaca_client)
+            for pos in open_pos:
+                if pos.get("time_horizon") == "scalp":
+                    cp = pos.get("current_price") or pos.get("entry_price", 0)
+                    close_position_and_log(alpaca_client, pos, cp, "continuous", status="closed")
+                    console.print(f"[yellow]EOD scalp close: {pos['ticker']} @ {cp}[/yellow]")
+
+        # ── Scan for new signals ───────────────────────────────────────────
+        session_label = "market_open" if cycle == 1 else "continuous"
+        signals = run_full_scan(session_label, macro, alpaca_client, data_client)
+        if signals:
+            execute_signals(signals, alpaca_client, data_client, macro,
+                            session_label, max_trades=MAX_TRADES_PER_SESSION)
+
+        # ── Signal flip closes ─────────────────────────────────────────────
+        open_pos   = get_open_positions(alpaca_client)
+        scored_map = {s["ticker"]: s for s in signals}
+        for pos in open_pos:
+            ticker = pos["ticker"]
+            if ticker in scored_map:
+                s = scored_map[ticker]
+                if pos.get("action") == "buy" and s.get("action") in ("short", "sell"):
+                    cp = pos.get("current_price") or pos.get("entry_price", 0)
+                    close_position_and_log(alpaca_client, pos, cp, "continuous", status="closed")
+                    console.print(f"[red]Signal flip: {ticker}[/red]")
+
+        # Past 3:45 PM — one final scan done, exit after scalp closes
+        if now_hm >= SCALP_CLOSE_ET:
+            console.print("[dim]Post 3:45 PM — exiting loop.[/dim]")
+            break
+
+        # Sleep until next scan
+        _time.sleep(SCAN_INTERVAL * 60)
+
+
 def session_eod_summary(alpaca_client) -> None:
     """4:15 PM EDT - compute daily P&L, write summary, print Rich report."""
     console.rule("[bold white]END OF DAY SUMMARY[/bold white]")
@@ -1107,7 +1220,7 @@ def main() -> None:
     parser.add_argument(
         "--session",
         required=True,
-        choices=["discovery", "premarket", "market_open", "midday", "market_close", "eod_summary", "backtest"],
+        choices=["discovery", "premarket", "market_open", "midday", "market_close", "eod_summary", "backtest", "continuous"],
         help="Which session to run",
     )
     parser.add_argument(
@@ -1174,6 +1287,8 @@ def main() -> None:
             session_market_close(alpaca_client, data_client)
         elif session == "eod_summary":
             session_eod_summary(alpaca_client)
+        elif session == "continuous":
+            session_continuous(alpaca_client, data_client)
     except Exception as e:
         logger.critical(f"Session {session} crashed: {e}", exc_info=True)
         sys.exit(1)
