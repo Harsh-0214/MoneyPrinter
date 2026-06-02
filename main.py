@@ -1018,7 +1018,9 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
     ))
 
     if sim_trades:
-        table = Table(title="Simulated Trades")
+        NOTIONAL = 10_000  # assumed dollars per trade for dollar P&L display
+        total_dollar_pnl = sum(t["pnl_pct"] / 100 * NOTIONAL for t in sim_trades)
+        table = Table(title=f"Simulated Trades  (assumes ${NOTIONAL:,} per trade)")
         table.add_column("Ticker",    style="bold")
         table.add_column("Action")
         table.add_column("Strategy")
@@ -1026,15 +1028,17 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
         table.add_column("Entry",        justify="right")
         table.add_column("Exit",         justify="right")
         table.add_column("P&L %",        justify="right")
+        table.add_column("P&L $",        justify="right")
         table.add_column("Days",         justify="right")
         table.add_column("Status")
         table.add_column("Natural P&L",  justify="right")
 
         for t in sorted(sim_trades, key=lambda x: x["pnl_pct"], reverse=True):
-            p   = t["pnl_pct"]
-            np_ = t.get("natural_pnl", 0)
-            c   = "green" if p   > 0 else "red"
-            nc  = "green" if np_ > 0 else "red"
+            p      = t["pnl_pct"]
+            dollar = p / 100 * NOTIONAL
+            np_    = t.get("natural_pnl", 0)
+            c      = "green" if p   > 0 else "red"
+            nc     = "green" if np_ > 0 else "red"
             table.add_row(
                 t["ticker"],
                 t["action"],
@@ -1043,11 +1047,14 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
                 f"${t['entry']:.2f}",
                 f"${t['exit']:.2f}",
                 f"[{c}]{p:+.2f}%[/{c}]",
+                f"[{c}]{dollar:+.0f}[/{c}]",
                 str(t["exit_day"]),
                 t["status"],
                 f"[{nc}]{np_:+.2f}%[/{nc}]",
             )
+        tc = "green" if total_dollar_pnl >= 0 else "red"
         console.print(table)
+        console.print(f"  Total P&L on ${NOTIONAL:,}/trade: [{tc}]{total_dollar_pnl:+,.0f}[/{tc}]")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
