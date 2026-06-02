@@ -781,8 +781,23 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
         scan_steps.append(total_bars - 1)
 
     console.print(f"[dim]{len(scan_steps)} scan steps over {days} trading days[/dim]")
+    console.print("[dim]Press [bold]Enter[/bold] at any time to stop and show results so far.[/dim]")
+
+    # Background thread: set stop_early when user presses Enter
+    import threading
+    stop_early = threading.Event()
+    def _watch_enter():
+        try:
+            input()
+        except Exception:
+            pass
+        stop_early.set()
+    threading.Thread(target=_watch_enter, daemon=True).start()
 
     for step_num, bar_idx in enumerate(scan_steps):
+        if stop_early.is_set():
+            console.print(f"[yellow]Stopped early at step {step_num}/{len(scan_steps)} — showing results so far.[/yellow]")
+            break
         regime, bearish, vix_val = _spy_regime_at(bar_idx)
         sim_macro = {
             "vix":            vix_val,
