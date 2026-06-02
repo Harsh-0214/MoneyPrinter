@@ -580,6 +580,8 @@ def session_continuous(alpaca_client, data_client) -> None:
     """
     import time as _time
     from datetime import datetime, timezone, timedelta
+    from bot.portfolio import (check_stops, check_targets, check_time_exits,
+                               get_open_positions, close_position_and_log)
 
     SCAN_INTERVAL = 15          # minutes between scans
     MARKET_OPEN_ET  = (9,  30)  # 9:30 AM ET
