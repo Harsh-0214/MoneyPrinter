@@ -95,6 +95,8 @@ def get_market_status(client) -> bool:
 
 def get_latest_quote(data_client, ticker: str) -> dict:
     """Fetch latest bid/ask quote for a ticker."""
+    if data_client is None:
+        return {"ask": None, "bid": None}
     try:
         from alpaca.data.requests import StockLatestQuoteRequest
         req  = StockLatestQuoteRequest(symbol_or_symbols=[ticker])

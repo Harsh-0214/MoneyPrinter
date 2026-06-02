@@ -181,7 +181,7 @@ def execute_signals(signals: list, alpaca_client, data_client, macro_context: di
 
     account = get_account(alpaca_client)
     portfolio_value = account.get("portfolio_value", 100_000)
-    init_daily_state(portfolio_value)
+    init_daily_state(portfolio_value)  # called once before the trade loop
 
     executed = 0
     for sig in signals:
@@ -347,7 +347,7 @@ def session_midday(alpaca_client, data_client) -> None:
     # Check targets
     targets_hit = check_targets(alpaca_client)
     for pos in targets_hit:
-        cp = pos.get("current_price") or pos.get("take_profit", 0)
+        cp = pos.get("current_price") or pos.get("entry_price") or 0
         close_position_and_log(alpaca_client, pos, cp, "midday", status="closed")
         console.print(f"[green]TAKE PROFIT: {pos['ticker']} closed @ {cp}[/green]")
 
@@ -522,7 +522,7 @@ def main() -> None:
         data_client   = build_data_client()
     except Exception as e:
         logger.error(f"Alpaca client init failed: {e}")
-        if session not in ("premarket", "eod_summary"):
+        if session not in ("premarket",):
             sys.exit(1)
         alpaca_client = None
         data_client   = None

@@ -176,7 +176,7 @@ def score_ticker(
             bear += 25
             signals_against.append("rsi_extremely_overbought")
             reasoning_parts.append(f"RSI {rsi:.1f} extremely overbought")
-        elif rsi > 70:
+        elif rsi > 70:   # 70 < rsi <= 80
             bear += 15
             signals_against.append("rsi_overbought")
             reasoning_parts.append(f"RSI {rsi:.1f} overbought")

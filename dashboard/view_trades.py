@@ -81,7 +81,7 @@ def render_open_positions(open_trades: list) -> None:
         unreal_pct = unreal_pnl / (entry * shares) if (entry * shares) else 0
 
         # Row color
-        near_stop = stop and action == "buy" and (current - float(stop)) / current < 0.10
+        near_stop = stop and action == "buy" and current > 0 and (current - float(stop)) / current < 0.10
         row_style = "green" if unreal_pnl > 0 else ("yellow" if near_stop else "red")
 
         table.add_row(
@@ -150,7 +150,7 @@ def render_all_time_stats(all_trades: list) -> None:
     avg_loss  = sum(float(t.get("pnl_dollar") or 0) for t in losers)  / len(losers)  if losers  else 0
     gross_win  = sum(float(t.get("pnl_dollar") or 0) for t in winners)
     gross_loss = abs(sum(float(t.get("pnl_dollar") or 0) for t in losers))
-    profit_factor = gross_win / gross_loss if gross_loss > 0 else float("inf")
+    profit_factor = gross_win / gross_loss if gross_loss > 0 else 999.0
 
     pnl_style = "green" if total_pnl >= 0 else "red"
     console.print(Panel(
@@ -159,7 +159,7 @@ def render_all_time_stats(all_trades: list) -> None:
         f"[bold]Total P&L:[/bold]       [{pnl_style}]${total_pnl:,.2f}[/{pnl_style}]\n"
         f"[bold]Avg Winner:[/bold]      ${avg_win:,.2f}\n"
         f"[bold]Avg Loser:[/bold]       ${avg_loss:,.2f}\n"
-        f"[bold]Profit Factor:[/bold]   {profit_factor:.2f}",
+        f"[bold]Profit Factor:[/bold]   {'∞' if profit_factor >= 999 else f'{profit_factor:.2f}'}",
         title="[bold]All-Time Stats[/bold]",
         border_style="magenta",
     ))

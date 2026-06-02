@@ -354,17 +354,19 @@ def get_indicators(ticker: str) -> dict:
             result["obv_rising"] = None
 
         if len(obv_clean) >= 20:
-            obv_hi_20    = obv_clean.iloc[-20:].max()
-            obv_lo_20    = obv_clean.iloc[-20:].min()
-            price_hi_20  = close.iloc[-20:].max()
-            price_lo_20  = close.iloc[-20:].min()
+            obv_hi_20    = float(obv_clean.iloc[-20:].max())
+            obv_lo_20    = float(obv_clean.iloc[-20:].min())
+            price_hi_20  = float(close.iloc[-20:].max())
+            price_lo_20  = float(close.iloc[-20:].min())
+            obv_now      = float(obv_clean.iloc[-1])
+            price_now    = float(close.iloc[-1])
             result["obv_bull_divergence"] = (
-                _safe(obv_clean.iloc[-1]) == _safe(obv_hi_20) and
-                _safe(close.iloc[-1]) < _safe(price_hi_20) * 0.99
+                obv_now >= obv_hi_20 * 0.9999 and
+                price_now < price_hi_20 * 0.99
             )
             result["obv_bear_divergence"] = (
-                _safe(obv_clean.iloc[-1]) == _safe(obv_lo_20) and
-                _safe(close.iloc[-1]) > _safe(price_lo_20) * 1.01
+                obv_now <= obv_lo_20 * 1.0001 and
+                price_now > price_lo_20 * 1.01
             )
         else:
             result["obv_bull_divergence"] = False
