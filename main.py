@@ -1232,6 +1232,68 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
         console.print(f"  Total P&L on ${NOTIONAL:,}/trade: [{tc}]{total_dollar_pnl:+,.0f}[/{tc}]")
 
 
+def session_holdings(alpaca_client=None) -> None:
+    """Print open positions from DB, enriched with live Alpaca prices if available."""
+    from bot.logger import get_open_trades
+    from rich.table import Table
+
+    positions = get_open_trades()
+    if not positions:
+        console.print("[bold yellow]No open positions.[/bold yellow]")
+        return
+
+    # Try to enrich with live prices
+    live_prices: dict = {}
+    if alpaca_client:
+        try:
+            from bot.trader import get_positions
+            for p in get_positions(alpaca_client):
+                live_prices[p["symbol"]] = p
+        except Exception:
+            pass
+
+    table = Table(title="Open Positions")
+    table.add_column("Ticker",   style="bold")
+    table.add_column("Action")
+    table.add_column("Qty",      justify="right")
+    table.add_column("Entry",    justify="right")
+    table.add_column("Current",  justify="right")
+    table.add_column("P&L %",    justify="right")
+    table.add_column("Stop",     justify="right")
+    table.add_column("Target",   justify="right")
+    table.add_column("Strategy")
+    table.add_column("Entered")
+
+    for pos in positions:
+        ticker  = pos["ticker"]
+        entry   = float(pos.get("entry_price") or 0)
+        lp      = live_prices.get(ticker, {})
+        current = lp.get("current_price") or entry
+        if entry > 0 and current:
+            pnl_pct = (current - entry) / entry * 100
+            if pos.get("action") in ("short", "sell"):
+                pnl_pct = -pnl_pct
+        else:
+            pnl_pct = 0.0
+        color   = "green" if pnl_pct >= 0 else "red"
+        cur_str = f"${float(current):.2f}" if current else "—"
+        ts      = (pos.get("timestamp") or "")[:16]
+        table.add_row(
+            ticker,
+            pos.get("action", ""),
+            str(pos.get("quantity", "")),
+            f"${entry:.2f}",
+            cur_str,
+            f"[{color}]{pnl_pct:+.2f}%[/{color}]",
+            f"${float(pos.get('stop_loss') or 0):.2f}",
+            f"${float(pos.get('take_profit') or 0):.2f}",
+            pos.get("strategy", ""),
+            ts,
+        )
+
+    console.print(table)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1241,7 +1303,7 @@ def main() -> None:
     parser.add_argument(
         "--session",
         required=True,
-        choices=["discovery", "premarket", "market_open", "midday", "market_close", "eod_summary", "backtest", "continuous"],
+        choices=["discovery", "premarket", "market_open", "midday", "market_close", "eod_summary", "backtest", "continuous", "holdings"],
         help="Which session to run",
     )
     parser.add_argument(
@@ -1264,6 +1326,17 @@ def main() -> None:
         from bot.logger import init_db
         init_db()
         session_discovery()
+        return
+
+    if session == "holdings":
+        from bot.logger import init_db
+        init_db()
+        try:
+            from bot.trader import build_client
+            alpaca_client = build_client()
+        except Exception:
+            alpaca_client = None
+        session_holdings(alpaca_client)
         return
 
     if session == "backtest":
