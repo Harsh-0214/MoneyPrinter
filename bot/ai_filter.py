@@ -26,14 +26,39 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = (
-    "You are a professional quantitative trading analyst reviewing every stock "
-    "a rules-based algorithm has just scored. You receive the full indicator "
-    "picture and the algorithm's preliminary decision. Your job is to give an "
-    "independent second opinion: confirm the decision, override it, or change it. "
-    "Be conservative — only recommend 'buy' or 'short' when the evidence is clear. "
-    "If in doubt, say 'hold'."
-)
+_SYSTEM_PROMPT = """\
+You are a senior portfolio manager and quantitative analyst providing a \
+second opinion before any trade is executed.
+
+Your job is NOT to rubber-stamp technical signals. A stock being at an \
+all-time low, deeply oversold, or in a dip is NOT by itself a reason to buy. \
+A stock being at an all-time high or overbought is NOT by itself a reason to \
+short. Technical indicators tell you WHAT has happened — you must reason about \
+WHY it happened and WHETHER that justifies a trade.
+
+For every BUY candidate you must ask:
+  1. Is there a plausible reason this stock should recover or continue higher?
+     (sector tailwinds, earnings beat, product cycle, institutional accumulation)
+  2. Or is the dip/low caused by structural problems, deteriorating fundamentals,
+     or a sector in secular decline? If so, reject the buy.
+  3. Is the entry timed well — is momentum actually turning, or is this a
+     falling knife?
+
+For every SHORT candidate you must ask:
+  1. Is there a genuine reason this stock should fall from here?
+     (valuation extended beyond fundamentals, negative catalyst, sector headwinds)
+  2. Or is it strong for a real reason (earnings growth, market leadership)?
+     If so, reject the short.
+  3. Is the setup confirmed — is there actual distribution or just high RSI?
+
+For HOLDS, ask whether the technical setup is truly ambiguous or whether
+one direction is clearly better.
+
+Be conservative. A two-sentence reasoning that cannot explain the business \
+logic behind the trade should result in a 'hold'. The reasoning field in your \
+response must justify the decision in terms of both technicals AND business \
+logic, not just indicator values.\
+"""
 
 # Tickers with net_score below this in absolute value are noise — skip Claude.
 _MIN_NET_FOR_AI = 20
@@ -103,10 +128,20 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
         "--- SCORER REASONING ---",
         score.get("reasoning", ""),
         "",
-        "Based on ALL of the above, what is your independent recommendation?",
+        "--- YOUR ANALYSIS ---",
+        "Before deciding, answer these questions internally:",
+        f"  {'FOR A BUY' if score.get('action') != 'short' else 'FOR A SHORT'}: Is there a clear business or macro reason that justifies this trade",
+        "  beyond the technical signal alone? Is momentum genuinely turning or is",
+        "  this a dip/high that could easily continue in the same direction?",
+        "  Does the news context support or contradict the technical setup?",
+        "  Would a rational investor with full market knowledge make this trade today?",
+        "",
+        "Based on your analysis, give your final independent decision.",
+        "Your 'reasoning' must explain the business/macro logic — not just restate",
+        "the indicator values. If you cannot justify the trade logically, say 'hold'.",
         "",
         'Respond with ONLY a valid JSON object — no markdown, no explanation outside it:',
-        '{"decision": "buy" or "short" or "hold", "confidence": 0.0-1.0, "reasoning": "max two sentences"}',
+        '{"decision": "buy" or "short" or "hold", "confidence": 0.0-1.0, "reasoning": "two sentences max: one on technicals, one on business logic"}',
     ]
     return "\n".join(lines)
 
@@ -130,7 +165,7 @@ def claude_analyze_ticker(ticker: str, indicators: dict, scorer_result: dict,
 
         message = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=256,
+            max_tokens=512,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             timeout=20,
