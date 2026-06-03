@@ -282,8 +282,14 @@ def run_full_scan(session: str, macro_context: dict,
         total_bull=bull_count,
         total_bear=bear_count,
     )
-    # Write ALL scored decisions (including holds) to the live feed for the dashboard
-    write_live_feed(signals_all, session)
+    # Write only actionable decisions to the live feed:
+    # - buys and shorts always
+    # - holds only for stocks we already own (position management context)
+    feed_decisions = [
+        s for s in signals_all
+        if s.get("action") != "hold" or s.get("_position")
+    ]
+    write_live_feed(feed_decisions, session)
     return signals
 
 
