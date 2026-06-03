@@ -52,7 +52,7 @@ jobs:
           git config user.name "trading-bot"
           git config user.email "bot@trading.local"
           git pull --rebase origin main || true
-          git add data/trades.db || true
+          git add data/trades.db data/live_feed.json || true
           git add reports/*.html || true
           git diff --staged --quiet || git commit -m "bot: eod_summary trade log + daily report [skip ci]"
           git push || true

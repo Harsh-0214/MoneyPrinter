@@ -237,6 +237,43 @@ Everything else — indicators, scorer, strategies, risk, logger, dashboard — 
 
 ---
 
+## Live Dashboard
+
+A real-time web dashboard shows every decision the bot makes — buys, holds, shorts, Claude's reasoning — updated live from the repo.
+
+### Deploy to Vercel (free, ~2 minutes)
+
+1. Go to [vercel.com](https://vercel.com) and sign in with GitHub
+2. Click **Add New → Project** and import `Harsh-0214/MoneyPrinter`
+3. Under **Root Directory**, click **Edit** and set it to `vercel-dashboard`
+4. Leave everything else as default and click **Deploy**
+
+That's it. Vercel auto-redeploys every time the bot commits new data to `main`.
+
+### How it works
+
+- The bot writes every decision (buy, hold, short, AI verdict, reasoning) to `data/live_feed.json` after each scan cycle
+- GitHub Actions commits and pushes that file to `main` at the end of every session
+- The dashboard fetches `raw.githubusercontent.com/.../data/live_feed.json` every 30 seconds with a cache-bust param
+- No server, no database — just a static HTML file reading a JSON file from GitHub
+
+### What you see
+
+| Column | Description |
+|---|---|
+| Time | UTC timestamp of the scan cycle |
+| Ticker | Stock symbol |
+| Action | **BUY** (green) / **SHORT** (red) / **HOLD** (gray) |
+| Net Score | Bull minus bear points from the rules engine |
+| Conf % | Confidence (net score / 100) |
+| Strategy | Detected strategy pattern |
+| AI Verdict | ✓ Claude confirmed · ✗ Claude rejected · — not evaluated |
+| AI Reasoning | Claude's one-sentence justification (hover for full text) |
+
+Summary cards show: total decisions today, buys, holds, shorts, Claude overrides, and rejections.
+
+---
+
 ## Disclaimer
 
 **This bot executes paper trades only.** It is not connected to any real brokerage account by default (`ALPACA_BASE_URL=https://paper-api.alpaca.markets`).

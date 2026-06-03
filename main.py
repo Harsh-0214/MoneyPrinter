@@ -251,7 +251,8 @@ def run_full_scan(session: str, macro_context: dict,
             else:
                 bear_count += 1
 
-    from bot.logger import log_scan
+    from bot.logger    import log_scan
+    from bot.live_feed import write_live_feed
     log_scan(
         session=session,
         tickers_scanned=len(get_all_trade_tickers()),
@@ -260,6 +261,8 @@ def run_full_scan(session: str, macro_context: dict,
         total_bull=bull_count,
         total_bear=bear_count,
     )
+    # Write ALL scored decisions (including holds) to the live feed for the dashboard
+    write_live_feed(signals_all, session)
     return signals
 
 

@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoneyPrinter — Live Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1117;
+    --bg2:       #161b22;
+    --bg3:       #1c2128;
+    --border:    #30363d;
+    --text:      #e6edf3;
+    --muted:     #8b949e;
+    --green:     #3fb950;
+    --green-dim: #1a3a1e;
+    --red:       #f85149;
+    --red-dim:   #3a1a1a;
+    --blue:      #58a6ff;
+    --yellow:    #d29922;
+    --mono:      'SF Mono', 'Fira Code', 'Consolas', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .bot-name {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .bot-name span { color: var(--green); }
+
+  .live-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(63,185,80,.6); }
+    50%      { box-shadow: 0 0 0 6px rgba(63,185,80,0); }
+  }
+
+  .header-right { text-align: right; }
+  .last-updated { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .countdown { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Warning banner ── */
+  .warning-banner {
+    display: none;
+    background: #2a1a00;
+    border: 1px solid var(--yellow);
+    color: var(--yellow);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+
+  /* ── Summary cards ── */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .card-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    margin-bottom: 6px;
+  }
+  .card-value {
+    font-size: 2rem;
+    font-weight: 700;
+    font-family: var(--mono);
+    line-height: 1;
+  }
+  .card-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .c-green  { color: var(--green); }
+  .c-red    { color: var(--red); }
+  .c-blue   { color: var(--blue); }
+  .c-yellow { color: var(--yellow); }
+  .c-muted  { color: var(--muted); }
+
+  /* ── Section header ── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .6px;
+  }
+  .session-badge {
+    font-size: 11px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 2px 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    overflow-x: auto;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    background: var(--bg3);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover td { background: var(--bg3) !important; }
+  tbody td {
+    padding: 9px 14px;
+    vertical-align: middle;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  /* Row tints */
+  tr.row-buy  td { background: rgba(63,185,80,.06); }
+  tr.row-short td { background: rgba(248,81,73,.06); }
+
+  /* Action badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .4px;
+  }
+  .badge-buy   { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+  .badge-short { background: var(--red-dim);   color: var(--red);   border: 1px solid var(--red);   }
+  .badge-hold  { background: var(--bg3);        color: var(--muted); border: 1px solid var(--border);}
+
+  /* AI verdict */
+  .ai-yes  { color: var(--green); font-size: 15px; }
+  .ai-no   { color: var(--red);   font-size: 15px; }
+  .ai-skip { color: var(--muted); font-size: 13px; }
+
+  /* Reasoning cell — truncate with tooltip */
+  .reasoning-cell {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-family: -apple-system, sans-serif;
+    font-size: 12px;
+    cursor: default;
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 2rem; margin-bottom: 8px; }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  @media (max-width: 600px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .header { flex-direction: column; align-items: flex-start; }
+    .header-right { text-align: left; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="live-dot" id="liveDot"></div>
+      <div class="bot-name">Money<span>Printer</span></div>
+      <div style="font-size:12px;color:var(--muted);padding:3px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:10px">PAPER TRADING</div>
+    </div>
+    <div class="header-right">
+      <div class="last-updated" id="lastUpdated">Loading…</div>
+      <div class="countdown" id="countdown"></div>
+    </div>
+  </div>
+
+  <!-- Warning banner -->
+  <div class="warning-banner" id="warnBanner">⚠ Could not refresh data — showing last known feed</div>
+
+  <!-- Summary cards -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Decisions Today</div>
+      <div class="card-value c-blue" id="cardTotal">—</div>
+      <div class="card-sub" id="cardRuns">— runs today</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Buys</div>
+      <div class="card-value c-green" id="cardBuys">—</div>
+      <div class="card-sub">action = buy</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Holds</div>
+      <div class="card-value c-muted" id="cardHolds">—</div>
+      <div class="card-sub">filtered out</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Shorts</div>
+      <div class="card-value c-red" id="cardShorts">—</div>
+      <div class="card-sub">action = short</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Claude Overrides</div>
+      <div class="card-value c-yellow" id="cardOverrides">—</div>
+      <div class="card-sub">scorer ≠ AI decision</div>
+    </div>
+    <div class="card">
+      <div class="card-label">AI Rejections</div>
+      <div class="card-value c-red" id="cardRejections">—</div>
+      <div class="card-sub">Claude said hold</div>
+    </div>
+  </div>
+
+  <!-- Decisions table -->
+  <div class="section-header">
+    <div class="section-title">All Decisions — Latest First</div>
+    <div class="session-badge" id="lastSession">—</div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Time (UTC)</th>
+          <th>Ticker</th>
+          <th>Action</th>
+          <th>Net Score</th>
+          <th>Conf %</th>
+          <th>Strategy</th>
+          <th>Bull</th>
+          <th>Bear</th>
+          <th>Entry $</th>
+          <th>Stop $</th>
+          <th>Target $</th>
+          <th>AI Verdict</th>
+          <th>AI Reasoning</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="13"><div class="empty-state"><div class="icon">⏳</div>Loading data…</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <span>MoneyPrinter — Alpaca Paper Trading</span>
+    <span>Data source: GitHub raw · refreshes every 30s</span>
+  </footer>
+
+</div>
+
+<script>
+const FEED_URL = 'https://raw.githubusercontent.com/Harsh-0214/MoneyPrinter/main/data/live_feed.json';
+const REFRESH_INTERVAL = 30; // seconds
+
+let lastData = null;
+let countdown = REFRESH_INTERVAL;
+
+function fmt(val, decimals = 2) {
+  if (val === null || val === undefined || val === '') return '—';
+  const n = parseFloat(val);
+  return isNaN(n) ? '—' : n.toFixed(decimals);
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toISOString().replace('T', ' ').slice(0, 19);
+  } catch { return iso.slice(0, 19); }
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function actionBadge(action) {
+  const a = (action || 'hold').toLowerCase();
+  if (a === 'buy')           return `<span class="badge badge-buy">BUY</span>`;
+  if (a === 'short' || a === 'sell') return `<span class="badge badge-short">SHORT</span>`;
+  return `<span class="badge badge-hold">HOLD</span>`;
+}
+
+function aiVerdict(confirmed) {
+  if (confirmed === true)  return `<span class="ai-yes" title="Claude confirmed">✓</span>`;
+  if (confirmed === false) return `<span class="ai-no"  title="Claude rejected">✗</span>`;
+  return `<span class="ai-skip" title="AI not called">—</span>`;
+}
+
+function truncate(str, n) {
+  if (!str) return '';
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+function rowClass(action) {
+  const a = (action || '').toLowerCase();
+  if (a === 'buy')   return 'row-buy';
+  if (a === 'short') return 'row-short';
+  return '';
+}
+
+function netScoreColor(n) {
+  if (n > 65)  return 'style="color:var(--green)"';
+  if (n < -65) return 'style="color:var(--red)"';
+  return 'style="color:var(--muted)"';
+}
+
+function render(data) {
+  lastData = data;
+  const meta    = data.meta    || {};
+  const entries = data.entries || [];
+
+  // Update header
+  document.getElementById('lastUpdated').textContent =
+    'Last updated: ' + fmtTime(meta.last_updated);
+  document.getElementById('lastSession').textContent =
+    'Session: ' + (meta.last_session || '—');
+
+  // Filter today's entries for card counts
+  const todayStr  = today();
+  const todayRows = entries.filter(e => (e.timestamp || '').startsWith(todayStr));
+
+  const buys      = todayRows.filter(e => e.action === 'buy').length;
+  const shorts    = todayRows.filter(e => e.action === 'short' || e.action === 'sell').length;
+  const holds     = todayRows.filter(e => e.action === 'hold').length;
+  const overrides = todayRows.filter(e => e.ai_confirmed === false || e.ai_confirmed === true).length;
+  const rejections = todayRows.filter(e => e.ai_confirmed === false).length;
+
+  document.getElementById('cardTotal').textContent     = todayRows.length;
+  document.getElementById('cardBuys').textContent      = buys;
+  document.getElementById('cardHolds').textContent     = holds;
+  document.getElementById('cardShorts').textContent    = shorts;
+  document.getElementById('cardOverrides').textContent = overrides;
+  document.getElementById('cardRejections').textContent = rejections;
+  document.getElementById('cardRuns').textContent      =
+    (meta.total_runs_today || '—') + ' runs today';
+
+  // Table — most recent first
+  const rows = [...entries].reverse();
+  const tbody = document.getElementById('tableBody');
+
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="13"><div class="empty-state">
+      <div class="icon">📭</div>No decisions yet — bot hasn't run today.</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(e => {
+    const rc      = rowClass(e.action);
+    const net     = parseInt(e.net_score) || 0;
+    const conf    = e.confidence ? (e.confidence * 100).toFixed(0) + '%' : '—';
+    const aiReason = (e.ai_reasoning || '');
+
+    return `<tr class="${rc}">
+      <td>${fmtTime(e.timestamp)}</td>
+      <td style="font-weight:700;color:var(--text)">${e.ticker || '—'}</td>
+      <td>${actionBadge(e.action)}</td>
+      <td ${netScoreColor(net)}>${net > 0 ? '+' : ''}${net}</td>
+      <td style="color:var(--blue)">${conf}</td>
+      <td style="color:var(--muted)">${e.strategy || '—'}</td>
+      <td style="color:var(--green)">${e.bull_score || 0}</td>
+      <td style="color:var(--red)">${e.bear_score || 0}</td>
+      <td>${fmt(e.entry_price)}</td>
+      <td>${fmt(e.stop_loss)}</td>
+      <td>${fmt(e.take_profit)}</td>
+      <td style="text-align:center">${aiVerdict(e.ai_confirmed)}</td>
+      <td><div class="reasoning-cell" title="${aiReason.replace(/"/g, '&quot;')}">${truncate(aiReason, 80)}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function fetchFeed() {
+  try {
+    const url = FEED_URL + '?cache_bust=' + Date.now();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    document.getElementById('warnBanner').style.display = 'none';
+    document.getElementById('liveDot').style.background = 'var(--green)';
+    render(data);
+  } catch (err) {
+    console.warn('Feed fetch failed:', err);
+    document.getElementById('warnBanner').style.display = 'block';
+    document.getElementById('liveDot').style.background = 'var(--yellow)';
+    if (lastData) render(lastData); // keep showing last known data
+    else {
+      document.getElementById('lastUpdated').textContent = 'Could not load feed';
+    }
+  }
+  countdown = REFRESH_INTERVAL;
+}
+
+function updateCountdown() {
+  countdown--;
+  if (countdown <= 0) {
+    fetchFeed();
+  } else {
+    document.getElementById('countdown').textContent =
+      'Next refresh in ' + countdown + 's';
+  }
+}
+
+// Initial load
+fetchFeed();
+
+// Auto-refresh
+setInterval(updateCountdown, 1000);
+</script>
+</body>
+</html>
