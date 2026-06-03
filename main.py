@@ -169,11 +169,30 @@ def run_full_scan(session: str, macro_context: dict,
     if bearish_market:
         console.print("[bold yellow]Bearish market (SPY below EMA50) — BUY signals suppressed[/bold yellow]")
 
+    # ── Fetch live Alpaca positions once ──────────────────────────────────────
+    live_positions: dict = {}   # {ticker: position_dict}
+    if alpaca_client:
+        try:
+            from bot.trader import get_positions as _get_live_pos
+            for p in _get_live_pos(alpaca_client):
+                live_positions[p["symbol"]] = p
+            if live_positions:
+                console.print(
+                    f"[bold yellow]Open positions: {', '.join(live_positions.keys())}[/bold yellow]"
+                )
+        except Exception as _e:
+            logger.warning(f"[scan] Could not fetch live positions: {_e}")
+
     all_tickers = get_all_trade_tickers()
     if extra_tickers:
         for t in extra_tickers:
             if t not in all_tickers:
                 all_tickers.append(t)
+
+    # Always include tickers we're currently holding so we evaluate exit/add
+    for held_ticker in live_positions:
+        if held_ticker not in all_tickers:
+            all_tickers.append(held_ticker)
 
     console.print(f"[bold cyan]Scanning {len(all_tickers)} tickers...[/bold cyan]")
     indicators_map = get_indicators_batch(all_tickers, max_workers=2)
@@ -221,9 +240,11 @@ def run_full_scan(session: str, macro_context: dict,
             f"src={ind.get('price_source','?')}"
         )
 
-        # Store indicators for AI batch (run on all tickers)
+        # Store indicators and live position context for AI batch
         score["_indicators"] = ind
         score["_news"]       = news
+        if ticker in live_positions:
+            score["_position"] = live_positions[ticker]
         signals_all.append(score)
 
     # ── Claude second-opinion pass on every ticker ─────────────────────────
@@ -323,9 +344,39 @@ def execute_signals(signals: list, alpaca_client, data_client,
         if entry_price == 0:
             continue
 
-        # ── Duplicate position guard ───────────────────────────────────────
-        if _has_open_position(ticker, alpaca_client):
-            logger.info(f"[SKIP] Already have open position in {ticker}")
+        # ── Sell action: exit existing position via Alpaca ────────────────
+        if action == "sell":
+            try:
+                from bot.trader import get_positions as _gp
+                held = {p["symbol"]: p for p in _gp(alpaca_client)}
+                if ticker not in held:
+                    logger.info(f"[execute] SELL {ticker}: no open position found, skipping")
+                    continue
+                pos_qty = int(float(held[ticker]["qty"]))
+                if pos_qty <= 0:
+                    continue
+                quote        = get_latest_quote(data_client, ticker)
+                limit_price  = compute_limit_price("sell", quote, entry_price)
+                order_id = submit_order(
+                    client=alpaca_client,
+                    ticker=ticker,
+                    side="sell",
+                    qty=pos_qty,
+                    limit_price=limit_price,
+                    dry_run=DRY_RUN,
+                )
+                console.print(
+                    f"[red]✓ SELL (EXIT) {pos_qty}x {ticker} @ ${entry_price:.2f} "
+                    f"(limit ${limit_price:.2f}) | AI recommended exit[/red]"
+                )
+                executed += 1
+            except Exception as e:
+                logger.error(f"[execute] SELL order failed for {ticker}: {e}")
+            continue
+
+        # ── Duplicate position guard (for new buys/shorts) ────────────────
+        if action not in ("sell",) and _has_open_position(ticker, alpaca_client):
+            logger.info(f"[SKIP] Already have open position in {ticker} — skipping new entry")
             continue
 
         # ── Correlation guard ──────────────────────────────────────────────

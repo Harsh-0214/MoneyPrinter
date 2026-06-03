@@ -269,7 +269,8 @@ const pctStr = v => v==null ? '—' : (parseFloat(v)*100).toFixed(0)+'%';
 function badge(action) {
   const a = (action||'hold').toLowerCase();
   if (a==='buy') return `<span class="badge b-buy">BUY</span>`;
-  if (a==='short'||a==='sell') return `<span class="badge b-short">SHORT</span>`;
+  if (a==='short') return `<span class="badge b-short">SHORT</span>`;
+  if (a==='sell')  return `<span class="badge b-short" style="background:rgba(248,81,73,.18);border-color:#f85149">EXIT</span>`;
   return `<span class="badge b-hold">HOLD</span>`;
 }
 function aiIcon(c) {
@@ -457,6 +458,16 @@ function drawerHTML(uid, e) {
             <div style="margin-bottom:6px">${aiStatus}</div>
             <div style="color:var(--text)">${e.ai_reasoning||'No AI reasoning recorded.'}</div>
           </div>
+          ${e.held_position ? `
+          <h4 style="margin-top:14px">Open Position</h4>
+          <div class="ai-box" style="border-color:var(--yellow);background:rgba(210,153,34,.07)">
+            <div class="drawer-kv"><span class="dk">Side</span><span class="dv">${e.held_position.side||'—'}</span></div>
+            <div class="drawer-kv"><span class="dk">Shares Held</span><span class="dv">${e.held_position.qty||'—'}</span></div>
+            <div class="drawer-kv"><span class="dk">Avg Entry</span><span class="dv">$${fmt(e.held_position.avg_entry_price)}</span></div>
+            <div class="drawer-kv"><span class="dk">Unrealized P&L</span><span class="dv" style="color:${(e.held_position.unrealized_plpc||0)>=0?'var(--green)':'var(--red)'}">
+              ${e.held_position.unrealized_plpc!=null?(((e.held_position.unrealized_plpc)*100).toFixed(1)+'%'):'—'}
+            </span></div>
+          </div>` : ''}
           <h4 style="margin-top:14px">Trade Details</h4>
           <div class="drawer-kv"><span class="dk">Entry</span><span class="dv">$${fmt(e.entry_price)}</span></div>
           <div class="drawer-kv"><span class="dk">Stop Loss</span><span class="dv" style="color:var(--red)">$${fmt(e.stop_loss)}</span></div>

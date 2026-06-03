@@ -86,6 +86,13 @@ def write_live_feed(decisions: list[dict], session: str) -> None:
             "take_profit":        d.get("take_profit"),
             "risk_reward":        d.get("risk_reward"),
             "reasoning":          d.get("reasoning", ""),
+            # Live position context (if bot already holds this stock)
+            "held_position":      {
+                "qty":             d["_position"].get("qty"),
+                "avg_entry_price": d["_position"].get("avg_entry_price"),
+                "unrealized_plpc": d["_position"].get("unrealized_plpc"),
+                "side":            d["_position"].get("side"),
+            } if d.get("_position") else None,
             # Key indicators shown in dashboard detail view
             "rsi":                ind.get("rsi"),
             "macd_hist":          ind.get("macd_hist"),
@@ -106,9 +113,10 @@ def write_live_feed(decisions: list[dict], session: str) -> None:
 
         # Tally
         today["total_decisions"] += 1
-        if action == "buy":            today["buys"]   += 1
-        elif action in ("short","sell"): today["shorts"] += 1
-        else:                          today["holds"]  += 1
+        if action == "buy":     today["buys"]   += 1
+        elif action == "short": today["shorts"] += 1
+        elif action == "sell":  today["shorts"] += 1  # exits counted alongside shorts
+        else:                   today["holds"]  += 1
         ai = d.get("ai_confirmed")
         if ai is True:   today["claude_confirmed"] += 1
         elif ai is False: today["claude_rejected"]  += 1

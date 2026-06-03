@@ -102,6 +102,37 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
     scorer_action = score.get("action", "hold").upper()
     net           = score.get("net_score", 0)
     confidence    = score.get("confidence", 0.0)
+    position      = score.get("_position")  # live position dict or None
+
+    # Build position context block
+    if position:
+        qty        = position.get("qty", 0)
+        avg_entry  = position.get("avg_entry_price", 0)
+        curr_price = position.get("current_price") or ind.get("current_price", 0)
+        unreal_pct = position.get("unrealized_plpc")
+        side       = position.get("side", "long")
+        if unreal_pct is not None:
+            pnl_str = f"{float(unreal_pct)*100:+.1f}%"
+        else:
+            pnl_str = "unknown"
+        position_block = [
+            "--- CURRENT POSITION (YOU ALREADY OWN THIS STOCK) ---",
+            f"Side:             {side}",
+            f"Shares held:      {qty}",
+            f"Avg entry price:  ${_f(avg_entry)}",
+            f"Current price:    ${_f(curr_price)}",
+            f"Unrealized P&L:   {pnl_str}",
+            "",
+            "Since you already hold this position, your decisions are:",
+            "  'buy'  = add more shares (only if conviction is high and risk is justified)",
+            "  'sell' = exit the position now (cut the loss or take profit early)",
+            "  'hold' = keep the position as-is, no new order",
+            "",
+        ]
+        valid_decisions = '"buy" (add), "sell" (exit), or "hold" (keep)'
+    else:
+        position_block = []
+        valid_decisions = '"buy", "short", or "hold"'
 
     lines = [
         f"TICKER: {ticker}",
@@ -111,6 +142,7 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
         f"Stop loss:       ${_f(score.get('stop_loss'))}",
         f"Take profit:     ${_f(score.get('take_profit'))}",
         f"Risk/reward:     {_f(score.get('risk_reward'))}",
+        *position_block,
         "",
         "--- INDICATORS ---",
         f"RSI (14):        {_f(ind.get('rsi'))}",
@@ -162,7 +194,7 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
         "the indicator values. If you cannot justify the trade logically, say 'hold'.",
         "",
         'Respond with ONLY a valid JSON object — no markdown, no explanation outside it:',
-        '{"decision": "buy" or "short" or "hold", "confidence": 0.0-1.0, "reasoning": "two sentences max: one on technicals, one on business logic"}',
+        f'{{"decision": {valid_decisions}, "confidence": 0.0-1.0, "reasoning": "two sentences max: one on technicals, one on business logic"}}',
     ]
     return "\n".join(lines)
 
@@ -204,7 +236,9 @@ def claude_analyze_ticker(ticker: str, indicators: dict, scorer_result: dict,
         confidence = float(result.get("confidence", 1.0))
         reasoning  = str(result.get("reasoning", ""))
 
-        if decision not in ("buy", "short", "hold"):
+        has_position = bool(scorer_result.get("_position"))
+        valid = {"buy", "sell", "hold"} if has_position else {"buy", "short", "hold"}
+        if decision not in valid:
             logger.warning(f"[AI] {ticker}: unexpected decision '{decision}' — keeping scorer decision")
             decision = scorer_action
 
@@ -244,8 +278,21 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
 
         scorer_result["ai_confirmed"] = (ai_decision == scorer_action)
         scorer_result["ai_reasoning"] = ai_reasoning
+        has_position = bool(scorer_result.get("_position"))
 
-        if ai_decision == scorer_action:
+        if has_position:
+            # For held positions Claude chooses: sell (exit), buy (add more), hold (keep)
+            if ai_decision == "sell":
+                logger.info(f"[AI] {ticker}: SELL (exit position) recommended by Claude — {ai_reasoning}")
+                scorer_result["action"] = "sell"
+            elif ai_decision == "buy":
+                logger.info(f"[AI] {ticker}: ADD MORE recommended by Claude (conf={ai_conf:.2f}) — {ai_reasoning}")
+                scorer_result["action"] = "buy"
+                scorer_result["confidence"] = ai_conf
+            else:
+                logger.info(f"[AI] {ticker}: HOLD position — {ai_reasoning}")
+                scorer_result["action"] = "hold"
+        elif ai_decision == scorer_action:
             logger.info(
                 f"[AI] {ticker}: {scorer_action.upper()} CONFIRMED by Claude "
                 f"(conf={ai_conf:.2f}) — {ai_reasoning}"
@@ -261,7 +308,6 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
                 f"(conf={ai_conf:.2f}) — {ai_reasoning}"
             )
             scorer_result["action"] = ai_decision
-            # Claude's confidence becomes the signal confidence when it overrides
             scorer_result["confidence"] = ai_conf
         else:
             # e.g. scorer=buy, claude=short → don't blindly reverse, just hold
