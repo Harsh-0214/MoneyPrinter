@@ -251,6 +251,21 @@ def run_full_scan(session: str, macro_context: dict,
     return signals
 
 
+CORRELATION_GROUPS = {
+    "AI_CHIPS":        {"NVDA", "AMD", "MRVL", "SMCI", "AVGO"},
+    "BIG_TECH":        {"AAPL", "MSFT", "GOOGL", "META", "AMZN"},
+    "CRYPTO_ADJACENT": {"COIN", "MSTR", "SOFI"},
+    "ENERGY":          {"XOM", "CVX"},
+}
+
+
+def _correlation_group(ticker: str):
+    for group_name, members in CORRELATION_GROUPS.items():
+        if ticker in members:
+            return group_name, members
+    return None
+
+
 def execute_signals(signals: list, alpaca_client, data_client,
                     macro_context: dict, session: str,
                     max_trades: int = MAX_TRADES_PER_SESSION) -> int:
@@ -297,6 +312,20 @@ def execute_signals(signals: list, alpaca_client, data_client,
         if _has_open_position(ticker, alpaca_client):
             logger.info(f"[SKIP] Already have open position in {ticker}")
             continue
+
+        # ── Correlation guard ──────────────────────────────────────────────
+        group_info = _correlation_group(ticker)
+        if group_info:
+            group_name, members = group_info
+            from bot.portfolio import get_open_positions as _get_open_pos
+            open_tickers = {p["ticker"] for p in _get_open_pos(alpaca_client)}
+            overlap = members & open_tickers
+            if len(overlap) >= 2:
+                logger.info(
+                    f"[CORRELATION] Already have {len(overlap)} {group_name} positions "
+                    f"({overlap}) — skipping {ticker}"
+                )
+                continue
 
         pos = calculate_position(
             portfolio_value=portfolio_value,
@@ -670,6 +699,28 @@ def session_continuous(alpaca_client, data_client) -> None:
             close_position_and_log(alpaca_client, pos, cp, "continuous", status="time_exit")
             console.print(f"[yellow]TIME EXIT: {pos['ticker']} age={pos.get('age_days')}d pnl={pnl:+.1f}%[/yellow]")
 
+        # ── Trailing stop checks ───────────────────────────────────────────
+        from bot.risk import update_trailing_stop
+        from bot.logger import update_trade_trailing
+        for pos in get_open_positions(alpaca_client):
+            current_price = pos.get("current_price") or pos.get("entry_price")
+            if not current_price:
+                continue
+            updated = update_trailing_stop(pos, current_price)
+            if updated.get("trailing_stop_updated") and pos.get("id"):
+                update_trade_trailing(
+                    pos["id"],
+                    updated["highest_price_seen"],
+                    updated.get("trailing_stop_price") or 0,
+                )
+            if updated.get("trailing_stop_triggered"):
+                close_position_and_log(alpaca_client, pos, current_price, "continuous",
+                                       status="trailing_stop")
+                console.print(
+                    f"[red]TRAILING STOP: {pos['ticker']} @ {current_price} "
+                    f"(trail={updated.get('trailing_stop_price', 0):.2f})[/red]"
+                )
+
         # ── Scalp close at 3:45 PM ─────────────────────────────────────────
         if now_hm >= SCALP_CLOSE_ET:
             open_pos = get_open_positions(alpaca_client)
@@ -784,6 +835,14 @@ def session_eod_summary(alpaca_client) -> None:
                 str(s.get("total_trades") or 0),
             )
         console.print(table)
+
+    # Generate HTML report
+    try:
+        from reports.daily_report import generate_report
+        report_path = generate_report()
+        console.print(f"[bold cyan]HTML report generated: {report_path}[/bold cyan]")
+    except Exception as e:
+        logger.warning(f"[eod] HTML report generation failed: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -104,39 +104,107 @@ def _check_sec_8k(ticker: str, company_name: str) -> bool:
     return False
 
 
-def _check_earnings_proximity(ticker: str) -> bool:
-    """Check if earnings are within 3 days using yfinance calendar."""
+_earnings_cache: dict = {}
+
+
+def _check_earnings_proximity(ticker: str) -> dict:
+    """
+    Check earnings proximity using yfinance calendar.
+    Returns dict: {"days_to_earnings": int or None, "risk_level": "block"|"warn"|"clear"}
+    - block = within 3 days (no trade)
+    - warn  = within 7 days (reduce confidence by 0.20)
+    - clear = no imminent earnings
+    Results are cached for the process lifetime.
+    """
+    if ticker in _earnings_cache:
+        return _earnings_cache[ticker]
+
+    result = {"days_to_earnings": None, "risk_level": "clear"}
     try:
         import yfinance as yf
         t = yf.Ticker(ticker)
         cal = t.calendar
         if cal is None:
-            return False
+            _earnings_cache[ticker] = result
+            return result
+
+        closest_days = None
         # cal can be a dict or DataFrame depending on yfinance version
         if isinstance(cal, dict):
             dates = cal.get("Earnings Date", [])
-            if not dates:
-                return False
             if hasattr(dates, '__iter__') and not isinstance(dates, str):
                 for d in dates:
                     if hasattr(d, 'date'):
                         delta = (d.date() - datetime.now().date()).days
-                        if 0 <= delta <= 3:
-                            return True
-            return False
+                        if delta >= 0:
+                            if closest_days is None or delta < closest_days:
+                                closest_days = delta
         elif hasattr(cal, 'iloc'):
             for col in cal.columns:
                 for val in cal[col]:
                     try:
                         if hasattr(val, 'date'):
                             delta = (val.date() - datetime.now().date()).days
-                            if 0 <= delta <= 3:
-                                return True
+                            if delta >= 0:
+                                if closest_days is None or delta < closest_days:
+                                    closest_days = delta
                     except Exception:
                         pass
+
+        result["days_to_earnings"] = closest_days
+        if closest_days is not None:
+            if closest_days <= 3:
+                result["risk_level"] = "block"
+            elif closest_days <= 7:
+                result["risk_level"] = "warn"
     except Exception as e:
         logger.debug(f"[news] earnings check failed for {ticker}: {e}")
-    return False
+
+    _earnings_cache[ticker] = result
+    return result
+
+
+_MASSIVE_BULL_KW = [
+    "jensen huang", "elon musk", "trillion dollar", "record revenue",
+    "beats expectations", "raised guidance", "major contract", "fda approved",
+    "partnership with nvidia", "ai breakthrough", "blowout quarter", "record earnings",
+]
+_MASSIVE_BEAR_KW = [
+    "sec investigation", "class action", "ceo resigned", "revenue miss",
+    "guidance cut", "data breach", "recall", "bankruptcy", "delisted",
+    "doj probe", "going concern", "fraud",
+]
+_MODERATE_BULL_KW = [
+    "upgrade", "buy rating", "price target raised", "strong demand",
+    "market share gain", "beat estimates", "raised outlook",
+]
+_MODERATE_BEAR_KW = [
+    "downgrade", "sell rating", "price target cut", "disappointing",
+    "headwinds", "miss", "below expectations",
+]
+
+
+def keyword_amplifier(text: str) -> tuple:
+    """
+    Scan combined headline text for bullish/bearish keywords.
+    Returns (bull_boost, bear_boost) — additive point values for scoring.
+    """
+    lower = text.lower()
+    bull_boost = 0.0
+    bear_boost = 0.0
+    for kw in _MASSIVE_BULL_KW:
+        if kw in lower:
+            bull_boost += 25
+    for kw in _MASSIVE_BEAR_KW:
+        if kw in lower:
+            bear_boost += 25
+    for kw in _MODERATE_BULL_KW:
+        if kw in lower:
+            bull_boost += 12
+    for kw in _MODERATE_BEAR_KW:
+        if kw in lower:
+            bear_boost += 12
+    return bull_boost, bear_boost
 
 
 def get_news_sentiment(ticker: str, company_name: str, api_key: Optional[str] = None) -> dict:
@@ -178,6 +246,10 @@ def get_news_sentiment(ticker: str, company_name: str, api_key: Optional[str] = 
     sec_flag      = _check_sec_8k(ticker, company_name)
     earnings_risk = _check_earnings_proximity(ticker)
 
+    # Keyword amplifier on combined headline text
+    combined_text = " ".join(h["text"] for h in scored)
+    bull_kw_boost, bear_kw_boost = keyword_amplifier(combined_text)
+
     return {
         "ticker": ticker,
         "avg_polarity": round(avg_polarity, 4),
@@ -185,6 +257,8 @@ def get_news_sentiment(ticker: str, company_name: str, api_key: Optional[str] = 
         "top_headlines": [{"text": h["text"][:200], "polarity": h["polarity"]} for h in top5],
         "sec_8k_flag": sec_flag,
         "earnings_risk": earnings_risk,
+        "bull_keyword_boost": bull_kw_boost,
+        "bear_keyword_boost": bear_kw_boost,
     }
 
 

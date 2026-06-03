@@ -428,7 +428,20 @@ def score_ticker(
     news = news_sentiment or {}
     avg_pol   = _v(news.get("avg_polarity"))
     sec_8k    = news.get("sec_8k_flag") or False
-    earn_risk = news.get("earnings_risk") or False
+    _earn_raw = news.get("earnings_risk") or {}
+    # Support both old bool format and new dict format from _check_earnings_proximity
+    if isinstance(_earn_raw, dict):
+        earn_risk_level = _earn_raw.get("risk_level", "clear")
+        earn_risk       = earn_risk_level == "block"
+        earn_warn       = earn_risk_level == "warn"
+    else:
+        earn_risk  = bool(_earn_raw)
+        earn_warn  = False
+        earn_risk_level = "block" if earn_risk else "clear"
+
+    # Earnings warn: reduce confidence by 0.20 at scoring time
+    if earn_warn:
+        signals_against.append("earnings_proximity")
 
     if avg_pol > 0.5:
         bull += 22
@@ -453,6 +466,14 @@ def score_ticker(
             bear += 20
         signals_triggered.append("sec_8k_catalyst")
         reasoning_parts.append("SEC 8-K filing detected — catalyst amplifier")
+
+    # Keyword amplifier boosts from news
+    bull += news.get("bull_keyword_boost", 0)
+    bear += news.get("bear_keyword_boost", 0)
+    if news.get("bull_keyword_boost", 0) > 0:
+        signals_triggered.append("keyword_bull_boost")
+    if news.get("bear_keyword_boost", 0) > 0:
+        signals_triggered.append("keyword_bear_boost")
 
     # ──────────────────────────────────────────────────────────────
     # SHORT FILTERS — penalise / block shorts in uptrending stocks
@@ -483,12 +504,40 @@ def score_ticker(
     # ──────────────────────────────────────────────────────────────
     # FINAL SCORING
     # ──────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────
+    # INTRADAY 15-MIN SIGNALS
+    # ──────────────────────────────────────────────────────────────
+    intraday_vwap    = _v(ind.get("intraday_vwap"))
+    intraday_rsi     = _v(ind.get("intraday_rsi"))
+    intraday_vs_vwap = _v(ind.get("intraday_vs_vwap"))
+
+    if intraday_vwap > 0 and cp > 0:
+        if intraday_vs_vwap > 0:
+            bull += 5
+            signals_triggered.append("price_above_intraday_vwap")
+        elif intraday_vs_vwap < 0:
+            bear += 5
+            signals_triggered.append("price_below_intraday_vwap")
+
+    if intraday_rsi > 0:
+        if intraday_rsi < 35:
+            bull += 8
+            signals_triggered.append("intraday_rsi_oversold")
+        elif intraday_rsi > 65:
+            bear += 8
+            signals_triggered.append("intraday_rsi_overbought")
+
     bull = max(0, round(bull))
     bear = max(0, round(bear))
     net  = bull - bear
 
     confidence_raw = net / 100.0
     confidence     = max(-1.0, min(1.0, confidence_raw))
+
+    # Earnings warn: reduce confidence 0.20
+    if earn_warn:
+        confidence = max(-1.0, min(1.0, confidence - 0.20))
+        reasoning_parts.append("Earnings within 7 days — confidence reduced 0.20")
 
     # Earnings risk: block entry entirely — binary outcome, not tradeable
     if earn_risk:
@@ -574,6 +623,7 @@ def score_ticker(
         "atr": round(atr, 4),
         "high_vol_flag": high_vol_flag,
         "earnings_risk": earn_risk,
+        "earnings_warn": earn_warn,
         "vix": vix,
         "macro_bias": spy_regime,
         "ema_full_bull": ema_full_bull,
