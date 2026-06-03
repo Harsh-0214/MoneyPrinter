@@ -105,6 +105,15 @@ def write_live_feed(decisions: list[dict], session: str) -> None:
             "bull_keyword_boost": (d.get("_news") or {}).get("bull_keyword_boost", 0),
             "bear_keyword_boost": (d.get("_news") or {}).get("bear_keyword_boost", 0),
             "earnings_risk":      (d.get("_news") or {}).get("earnings_risk", {}).get("risk_level", "clear"),
+            # Multi-timeframe velocity and fundamentals
+            "return_1d":          d.get("return_1d"),
+            "return_5d":          d.get("return_5d"),
+            "return_1m":          d.get("return_1m"),
+            "return_3m":          d.get("return_3m"),
+            "velocity_penalty":   d.get("velocity_penalty_applied"),
+            "fundamental_score":  d.get("fundamental_score"),
+            "hype_penalty":       d.get("hype_penalty_applied"),
+            "breakout_quality":   d.get("breakout_quality", "unknown"),
             # Full indicator set
             "rsi":                ind.get("rsi"),
             "macd_hist":          ind.get("macd_hist"),

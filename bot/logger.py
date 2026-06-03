@@ -95,6 +95,13 @@ def init_db() -> None:
         ("trailing_stop_price", "REAL"),
         ("ai_confirmed",        "INTEGER"),
         ("ai_reasoning",        "TEXT"),
+        ("return_5d",           "REAL"),
+        ("return_1m",           "REAL"),
+        ("return_3m",           "REAL"),
+        ("velocity_penalty",    "REAL"),
+        ("fundamental_score",   "INTEGER"),
+        ("hype_penalty",        "REAL"),
+        ("breakout_quality",    "TEXT"),
     ]:
         try:
             conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {col_type}")
@@ -131,6 +138,13 @@ def log_trade(
     status: str = "open",
     ai_confirmed: Optional[bool] = None,
     ai_reasoning: Optional[str] = None,
+    return_5d: Optional[float] = None,
+    return_1m: Optional[float] = None,
+    return_3m: Optional[float] = None,
+    velocity_penalty: Optional[float] = None,
+    fundamental_score: Optional[int] = None,
+    hype_penalty: Optional[float] = None,
+    breakout_quality: Optional[str] = None,
 ) -> int:
     """Insert a trade record. Returns the new row ID."""
     init_db()
@@ -144,8 +158,10 @@ def log_trade(
             confidence, net_score, bull_score, bear_score,
             signals_triggered, signals_against, reasoning, risk_reward,
             macro_bias, vix_level, alpaca_order_id, status,
-            ai_confirmed, ai_reasoning
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ai_confirmed, ai_reasoning,
+            return_5d, return_1m, return_3m, velocity_penalty,
+            fundamental_score, hype_penalty, breakout_quality
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.utcnow().isoformat(),
             session,
@@ -172,6 +188,13 @@ def log_trade(
             status,
             int(ai_confirmed) if ai_confirmed is not None else None,
             ai_reasoning,
+            return_5d,
+            return_1m,
+            return_3m,
+            velocity_penalty,
+            fundamental_score,
+            hype_penalty,
+            breakout_quality,
         ))
         conn.commit()
         row_id = cur.lastrowid

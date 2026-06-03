@@ -363,6 +363,75 @@ def get_news_sentiment(ticker: str, company_name: str, api_key: Optional[str] = 
     }
 
 
+def hype_penalty(headlines: list, ticker: str) -> dict:
+    """
+    Analyse headlines for hype signals and catalyst boosts.
+
+    Parameters
+    ----------
+    headlines : list of {"text": str, "polarity": float} dicts
+    ticker    : str (unused currently but kept for future per-ticker logic)
+
+    Returns
+    -------
+    dict with keys: hype_penalty, catalyst_boost, hype_signals,
+                    catalyst_signals, net_confidence_adj
+    """
+    combined = " ".join(h.get("text", "").lower() for h in headlines)
+
+    total_penalty    = 0.0
+    total_boost      = 0.0
+    hype_signals     = []
+    catalyst_signals = []
+
+    # ── Hype penalties ────────────────────────────────────────────────────
+    if "jim cramer" in combined:
+        total_penalty += 0.15
+        hype_signals.append("jim_cramer_mention")
+
+    if any(p in combined for p in ["going crazy", "everyone is buying", "you need to own"]):
+        total_penalty += 0.10
+        hype_signals.append("retail_fomo_language")
+
+    if any(p in combined for p in ["reddit", "wallstreetbets", "wsb", " apes "]):
+        total_penalty += 0.15
+        hype_signals.append("reddit_wsb_mention")
+
+    if "short squeeze" in combined:
+        total_penalty += 0.10
+        hype_signals.append("short_squeeze_narrative")
+
+    total_penalty = min(total_penalty, 0.30)
+
+    # ── Catalyst boosts ───────────────────────────────────────────────────
+    import re
+    _has_digit = lambda s: bool(re.search(r'\d', s))
+
+    if "earnings beat" in combined and _has_digit(combined):
+        total_boost += 0.10
+        catalyst_signals.append("earnings_beat_with_numbers")
+
+    if "raised guidance" in combined and _has_digit(combined):
+        total_boost += 0.10
+        catalyst_signals.append("raised_guidance_with_numbers")
+
+    if "insider buying" in combined and "$" in combined:
+        total_boost += 0.12
+        catalyst_signals.append("insider_buying_with_dollar_amount")
+
+    if "upgrade" in combined and "price target" in combined and _has_digit(combined):
+        total_boost += 0.08
+        catalyst_signals.append("analyst_upgrade_with_price_target")
+
+    return {
+        "hype_penalty":       total_penalty,
+        "catalyst_boost":     total_boost,
+        "hype_signals":       hype_signals,
+        "catalyst_signals":   catalyst_signals,
+        "net_confidence_adj": total_boost - total_penalty,
+    }
+
+
 def get_news_batch(tickers: list, company_names: dict, api_key: Optional[str] = None,
                    max_workers: int = 3) -> dict:
     """Fetch news for multiple tickers in parallel."""

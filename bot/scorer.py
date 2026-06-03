@@ -3,7 +3,150 @@
 import logging
 from typing import Optional
 
+import yfinance as yf
+
 logger = logging.getLogger(__name__)
+
+# ── Fundamental quality cache ──────────────────────────────────────────────────
+_fund_cache: dict = {}
+
+
+def get_velocity_returns(ticker: str, df) -> dict:
+    """Compute multi-timeframe returns from a daily Close series."""
+    result = {"return_1d": None, "return_5d": None, "return_1m": None, "return_3m": None}
+    try:
+        if df is None or df.empty:
+            return result
+        close = df["Close"]
+        n = len(close)
+        if n >= 2:
+            result["return_1d"] = float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2])
+        if n >= 6:
+            result["return_5d"] = float((close.iloc[-1] - close.iloc[-6]) / close.iloc[-6])
+        if n >= 22:
+            result["return_1m"] = float((close.iloc[-1] - close.iloc[-22]) / close.iloc[-22])
+        if n >= 64:
+            result["return_3m"] = float((close.iloc[-1] - close.iloc[-64]) / close.iloc[-64])
+    except Exception as e:
+        logger.warning(f"[scorer] velocity returns failed for {ticker}: {e}")
+    return result
+
+
+def _fetch_velocity(ticker: str) -> dict:
+    """Fetch 90-day daily data and compute velocity returns."""
+    try:
+        df = yf.Ticker(ticker).history(period="90d", interval="1d")
+        if df is None or df.empty:
+            return {"return_1d": None, "return_5d": None, "return_1m": None, "return_3m": None}
+        return get_velocity_returns(ticker, df)
+    except Exception as e:
+        logger.warning(f"[scorer] _fetch_velocity failed for {ticker}: {e}")
+        return {"return_1d": None, "return_5d": None, "return_1m": None, "return_3m": None}
+
+
+def get_fundamental_quality(ticker: str) -> dict:
+    """Fetch yfinance .info and compute a fundamental quality score."""
+    if ticker in _fund_cache:
+        return _fund_cache[ticker]
+
+    bull_pts = 0
+    bear_pts = 0
+    no_revenue = False
+    revenue_growth = None
+    short_pct = None
+    institutional_pct = None
+    eps_beat = False
+    eps_surprise_pct = None
+    eps_actual = None
+
+    try:
+        info = yf.Ticker(ticker).info or {}
+
+        revenue_growth      = info.get("revenueGrowth")
+        short_pct           = info.get("shortPercentOfFloat")
+        institutional_pct   = (info.get("institutionsPercentHeld")
+                                or info.get("institutionPercentHeld"))
+        eps_actual          = info.get("trailingEps")
+        eps_estimate        = info.get("epsCurrentYear")
+        forward_pe          = info.get("forwardPE")
+        trailing_pe         = info.get("trailingPE")
+        total_revenue       = info.get("totalRevenue")
+
+        # Revenue growth signals
+        if revenue_growth is not None:
+            if revenue_growth > 0.40:
+                bull_pts += 18   # >40%: +10 base + +8 extra
+            elif revenue_growth > 0.20:
+                bull_pts += 10   # >20%: +10
+            elif revenue_growth < 0:
+                bear_pts += 10
+
+        # No revenue guard
+        if total_revenue is None or total_revenue == 0:
+            no_revenue = True
+
+        # EPS beat
+        if eps_actual is not None and eps_estimate is not None:
+            if eps_actual > eps_estimate:
+                bull_pts += 8
+                eps_beat = True
+                denom = abs(eps_estimate) if eps_estimate != 0 else 1
+                eps_surprise_pct = (eps_actual - eps_estimate) / denom
+                if eps_surprise_pct > 0.10:
+                    bull_pts += 4
+
+        # PE compression
+        if (forward_pe is not None and trailing_pe is not None
+                and forward_pe > 0 and trailing_pe > 0
+                and forward_pe < trailing_pe):
+            bull_pts += 8
+
+        # Institutional ownership
+        if institutional_pct is not None:
+            if institutional_pct > 0.60:
+                bull_pts += 8
+
+        # Short interest
+        if short_pct is not None:
+            if short_pct < 0.05:
+                bull_pts += 5
+            elif short_pct > 0.20:
+                bear_pts += 15
+
+        # Overvalued with no growth
+        if (trailing_pe is not None and trailing_pe > 200
+                and (revenue_growth is None or revenue_growth <= 0.05)):
+            bear_pts += 10
+
+    except Exception as e:
+        logger.warning(f"[scorer] fundamental quality failed for {ticker}: {e}")
+
+    # Determine breakout quality
+    rev_ok  = revenue_growth is not None and revenue_growth > 0.20
+    inst_ok = institutional_pct is not None and institutional_pct > 0.50
+    if rev_ok and eps_beat and inst_ok:
+        breakout_quality = "fundamental"
+    elif rev_ok or eps_beat:
+        breakout_quality = "technical"
+    else:
+        all_none = (revenue_growth is None and short_pct is None
+                    and institutional_pct is None and eps_actual is None)
+        breakout_quality = "unknown" if all_none else "technical"
+
+    result = {
+        "fund_score":        bull_pts - bear_pts,
+        "bull_pts":          bull_pts,
+        "bear_pts":          bear_pts,
+        "breakout_quality":  breakout_quality,
+        "no_revenue":        no_revenue,
+        "revenue_growth":    revenue_growth,
+        "short_pct":         short_pct,
+        "institutional_pct": institutional_pct,
+        "eps_beat":          eps_beat,
+        "eps_surprise_pct":  eps_surprise_pct,
+    }
+    _fund_cache[ticker] = result
+    return result
 
 # ── Trading thresholds ─────────────────────────────────────────────────────
 MIN_NET_SCORE_BUY      = 65    # strong conviction required
@@ -527,6 +670,13 @@ def score_ticker(
             bear += 8
             signals_triggered.append("intraday_rsi_overbought")
 
+    # ──────────────────────────────────────────────────────────────
+    # FUNDAMENTAL QUALITY — add bull/bear pts before net calculation
+    # ──────────────────────────────────────────────────────────────
+    fq = get_fundamental_quality(ticker)
+    bull += fq["bull_pts"]
+    bear += fq["bear_pts"]
+
     bull = max(0, round(bull))
     bear = max(0, round(bear))
     net  = bull - bear
@@ -542,6 +692,99 @@ def score_ticker(
     # Earnings risk: block entry entirely — binary outcome, not tradeable
     if earn_risk:
         return _no_signal(ticker, "earnings_within_3_days")
+
+    # ──────────────────────────────────────────────────────────────
+    # VELOCITY RETURNS + HYPE DETECTION
+    # ──────────────────────────────────────────────────────────────
+    vel = _fetch_velocity(ticker)
+    r1d = vel.get("return_1d") or 0.0
+    r5d = vel.get("return_5d") or 0.0
+    r1m = vel.get("return_1m") or 0.0
+    r3m = vel.get("return_3m") or 0.0
+
+    # Import hype_penalty locally to avoid circular import
+    try:
+        from bot.news import hype_penalty as _hype_penalty_fn
+        hype = _hype_penalty_fn(news.get("top_headlines", []), ticker)
+    except Exception as e:
+        logger.warning(f"[scorer] hype_penalty import/call failed for {ticker}: {e}")
+        hype = {
+            "hype_penalty": 0.0, "catalyst_boost": 0.0,
+            "hype_signals": [], "catalyst_signals": [], "net_confidence_adj": 0.0,
+        }
+
+    # Velocity penalty
+    vel_penalty = 0.0
+    _earn_raw_dict = news.get("earnings_risk") or {}
+    _earn_risk_level = _earn_raw_dict.get("risk_level", "clear") if isinstance(_earn_raw_dict, dict) else ("block" if _earn_raw_dict else "clear")
+    has_earnings_event = _earn_risk_level in ("block", "warn") or fq.get("eps_beat")
+
+    # 1d penalties (skip if earnings event)
+    if not has_earnings_event:
+        if r1d > 0.25:
+            vel_penalty += 0.20
+        elif r1d > 0.15:
+            vel_penalty += 0.10
+
+    # 5d penalties
+    if r5d > 0.40:
+        vel_penalty += 0.25
+        signals_against.append("5d_severely_extended")
+    elif r5d > 0.30:
+        vel_penalty += 0.15
+    elif r5d > 0.20:
+        vel_penalty += 0.08
+        signals_against.append("5d_extended")
+
+    # 1m penalties
+    if r1m > 0.50:
+        vel_penalty += 0.18
+    elif r1m > 0.35:
+        vel_penalty += 0.10
+
+    # 3m penalties (waive if revenue_growth > 20% or earnings beat)
+    waive_3m = (fq.get("revenue_growth") or 0) > 0.20 or fq.get("eps_beat")
+    if not waive_3m:
+        if r3m > 1.00:
+            vel_penalty += 0.20
+        elif r3m > 0.60:
+            vel_penalty += 0.10
+
+    # Exception: waive/halve if one big news day (1d > 50% of 5d run)
+    if r5d and abs(r1d) > abs(r5d) * 0.50 and has_earnings_event:
+        vel_penalty *= 0.0   # full waive
+    elif r5d and abs(r1d) > abs(r5d) * 0.50:
+        vel_penalty *= 0.5   # halve
+
+    # breakout_quality refinement with hype
+    bq = fq.get("breakout_quality", "unknown")
+    if hype.get("hype_penalty", 0) > 0.10:
+        bq = "hype"
+
+    # Velocity penalty multiplier by breakout quality
+    if bq == "fundamental":
+        vel_penalty *= 0.5
+    elif bq == "hype":
+        vel_penalty *= 2.0
+    vel_penalty = min(vel_penalty, 0.45)  # hard cap
+
+    total_conf_adj = hype.get("net_confidence_adj", 0) - vel_penalty
+
+    # Hype signals → signals_against; catalyst signals → signals_triggered
+    for sig in hype.get("hype_signals", []):
+        signals_against.append(f"hype:{sig}")
+    for sig in hype.get("catalyst_signals", []):
+        signals_triggered.append(f"catalyst:{sig}")
+
+    # Apply confidence adjustments
+    confidence = max(0.0, confidence + total_conf_adj)
+    if fq.get("no_revenue"):
+        confidence = min(confidence, 0.65)
+
+    logger.info(
+        f"[{ticker}] velocity: 1d={r1d:.1%} 5d={r5d:.1%} 1m={r1m:.1%} 3m={r3m:.1%} "
+        f"vel_penalty={vel_penalty:.2f} hype_penalty={hype.get('hype_penalty', 0):.2f} bq={bq}"
+    )
 
     # VIX high fear gates
     if vix > 35 and net > 0:
@@ -642,6 +885,17 @@ def score_ticker(
         "vix": vix,
         "macro_bias": spy_regime,
         "ema_full_bull": ema_full_bull,
+        # Multi-timeframe velocity
+        "return_1d":               round(r1d, 4) if r1d else None,
+        "return_5d":               round(r5d, 4) if r5d else None,
+        "return_1m":               round(r1m, 4) if r1m else None,
+        "return_3m":               round(r3m, 4) if r3m else None,
+        "velocity_penalty_applied": round(vel_penalty, 4),
+        # Fundamental quality
+        "fundamental_score":        fq.get("fund_score", 0),
+        # Hype detection
+        "hype_penalty_applied":     round(hype.get("hype_penalty", 0), 4),
+        "breakout_quality":         bq,
     }
 
 
@@ -668,6 +922,14 @@ def _no_signal(ticker: str, reason: str) -> dict:
         "vix": None,
         "macro_bias": "unknown",
         "ema_full_bull": False,
+        "return_1d": None,
+        "return_5d": None,
+        "return_1m": None,
+        "return_3m": None,
+        "velocity_penalty_applied": 0.0,
+        "fundamental_score": 0,
+        "hype_penalty_applied": 0.0,
+        "breakout_quality": "unknown",
     }
 
 
