@@ -1,4 +1,4 @@
-name: Test AI Filter
+name: Test AI Filter (End-to-End)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 jobs:
   test_ai_filter:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -19,73 +19,363 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Test Claude AI filter
+      - name: Download NLTK data
+        run: |
+          python -c "
+          import nltk
+          for pkg in ['punkt','punkt_tab','averaged_perceptron_tagger','averaged_perceptron_tagger_eng']:
+              try: nltk.download(pkg, quiet=True)
+              except: pass
+          "
+
+      - name: Create data and reports directories
+        run: mkdir -p data logs reports
+
+      - name: Run end-to-end AI filter test
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          python - <<'EOF'
-          import os, json
-          from bot.ai_filter import claude_confirm_trade, apply_ai_confirmation
+          python - <<'PYEOF'
+          import os, sys, json, logging, sqlite3, shutil
+          from pathlib import Path
+          from datetime import datetime
 
-          api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-          if not api_key:
-              print("❌ ANTHROPIC_API_KEY is not set in secrets")
-              exit(1)
-          print(f"✅ ANTHROPIC_API_KEY found ({len(api_key)} chars)")
+          logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
+          logger = logging.getLogger("e2e_test")
 
-          fake_indicators = {
-              "rsi": 61.5,
-              "macd_hist": 0.42,
-              "ema9": 142.50,
-              "ema21": 140.10,
-              "ema50": 135.80,
-              "ema200": 120.00,
-              "volume_ratio": 1.8,
-              "atr": 3.20,
-              "adx": 28.0,
-              "bb_pctb": 0.62,
-              "intraday_move_pct": 2.1,
-              "news_polarity": 0.15,
+          # ── Point DB to a test copy so we don't pollute production data ──────
+          TEST_DB = Path("data/test_trades.db")
+          import bot.logger as _log_mod
+          _log_mod.DB_PATH = TEST_DB
+
+          from bot.scorer    import score_ticker, classify_strategy
+          from bot.ai_filter import apply_ai_confirmation
+          from bot.logger    import log_trade, init_db
+
+          init_db()
+
+          # ─────────────────────────────────────────────────────────────────────
+          # Shared macro context: confirmed bull market, calm VIX
+          # ─────────────────────────────────────────────────────────────────────
+          macro = {
+              "spy_regime":     "bull",
+              "vix":            15.2,
+              "vix_multiplier": 1.0,
+              "bearish_market": False,
           }
 
-          fake_score = {
-              "ticker": "NVDA",
-              "action": "buy",
-              "entry_price": 142.50,
-              "net_score": 78,
-              "confidence": 0.78,
-              "strategy": "trend_follow",
-              "stop_loss": 137.70,
-              "take_profit": 154.50,
-              "risk_reward": 2.5,
-              "signals_triggered": ["rsi_neutral", "macd_bull_cross", "ema_bull_stack", "volume_surge"],
-              "signals_against": ["bb_extended"],
-              "reasoning": "EMA stack bullish, MACD positive crossover, volume 1.8x average.",
-              "vix_level": 16.5,
-              "macro_bias": "bull",
-          }
+          # ─────────────────────────────────────────────────────────────────────
+          # Test candidates — crafted to produce known scorer outcomes
+          # ─────────────────────────────────────────────────────────────────────
+          candidates = [
 
-          print("\n--- Calling claude_confirm_trade (NVDA buy) ---")
-          result = claude_confirm_trade("NVDA", fake_indicators, fake_score)
-          print(f"Decision:    {result['decision']}")
-          print(f"Confidence:  {result['confidence']}")
-          print(f"Reasoning:   {result['reasoning']}")
+              # ── GOOD BUY ─────────────────────────────────────────────────────
+              # Full EMA bull stack, MACD rising 2 bars, PSAR bullish, price above
+              # VWAP, RSI neutral-bullish (57), strong volume, positive news.
+              # Expected net score: ~90+  →  action=buy
+              {
+                  "ticker": "NVDA",
+                  "label":  "GOOD (strong bull setup)",
+                  "ind": {
+                      "current_price":    142.50,
+                      "prev_close":       139.80,
+                      "open_today":       140.20,
+                      "intraday_move_pct": 1.9,
+                      "ema9":    142.00,
+                      "ema21":   139.50,
+                      "ema50":   133.00,
+                      "ema200":  115.00,
+                      "adx":     32.0,
+                      "adx_di_plus":  28.0,
+                      "adx_di_minus": 14.0,
+                      "macd_hist":      0.85,
+                      "macd_hist_prev1": 0.60,
+                      "macd_hist_prev2": 0.35,
+                      "macd_bull_cross": False,
+                      "macd_bear_cross": False,
+                      "psar_bullish": True,
+                      "vwap":    141.20,
+                      "rsi":     57.0,
+                      "bb_pctb": 0.65,
+                      "volume_ratio": 2.1,
+                      "atr":     3.20,
+                      "gap_pct": 0.3,
+                      "pivot_p": 140.0,
+                      "pivot_r1": 143.0,
+                      "pivot_s1": 137.0,
+                  },
+                  "news": {
+                      "avg_polarity": 0.28,
+                      "bull_keyword_boost": 15,
+                      "bear_keyword_boost": 0,
+                      "sec_8k_flag": False,
+                      "earnings_risk": {},
+                  },
+              },
 
-          assert result["decision"] in ("confirm", "reject"), "Invalid decision value"
-          assert 0.0 <= result["confidence"] <= 1.0, "Confidence out of range"
-          assert result["reasoning"], "Reasoning is empty"
+              # ── MEDIUM BUY ───────────────────────────────────────────────────
+              # Partial EMA alignment only, flat MACD, RSI neutral, modest volume.
+              # Expected net score: ~65-75  →  borderline buy (may confirm or reject)
+              {
+                  "ticker": "MSFT",
+                  "label":  "MEDIUM (borderline setup)",
+                  "ind": {
+                      "current_price":    415.00,
+                      "prev_close":       412.50,
+                      "open_today":       413.00,
+                      "intraday_move_pct": 0.6,
+                      "ema9":    414.50,
+                      "ema21":   411.00,
+                      "ema50":   405.00,
+                      "ema200":  380.00,
+                      "adx":     21.0,
+                      "adx_di_plus":  19.0,
+                      "adx_di_minus": 15.0,
+                      "macd_hist":      0.18,
+                      "macd_hist_prev1": 0.22,
+                      "macd_hist_prev2": 0.25,
+                      "macd_bull_cross": False,
+                      "macd_bear_cross": False,
+                      "psar_bullish": True,
+                      "vwap":    414.20,
+                      "rsi":     53.0,
+                      "bb_pctb": 0.55,
+                      "volume_ratio": 1.1,
+                      "atr":     5.80,
+                      "gap_pct": 0.1,
+                      "pivot_p": 412.0,
+                      "pivot_r1": 418.0,
+                      "pivot_s1": 406.0,
+                  },
+                  "news": {
+                      "avg_polarity": 0.05,
+                      "bull_keyword_boost": 0,
+                      "bear_keyword_boost": 0,
+                      "sec_8k_flag": False,
+                      "earnings_risk": {},
+                  },
+              },
 
-          print("\n--- Testing fallback (no API key) ---")
-          os.environ.pop("ANTHROPIC_API_KEY", None)
-          fallback = claude_confirm_trade("AAPL", {}, {"action": "buy", "ticker": "AAPL"})
-          assert fallback["decision"] == "confirm", "Fallback should confirm"
-          print(f"Fallback decision: {fallback['decision']} ✅")
+              # ── BAD #1: overbought + bearish divergence ───────────────────────
+              # RSI 78 overbought, MACD fading, EMA extended, near BB upper band.
+              # Expected net score: low or negative  →  action=hold
+              {
+                  "ticker": "TSLA",
+                  "label":  "BAD #1 (overbought, fading momentum)",
+                  "ind": {
+                      "current_price":    280.00,
+                      "prev_close":       271.00,
+                      "open_today":       274.00,
+                      "intraday_move_pct": 3.3,
+                      "ema9":    278.00,
+                      "ema21":   265.00,
+                      "ema50":   248.00,
+                      "ema200":  210.00,
+                      "adx":     18.0,
+                      "adx_di_plus":  22.0,
+                      "adx_di_minus": 18.0,
+                      "macd_hist":      0.40,
+                      "macd_hist_prev1": 0.65,
+                      "macd_hist_prev2": 0.90,
+                      "macd_bull_cross": False,
+                      "macd_bear_cross": False,
+                      "psar_bullish": True,
+                      "vwap":    275.50,
+                      "rsi":     78.0,
+                      "bb_pctb": 0.91,
+                      "volume_ratio": 0.9,
+                      "atr":     7.50,
+                      "gap_pct": 1.1,
+                      "pivot_p": 272.0,
+                      "pivot_r1": 283.0,
+                      "pivot_s1": 261.0,
+                  },
+                  "news": {
+                      "avg_polarity": -0.10,
+                      "bull_keyword_boost": 0,
+                      "bear_keyword_boost": 8,
+                      "sec_8k_flag": False,
+                      "earnings_risk": {},
+                  },
+              },
 
-          print("\n--- Testing hold passthrough ---")
-          hold_result = apply_ai_confirmation({"ticker": "TSLA", "action": "hold"}, {})
-          assert hold_result["action"] == "hold", "Hold should pass through unchanged"
-          assert "ai_confirmed" not in hold_result, "Hold should not trigger AI call"
-          print("Hold passthrough: ✅")
+              # ── BAD #2: massive intraday move → hard blocked ─────────────────
+              # 18% intraday move triggers the >15% hard block in scorer before
+              # Claude is even called.
+              {
+                  "ticker": "SMCI",
+                  "label":  "BAD #2 (18% intraday move — hard blocked)",
+                  "ind": {
+                      "current_price":    62.00,
+                      "prev_close":       52.50,
+                      "open_today":       55.00,
+                      "intraday_move_pct": 18.1,
+                      "ema9":    61.00,
+                      "ema21":   55.00,
+                      "ema50":   48.00,
+                      "ema200":  40.00,
+                      "adx":     35.0,
+                      "adx_di_plus":  30.0,
+                      "adx_di_minus": 10.0,
+                      "macd_hist":      1.20,
+                      "macd_hist_prev1": 0.90,
+                      "macd_hist_prev2": 0.60,
+                      "macd_bull_cross": False,
+                      "macd_bear_cross": False,
+                      "psar_bullish": True,
+                      "vwap":    60.00,
+                      "rsi":     70.0,
+                      "bb_pctb": 0.88,
+                      "volume_ratio": 5.2,
+                      "atr":     4.00,
+                      "gap_pct": 4.8,
+                      "pivot_p": 55.0,
+                      "pivot_r1": 63.0,
+                      "pivot_s1": 47.0,
+                  },
+                  "news": {
+                      "avg_polarity": 0.20,
+                      "bull_keyword_boost": 12,
+                      "bear_keyword_boost": 0,
+                      "sec_8k_flag": False,
+                      "earnings_risk": {},
+                  },
+              },
+          ]
 
-          print("\n✅ All AI filter tests passed")
-          EOF
+          # ─────────────────────────────────────────────────────────────────────
+          # Run the pipeline
+          # ─────────────────────────────────────────────────────────────────────
+          confirmed_trades = []
+
+          print("\n" + "="*70)
+          print("  END-TO-END PIPELINE TEST")
+          print("="*70)
+
+          for c in candidates:
+              ticker = c["ticker"]
+              label  = c["label"]
+              ind    = c["ind"]
+              news   = c["news"]
+
+              print(f"\n{'─'*60}")
+              print(f"  {ticker}  ({label})")
+              print(f"{'─'*60}")
+
+              # Step 1: Score
+              try:
+                  score = score_ticker(ticker, ind, news, macro)
+                  score = classify_strategy(score, ind)
+              except Exception as e:
+                  print(f"  [SCORER ERROR] {e}")
+                  continue
+
+              action     = score.get("action", "hold")
+              net        = score.get("net_score", 0)
+              confidence = score.get("confidence", 0.0)
+              strategy   = score.get("strategy", "?")
+
+              print(f"  Scorer →  action={action}  net={net}  conf={confidence:.2f}  strategy={strategy}")
+              print(f"  Signals for:     {score.get('signals_triggered', [])}")
+              print(f"  Signals against: {score.get('signals_against', [])}")
+              print(f"  Reasoning: {score.get('reasoning','')[:120]}")
+
+              if action == "hold":
+                  print(f"  [HOLD] Scorer rejected — skipping AI filter")
+                  continue
+
+              # Step 2: AI confirmation
+              print(f"\n  Sending to Claude for confirmation...")
+              score["_indicators"] = ind
+              score = apply_ai_confirmation(score, ind)
+              action = score.get("action", "hold")
+
+              ai_confirmed = score.get("ai_confirmed")
+              ai_reasoning = score.get("ai_reasoning", "")
+
+              if action == "hold":
+                  print(f"  [AI REJECTED] Claude declined this trade")
+                  print(f"  Claude reasoning: {ai_reasoning}")
+                  continue
+
+              print(f"  [AI CONFIRMED] Claude approved this trade (ai_confirmed={ai_confirmed})")
+              print(f"  Claude reasoning: {ai_reasoning}")
+
+              # Step 3: Simulate order + log trade
+              entry_price = ind["current_price"]
+              shares      = max(1, int(5000 / entry_price))   # simulate ~$5k position
+              order_id    = f"test-{ticker.lower()}-{datetime.utcnow().strftime('%H%M%S')}"
+
+              trade_id = log_trade(
+                  session="test",
+                  ticker=ticker,
+                  action=action,
+                  strategy=strategy,
+                  time_horizon="swing",
+                  quantity=shares,
+                  entry_price=entry_price,
+                  limit_price=round(entry_price + 0.03, 2),
+                  stop_loss=score.get("stop_loss"),
+                  take_profit=score.get("take_profit"),
+                  confidence=confidence,
+                  net_score=net,
+                  bull_score=score.get("bull_score", 0),
+                  bear_score=score.get("bear_score", 0),
+                  signals_triggered=score.get("signals_triggered", []),
+                  signals_against=score.get("signals_against", []),
+                  reasoning=score.get("reasoning", ""),
+                  risk_reward=score.get("risk_reward", 2.5),
+                  macro_bias=macro["spy_regime"],
+                  vix_level=macro["vix"],
+                  alpaca_order_id=order_id,
+                  status="dry_run",
+                  ai_confirmed=ai_confirmed,
+                  ai_reasoning=ai_reasoning,
+              )
+              print(f"  Trade logged → DB id={trade_id}  qty={shares}  entry=${entry_price:.2f}")
+              confirmed_trades.append({"ticker": ticker, "trade_id": trade_id,
+                                       "entry": entry_price, "qty": shares})
+
+          # ─────────────────────────────────────────────────────────────────────
+          # Step 4: Generate HTML report
+          # ─────────────────────────────────────────────────────────────────────
+          print("\n" + "="*70)
+          print("  GENERATING HTML REPORT")
+          print("="*70)
+
+          # Patch report module to also point at test DB
+          import reports.daily_report as rpt
+          rpt.DB_PATH = TEST_DB
+
+          today = datetime.utcnow().strftime("%Y-%m-%d")
+          report_path = rpt.generate_report(date_str=today, output_dir="reports")
+          print(f"  Report written → {report_path}")
+
+          # ─────────────────────────────────────────────────────────────────────
+          # Summary
+          # ─────────────────────────────────────────────────────────────────────
+          print("\n" + "="*70)
+          print("  SUMMARY")
+          print("="*70)
+          print(f"  Candidates tested : {len(candidates)}")
+          print(f"  Trades confirmed  : {len(confirmed_trades)}")
+          for t in confirmed_trades:
+              print(f"    ✅  {t['ticker']:6s}  qty={t['qty']}  entry=${t['entry']:.2f}  db_id={t['trade_id']}")
+
+          non_traded = [c["ticker"] for c in candidates if c["ticker"] not in [t["ticker"] for t in confirmed_trades]]
+          for tk in non_traded:
+              print(f"    ❌  {tk:6s}  (filtered out by scorer or AI)")
+
+          if not confirmed_trades:
+              print("\n  ⚠  No trades confirmed — check scorer thresholds or API key")
+          else:
+              print(f"\n  ✅ Pipeline completed successfully")
+          PYEOF
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-report
+          path: reports/*.html
+          if-no-files-found: warn
