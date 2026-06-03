@@ -173,6 +173,11 @@ def compute_indicators_from_df(ticker: str, df: pd.DataFrame,
     else:
         result["gap_pct"] = None
 
+    if current_price and prev_close and prev_close != 0:
+        result["intraday_move_pct"] = (current_price - prev_close) / prev_close * 100
+    else:
+        result["intraday_move_pct"] = None
+
     # ── TREND: EMAs ────────────────────────────────────────────────────────
     for period in [9, 21, 50, 200]:
         try:
