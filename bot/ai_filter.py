@@ -219,7 +219,7 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
                      news: Optional[dict] = None) -> dict:
     """
     Run Claude's second opinion on any ticker, regardless of scorer action.
-    Skips tickers where |net_score| < _MIN_NET_FOR_AI (pure noise).
+    Runs Claude on every ticker regardless of net score.
 
     Possible outcomes:
       scorer buy  + Claude buy   → confirmed buy
@@ -235,12 +235,6 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
         ticker       = scorer_result.get("ticker", "?")
         scorer_action = scorer_result.get("action", "hold")
         net_score    = abs(scorer_result.get("net_score", 0))
-
-        if net_score < _MIN_NET_FOR_AI:
-            logger.debug(f"[AI] {ticker}: net={net_score} < {_MIN_NET_FOR_AI} — skipping AI")
-            scorer_result["ai_confirmed"] = None
-            scorer_result["ai_reasoning"] = "skipped — net score below AI threshold"
-            return scorer_result
 
         news = news or scorer_result.get("_news", {})
         ai = claude_analyze_ticker(ticker, indicators, scorer_result, news=news)
