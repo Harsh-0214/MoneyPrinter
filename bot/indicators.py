@@ -34,7 +34,7 @@ def _safe(val) -> Optional[float]:
 def _fetch_daily(ticker: str) -> Optional[pd.DataFrame]:
     try:
         t = yf.Ticker(ticker)
-        df = t.history(period="90d", interval="1d", auto_adjust=True)
+        df = t.history(period="2y", interval="1d", auto_adjust=True)
         if df is None or df.empty:
             return None
         df.index = pd.to_datetime(df.index)
