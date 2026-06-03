@@ -50,7 +50,7 @@ body {
 ::-webkit-scrollbar-thumb:hover { background:var(--muted); }
 
 /* ── Layout ────────────────────────────────────────────────── */
-.container { max-width: 1600px; margin: 0 auto; padding: 0 24px 40px; }
+.container { width: 100%; padding: 0 20px 40px; }
 
 /* ── Header ────────────────────────────────────────────────── */
 .header {
@@ -264,8 +264,8 @@ tr.rs > td { background: rgba(255,77,106,.04); }
 
 /* Summary bar at top of panel */
 .ap-header {
-  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
-  padding:16px 24px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:14px 20px; border-bottom:1px solid var(--border);
   background: var(--bg4);
 }
 .ap-ticker { font-size:1.6rem; font-weight:900; font-family:var(--mono); letter-spacing:-1px; }
@@ -275,7 +275,7 @@ tr.rs > td { background: rgba(255,77,106,.04); }
 .ap-verdict-confirmed { background:rgba(0,214,143,.12); color:var(--green); border:1px solid rgba(0,214,143,.3); }
 .ap-verdict-rejected  { background:rgba(255,77,106,.12); color:var(--red);   border:1px solid rgba(255,77,106,.3); }
 .ap-verdict-skipped   { background:rgba(90,114,153,.1);  color:var(--muted2);border:1px solid var(--border); }
-.ap-meta { display:flex; gap:20px; flex-wrap:wrap; margin-left:auto; }
+.ap-meta { display:flex; gap:20px; flex-wrap:wrap; margin-left:auto; min-width:0; }
 .ap-meta-item { text-align:right; }
 .ap-meta-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:2px; }
 .ap-meta-value { font-size:13px; font-weight:700; font-family:var(--mono); }
@@ -289,18 +289,25 @@ tr.rs > td { background: rgba(255,77,106,.04); }
 /* Main grid */
 .ap-grid {
   display:grid;
-  grid-template-columns: 280px 1fr 1fr;
-  grid-template-rows: auto auto;
+  grid-template-columns: 300px 1fr 1fr;
+  grid-template-rows: auto;
   gap:0;
 }
-@media(max-width:1100px) { .ap-grid { grid-template-columns:1fr 1fr; } }
-@media(max-width:680px)  { .ap-grid { grid-template-columns:1fr; } }
+@media(max-width:1200px) { .ap-grid { grid-template-columns:1fr 1fr; } }
+@media(max-width:700px)  { .ap-grid { grid-template-columns:1fr; } }
 
 .ap-section {
   padding:20px 24px;
   border-right:1px solid var(--border);
   border-bottom:1px solid var(--border);
-  min-width:0; overflow-wrap:break-word; word-break:break-word;
+  min-width:0;
+  overflow-wrap:break-word;
+  word-break:break-word;
+  overflow:visible;
+}
+@media(max-width:700px) {
+  .ap-section { border-right:none; padding:16px; }
+  .ap-section:last-child { border-bottom:none; }
 }
 .ap-section:last-child, .ap-section.no-border-r { border-right:none; }
 .ap-section.span2 { grid-column: span 2; }
@@ -375,7 +382,7 @@ tr.rs > td { background: rgba(255,77,106,.04); }
 .pol-pos { background:rgba(0,214,143,.12); color:var(--green); }
 .pol-neg { background:rgba(255,77,106,.12); color:var(--red); }
 .pol-neu { background:rgba(90,114,153,.1);  color:var(--muted2); }
-.headline-text { font-size:12px; color:var(--text); line-height:1.5; }
+.headline-text { font-size:12px; color:var(--text); line-height:1.5; word-break:break-word; overflow-wrap:break-word; min-width:0; flex:1; }
 
 /* Open position box */
 .pos-box {
@@ -449,6 +456,40 @@ footer {
 footer a { color:var(--muted2); text-decoration:none; }
 footer a:hover { color:var(--blue); }
 .footer-dot { width:4px; height:4px; border-radius:50%; background:var(--border2); display:inline-block; margin:0 6px; vertical-align:middle; }
+
+/* ── Responsive overrides ──────────────────────────────────── */
+@media(max-width:900px) {
+  .container { padding:0 12px 32px; }
+  .header { gap:10px; }
+  .cards { grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:10px; }
+  .tabs { width:100%; overflow-x:auto; }
+  .filters { gap:6px; }
+  .search-wrap { margin-left:0; width:100%; }
+  .search-box { width:100% !important; }
+  .tbl-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table { font-size:11px; }
+  tbody td { padding:8px 10px; }
+  /* hide less-important columns on tablet */
+  .col-strategy, .col-stop, .col-target { display:none; }
+}
+@media(max-width:600px) {
+  body { font-size:13px; }
+  .container { padding:0 8px 24px; }
+  .header { padding:12px 0; }
+  .bot-name { font-size:1.1rem; }
+  .logo-icon { width:32px; height:32px; font-size:15px; }
+  .card-value { font-size:1.5rem; }
+  .cards { grid-template-columns:1fr 1fr; gap:8px; }
+  .card { padding:14px 14px; }
+  thead th, tbody td { padding:7px 8px; }
+  /* on phone only show ticker, action, score, AI columns */
+  .col-strategy,.col-stop,.col-target,.col-session,.col-entry { display:none; }
+  .ap-header { padding:12px 14px; gap:10px; }
+  .ap-ticker { font-size:1.3rem; }
+  .ap-meta { gap:12px; }
+  .ap-meta-item { text-align:left; }
+  .price-guidance { grid-template-columns:1fr 1fr; }
+}
 </style>
 </head>
 <body>
@@ -568,14 +609,14 @@ footer a:hover { color:var(--blue); }
         <th>Action</th>
         <th onclick="sortBy('net_score')">Net Score <span class="sort-arr">▼</span></th>
         <th onclick="sortBy('confidence')">Conf <span class="sort-arr">▼</span></th>
-        <th>Strategy</th>
+        <th class="col-strategy">Strategy</th>
         <th>Bull</th>
         <th>Bear</th>
-        <th>Entry</th>
-        <th>Stop</th>
-        <th>Target</th>
+        <th class="col-entry">Entry</th>
+        <th class="col-stop">Stop</th>
+        <th class="col-target">Target</th>
         <th>AI</th>
-        <th>Session</th>
+        <th class="col-session">Session</th>
       </tr></thead>
       <tbody id="decisionsBody"></tbody>
     </table>
@@ -795,14 +836,14 @@ function renderDecisions() {
       <td>${badge(e.action)}</td>
       <td style="color:${netColor(n)};font-weight:700">${n>0?'+':''}${n}</td>
       <td>${confRing(e.confidence)}</td>
-      <td style="color:var(--muted2);font-family:inherit">${e.strategy||'—'}</td>
+      <td class="col-strategy" style="color:var(--muted2);font-family:inherit">${e.strategy||'—'}</td>
       <td style="color:var(--green)">${e.bull_score||0}</td>
       <td style="color:var(--red)">${e.bear_score||0}</td>
-      <td>$${fmt(e.entry_price)}</td>
-      <td style="color:var(--red)">$${fmt(e.stop_loss)}</td>
-      <td style="color:var(--green)">$${fmt(e.take_profit)}</td>
+      <td class="col-entry">$${fmt(e.entry_price)}</td>
+      <td class="col-stop" style="color:var(--red)">$${fmt(e.stop_loss)}</td>
+      <td class="col-target" style="color:var(--green)">$${fmt(e.take_profit)}</td>
       <td>${aiChip(e.ai_confirmed)}</td>
-      <td style="color:var(--muted);font-family:inherit">${e.session||'—'}</td>
+      <td class="col-session" style="color:var(--muted);font-family:inherit">${e.session||'—'}</td>
     </tr>`);
     html.push(drawerHTML(uid, e));
   });
