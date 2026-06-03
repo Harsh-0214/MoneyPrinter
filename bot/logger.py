@@ -89,8 +89,13 @@ def init_db() -> None:
     """)
     conn.commit()
 
-    # Add trailing stop columns if missing (migration-safe)
-    for col, col_type in [("highest_price_seen", "REAL"), ("trailing_stop_price", "REAL")]:
+    # Add columns if missing (migration-safe)
+    for col, col_type in [
+        ("highest_price_seen",  "REAL"),
+        ("trailing_stop_price", "REAL"),
+        ("ai_confirmed",        "INTEGER"),
+        ("ai_reasoning",        "TEXT"),
+    ]:
         try:
             conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {col_type}")
             conn.commit()
@@ -124,6 +129,8 @@ def log_trade(
     vix_level: float,
     alpaca_order_id: str,
     status: str = "open",
+    ai_confirmed: Optional[bool] = None,
+    ai_reasoning: Optional[str] = None,
 ) -> int:
     """Insert a trade record. Returns the new row ID."""
     init_db()
@@ -136,8 +143,9 @@ def log_trade(
             quantity, entry_price, limit_price, stop_loss, take_profit,
             confidence, net_score, bull_score, bear_score,
             signals_triggered, signals_against, reasoning, risk_reward,
-            macro_bias, vix_level, alpaca_order_id, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            macro_bias, vix_level, alpaca_order_id, status,
+            ai_confirmed, ai_reasoning
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.utcnow().isoformat(),
             session,
@@ -162,6 +170,8 @@ def log_trade(
             vix_level,
             alpaca_order_id,
             status,
+            int(ai_confirmed) if ai_confirmed is not None else None,
+            ai_reasoning,
         ))
         conn.commit()
         row_id = cur.lastrowid
