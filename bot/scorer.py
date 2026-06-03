@@ -607,15 +607,14 @@ def score_ticker(
     atr = _v(ind.get("atr"), default=cp * 0.02)
     rr  = 2.5
 
-    if action == "buy":
-        stop_loss   = round(cp - atr * 1.5, 2)
-        take_profit = round(cp + atr * 1.5 * rr, 2)
-    elif action in ("short", "sell"):
+    # Always compute stops/targets — for holds these represent "if you were to enter"
+    if action in ("short", "sell"):
         stop_loss   = round(cp + atr * 1.5, 2)
         take_profit = round(cp - atr * 1.5 * rr, 2)
     else:
-        stop_loss   = None
-        take_profit = None
+        # buy or hold — long-side levels
+        stop_loss   = round(cp - atr * 1.5, 2)
+        take_profit = round(cp + atr * 1.5 * rr, 2)
 
     strategy  = _pick_strategy_hint(signals_triggered, ind, vol_ratio, ema_full_bull)
     reasoning = ". ".join(reasoning_parts[:8]) if reasoning_parts else "No strong directional signals."

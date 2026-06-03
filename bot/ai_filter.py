@@ -70,9 +70,14 @@ _MAX_WORKERS = 6
 def _fallback(scorer_action: str) -> dict:
     """Pass-through fallback that preserves the scorer's original decision."""
     return {
-        "decision":   scorer_action,
-        "confidence": 1.0,
-        "reasoning":  "AI filter unavailable — scorer decision kept",
+        "decision":        scorer_action,
+        "confidence":      1.0,
+        "reasoning":       "AI filter unavailable — scorer decision kept",
+        "entry_price":     None,
+        "stop_loss":       None,
+        "take_profit":     None,
+        "risk_reward":     None,
+        "entry_condition": "",
     }
 
 
@@ -193,8 +198,21 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
         "Your 'reasoning' must explain the business/macro logic — not just restate",
         "the indicator values. If you cannot justify the trade logically, say 'hold'.",
         "",
+        "ALWAYS include specific price guidance in every response, even for holds:",
+        f"  - entry_price: the specific price level where entry makes sense RIGHT NOW",
+        f"    (for holds: what price would make you change to buy/short — be specific)",
+        f"  - stop_loss: where you'd cut the loss (for longs: below support; for shorts: above resistance)",
+        f"  - take_profit: realistic price target based on next resistance/support",
+        f"  - risk_reward: take_profit distance / stop_loss distance (aim for >= 2.0)",
+        f"  - entry_condition: ONE sentence describing what needs to happen before entry",
+        f"    (e.g. 'Wait for RSI to cool below 55 and price to hold $142 support' or",
+        f"     'Enter now — momentum confirmed, catalyst present, risk defined')",
+        "",
         'Respond with ONLY a valid JSON object — no markdown, no explanation outside it:',
-        f'{{"decision": {valid_decisions}, "confidence": 0.0-1.0, "reasoning": "two sentences max: one on technicals, one on business logic"}}',
+        f'{{"decision": {valid_decisions}, "confidence": 0.0-1.0, '
+        f'"reasoning": "2-3 sentences: technicals + business logic + why now or why wait", '
+        f'"entry_price": <number>, "stop_loss": <number>, "take_profit": <number>, '
+        f'"risk_reward": <number>, "entry_condition": "one sentence on exact trigger"}}',
     ]
     return "\n".join(lines)
 
@@ -218,7 +236,7 @@ def claude_analyze_ticker(ticker: str, indicators: dict, scorer_result: dict,
 
         message = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=512,
+            max_tokens=768,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
             timeout=20,
@@ -242,7 +260,20 @@ def claude_analyze_ticker(ticker: str, indicators: dict, scorer_result: dict,
             logger.warning(f"[AI] {ticker}: unexpected decision '{decision}' — keeping scorer decision")
             decision = scorer_action
 
-        return {"decision": decision, "confidence": confidence, "reasoning": reasoning}
+        def _safe_float(v):
+            try: return round(float(v), 2) if v is not None else None
+            except: return None
+
+        return {
+            "decision":        decision,
+            "confidence":      confidence,
+            "reasoning":       reasoning,
+            "entry_price":     _safe_float(result.get("entry_price")),
+            "stop_loss":       _safe_float(result.get("stop_loss")),
+            "take_profit":     _safe_float(result.get("take_profit")),
+            "risk_reward":     _safe_float(result.get("risk_reward")),
+            "entry_condition": str(result.get("entry_condition", "")),
+        }
 
     except Exception as e:
         logger.warning(f"[AI] {ticker}: error — {e} — keeping scorer decision")
@@ -276,8 +307,13 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
         ai_conf      = ai.get("confidence", 1.0)
         ai_reasoning = ai.get("reasoning", "")
 
-        scorer_result["ai_confirmed"] = (ai_decision == scorer_action)
-        scorer_result["ai_reasoning"] = ai_reasoning
+        scorer_result["ai_confirmed"]      = (ai_decision == scorer_action)
+        scorer_result["ai_reasoning"]      = ai_reasoning
+        scorer_result["ai_entry_price"]    = ai.get("entry_price")
+        scorer_result["ai_stop_loss"]      = ai.get("stop_loss")
+        scorer_result["ai_take_profit"]    = ai.get("take_profit")
+        scorer_result["ai_risk_reward"]    = ai.get("risk_reward")
+        scorer_result["ai_entry_condition"]= ai.get("entry_condition", "")
         has_position = bool(scorer_result.get("_position"))
 
         if has_position:
