@@ -9,10 +9,13 @@ Criteria for promotion:
   - |price change vs prev close| >= 1.5%  OR  within 3% of 52-week high
   - Not already in the static watchlist
   - Max DISCOVERY_LIMIT tickers kept at once (ranked by volume ratio)
+  - Claude second-opinion screen: rejects candidates without a clear
+    business reason driving the activity
 """
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -128,9 +131,16 @@ def run_discovery(static_tickers: list[str]) -> list[str]:
             logger.debug(f"[discovery] {ticker} skipped: {e}")
             continue
 
-    # Rank by volume ratio, keep top N
+    # Rank by volume ratio, keep top N before Claude screen
     candidates.sort(key=lambda x: x["vol_ratio"], reverse=True)
-    promoted = candidates[:DISCOVERY_LIMIT]
+    pre_claude = candidates[:DISCOVERY_LIMIT * 2]  # pass 2x to Claude so it has room to reject
+
+    # Claude qualitative screen
+    logger.info(f"[discovery] Sending {len(pre_claude)} candidates to Claude for qualitative screen...")
+    approved = claude_screen_discovery_candidates(pre_claude)
+
+    # Take top DISCOVERY_LIMIT from Claude-approved set (still ranked by vol_ratio)
+    promoted = approved[:DISCOVERY_LIMIT]
     promoted_tickers = [c["ticker"] for c in promoted]
 
     # Persist
@@ -138,9 +148,128 @@ def run_discovery(static_tickers: list[str]) -> list[str]:
     _save_discovered({"tickers": promoted_tickers, "meta": meta})
 
     logger.info(
-        f"[discovery] {len(promoted)} tickers promoted: {promoted_tickers}"
+        f"[discovery] {len(promoted)} tickers promoted after Claude screen: {promoted_tickers}"
     )
     return promoted_tickers
+
+
+_DISCOVERY_SYSTEM_PROMPT = """\
+You are a senior equity research analyst screening stocks for a short-term \
+trading watchlist. You will receive basic market data for a stock that a \
+quantitative screener has flagged as an active mover today.
+
+Your job is to decide whether this stock deserves to be added to the watchlist \
+for closer monitoring and potential trading over the next 1-3 sessions.
+
+Rules:
+- DO NOT promote a stock just because it has high volume or a big price move.
+  You must identify WHY it is moving and whether that reason is credible and durable.
+- Acceptable reasons: earnings beat, product launch, FDA approval, major contract,
+  analyst upgrade with new catalyst, sector rotation with a clear macro driver.
+- Unacceptable reasons: pure momentum with no news, meme activity, unexplained spike,
+  near 52-week high with no fundamental catalyst.
+- If you cannot identify a clear reason for the activity, say 'reject'.
+- Be conservative. A missed opportunity costs nothing. A bad trade costs money.\
+"""
+
+
+def claude_screen_discovery_candidates(candidates: list[dict]) -> list[dict]:
+    """
+    Pass quantitative discovery candidates through Claude for a qualitative screen.
+    Returns the subset Claude approves, each with 'claude_reasoning' attached.
+    Falls back to returning all candidates unchanged if the API is unavailable.
+    """
+    if not candidates:
+        return candidates
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        logger.info("[discovery] ANTHROPIC_API_KEY not set — skipping Claude screen")
+        return candidates
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+    except Exception as e:
+        logger.warning(f"[discovery] Claude client init failed: {e} — skipping screen")
+        return candidates
+
+    approved = []
+    for c in candidates:
+        ticker     = c["ticker"]
+        price      = c.get("price", 0)
+        pct_change = c.get("pct_change", 0)
+        vol_ratio  = c.get("vol_ratio", 0)
+        mkt_cap_b  = c.get("mkt_cap_b")
+        near_52wk  = c.get("near_52wk", False)
+
+        # Fetch a few recent headlines to give Claude context
+        headlines_text = "(no headlines fetched)"
+        try:
+            import feedparser
+            feed = feedparser.parse("https://finance.yahoo.com/rss/")
+            hits = []
+            for entry in feed.entries[:40]:
+                title = getattr(entry, "title", "") or ""
+                if ticker.lower() in title.lower():
+                    hits.append(title[:150])
+                    if len(hits) >= 3:
+                        break
+            if hits:
+                headlines_text = "\n".join(f"  - {h}" for h in hits)
+        except Exception:
+            pass
+
+        prompt = f"""DISCOVERY CANDIDATE: {ticker}
+
+Price:        ${price:.2f}
+Change today: {pct_change:+.1f}%
+Volume ratio: {vol_ratio:.1f}x 3-month average  (unusually high activity)
+Market cap:   ${mkt_cap_b}B
+Near 52-wk high: {near_52wk}
+
+Recent headlines (Yahoo Finance RSS, may be incomplete):
+{headlines_text}
+
+Should this stock be added to the trading watchlist for the next 1-3 sessions?
+
+Answer ONLY with a JSON object:
+{{"decision": "approve" or "reject", "confidence": 0.0-1.0, "reasoning": "one sentence explaining the business reason for the activity, or why there is none"}}"""
+
+        try:
+            msg = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=200,
+                system=_DISCOVERY_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+                timeout=15,
+            )
+            raw = msg.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+            result   = json.loads(raw)
+            decision = str(result.get("decision", "approve")).lower()
+            reasoning = str(result.get("reasoning", ""))
+            conf      = float(result.get("confidence", 1.0))
+
+            if decision == "approve":
+                c["claude_reasoning"] = reasoning
+                c["claude_confidence"] = conf
+                approved.append(c)
+                logger.info(f"[discovery] Claude APPROVED {ticker} (conf={conf:.2f}): {reasoning}")
+            else:
+                logger.info(f"[discovery] Claude REJECTED {ticker}: {reasoning}")
+
+        except Exception as e:
+            logger.warning(f"[discovery] Claude screen failed for {ticker}: {e} — keeping candidate")
+            c["claude_reasoning"] = "AI screen error — kept by default"
+            approved.append(c)
+
+    logger.info(f"[discovery] Claude screen: {len(approved)}/{len(candidates)} candidates approved")
+    return approved
 
 
 def get_discovered_tickers() -> list[str]:
