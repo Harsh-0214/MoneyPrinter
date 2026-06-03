@@ -88,6 +88,15 @@ def init_db() -> None:
     );
     """)
     conn.commit()
+
+    # Add trailing stop columns if missing (migration-safe)
+    for col, col_type in [("highest_price_seen", "REAL"), ("trailing_stop_price", "REAL")]:
+        try:
+            conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {col_type}")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
+
     conn.close()
     logger.info(f"[logger] DB initialized at {DB_PATH}")
 
@@ -298,6 +307,22 @@ def log_scan(
             signals_generated, trades_executed,
             total_bull, total_bear,
         ))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_trade_trailing(trade_id: int, highest_price_seen: float, trailing_stop_price: float) -> None:
+    """Update trailing stop fields for an open trade."""
+    init_db()
+    conn = _connect()
+    try:
+        conn.execute("""
+        UPDATE trades SET
+            highest_price_seen  = ?,
+            trailing_stop_price = ?
+        WHERE id = ?
+        """, (highest_price_seen, trailing_stop_price, trade_id))
         conn.commit()
     finally:
         conn.close()

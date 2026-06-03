@@ -173,6 +173,11 @@ def compute_indicators_from_df(ticker: str, df: pd.DataFrame,
     else:
         result["gap_pct"] = None
 
+    if current_price and prev_close and prev_close != 0:
+        result["intraday_move_pct"] = (current_price - prev_close) / prev_close * 100
+    else:
+        result["intraday_move_pct"] = None
+
     # ── TREND: EMAs ────────────────────────────────────────────────────────
     for period in [9, 21, 50, 200]:
         try:
@@ -471,25 +476,83 @@ def get_indicators(ticker: str) -> dict:
 
     result = compute_indicators_from_df(ticker, daily, intraday, realtime_price=True)
 
+    # Merge intraday 15-min indicators
+    intraday_ind = get_intraday_indicators(ticker)
+    result.update(intraday_ind)
+
     if not result.get("error"):
         _cache[cache_key] = result
     return result
 
 
-def get_indicators_batch(tickers: list, max_workers: int = 2) -> dict:
-    """Fetch indicators for multiple tickers concurrently with staggered submission."""
-    import time
+def get_intraday_indicators(ticker: str) -> dict:
+    """
+    Fetch 15-minute intraday data and compute intraday VWAP, RSI, and MACD.
+    Returns dict with: intraday_vwap, intraday_rsi, intraday_macd_hist, intraday_vs_vwap
+    """
+    result = {
+        "intraday_vwap": None,
+        "intraday_rsi": None,
+        "intraday_macd_hist": None,
+        "intraday_vs_vwap": None,
+    }
+    try:
+        t = yf.Ticker(ticker)
+        df = t.history(period="5d", interval="15m", auto_adjust=True)
+        if df is None or df.empty:
+            return result
+        df.index = pd.to_datetime(df.index)
+
+        # Filter to today's bars for VWAP
+        today = datetime.now().date()
+        today_mask = df.index.date == today
+        today_df = df[today_mask].copy()
+        if today_df.empty:
+            today_df = df.copy()
+
+        # Intraday VWAP (reset daily)
+        typical = (today_df["High"] + today_df["Low"] + today_df["Close"]) / 3
+        cum_vol = today_df["Volume"].cumsum()
+        if cum_vol.iloc[-1] > 0:
+            vwap_val = _safe((typical * today_df["Volume"]).cumsum().iloc[-1] / cum_vol.iloc[-1])
+            result["intraday_vwap"] = vwap_val
+
+        # Intraday RSI(14) on all 15-min closes (need enough bars)
+        if len(df) >= 15:
+            rsi_ind = ta_momentum.RSIIndicator(close=df["Close"], window=14, fillna=False)
+            result["intraday_rsi"] = _safe(rsi_ind.rsi().iloc[-1])
+
+        # Intraday MACD histogram on 15-min closes
+        if len(df) >= 26:
+            macd_ind  = ta_trend.MACD(close=df["Close"], window_slow=26,
+                                      window_fast=12, window_sign=9, fillna=False)
+            result["intraday_macd_hist"] = _safe(macd_ind.macd_diff().iloc[-1])
+
+        # % distance from intraday VWAP
+        if result["intraday_vwap"] and result["intraday_vwap"] > 0:
+            last_price = _safe(df["Close"].iloc[-1])
+            if last_price:
+                result["intraday_vs_vwap"] = round(
+                    (last_price - result["intraday_vwap"]) / result["intraday_vwap"] * 100, 3
+                )
+    except Exception as e:
+        logger.warning(f"[indicators] intraday_indicators failed for {ticker}: {e}")
+    return result
+
+
+def get_indicators_batch(tickers: list, max_workers: int = 8) -> dict:
+    """Fetch indicators for multiple tickers in parallel using ThreadPoolExecutor."""
+    import time as _time
     results = {}
+    t0 = _time.time()
     with ThreadPoolExecutor(max_workers=max_workers) as exe:
-        futures = {}
-        for i, t in enumerate(tickers):
-            futures[exe.submit(get_indicators, t)] = t
-            if i % max_workers == max_workers - 1:
-                time.sleep(0.5)  # brief pause every batch to avoid Yahoo 429s
+        futures = {exe.submit(get_indicators, t): t for t in tickers}
         for fut, ticker in futures.items():
             try:
                 results[ticker] = fut.result()
             except Exception as e:
                 logger.warning(f"[indicators] batch failed for {ticker}: {e}")
                 results[ticker] = {"ticker": ticker, "error": str(e)}
+    elapsed = _time.time() - t0
+    logger.info(f"[perf] Fetched {len(tickers)} tickers in {elapsed:.1f}s")
     return results

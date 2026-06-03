@@ -29,7 +29,7 @@ UNIVERSE = [
     "ORCL", "CRM", "ADBE", "INTC", "QCOM", "TXN", "NOW", "SNOW", "NET", "PANW",
     "CRWD", "ZS", "DDOG", "MDB", "SHOP", "UBER", "LYFT", "ABNB", "DASH", "RBLX",
     # Semis
-    "AVGO", "MU", "AMAT", "LRCX", "KLAC", "MRVL", "ON", "SWKS", "MPWR",
+    "AVGO", "MU", "AMAT", "LRCX", "KLAC", "MRVL", "ARM", "ON", "SWKS", "MPWR",
     # Large-cap consumer/retail
     "AMZN", "WMT", "COST", "TGT", "HD", "LOW", "NKE", "SBUX", "MCD", "YUM",
     # Financials

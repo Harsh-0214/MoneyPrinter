@@ -95,6 +95,69 @@ def calculate_position(
     }
 
 
+TRAILING_ACTIVATE_PCT = 0.08   # activate when up 8%
+TRAILING_TRAIL_PCT    = 0.05   # trail 5% below highest price
+
+
+def update_trailing_stop(trade_record: dict, current_price: float) -> dict:
+    """
+    Returns updated trade_record with trailing_stop_price updated if applicable.
+    Call this every cycle for open positions.
+
+    Keys added/updated in returned dict:
+      - highest_price_seen: float
+      - trailing_stop_price: float or None
+      - trailing_stop_updated: bool
+      - trailing_stop_triggered: bool
+    """
+    result = dict(trade_record)
+    result["trailing_stop_updated"]   = False
+    result["trailing_stop_triggered"] = False
+
+    entry_price = float(trade_record.get("entry_price") or 0)
+    if entry_price <= 0 or current_price <= 0:
+        return result
+
+    # Only applies to long (buy) positions
+    action = trade_record.get("action", "buy")
+    if action not in ("buy",):
+        return result
+
+    highest = float(trade_record.get("highest_price_seen") or entry_price)
+    if current_price > highest:
+        highest = current_price
+        result["highest_price_seen"]  = highest
+        result["trailing_stop_updated"] = True
+
+    # Activate only when gain >= TRAILING_ACTIVATE_PCT
+    gain_pct = (highest - entry_price) / entry_price if entry_price > 0 else 0
+    if gain_pct < TRAILING_ACTIVATE_PCT:
+        result["highest_price_seen"] = highest
+        return result
+
+    # Compute trailing stop: TRAILING_TRAIL_PCT below highest
+    trail_price = round(highest * (1.0 - TRAILING_TRAIL_PCT), 2)
+    old_trail   = trade_record.get("trailing_stop_price")
+
+    # Only move trail up, never down
+    if old_trail is None or trail_price > float(old_trail):
+        result["trailing_stop_price"]  = trail_price
+        result["trailing_stop_updated"] = True
+
+    result["highest_price_seen"] = highest
+
+    # Check if triggered
+    effective_trail = result.get("trailing_stop_price") or trail_price
+    if current_price <= float(effective_trail):
+        result["trailing_stop_triggered"] = True
+        logger.info(
+            f"[risk] Trailing stop triggered: price={current_price:.2f} "
+            f"trail={effective_trail:.2f} highest={highest:.2f}"
+        )
+
+    return result
+
+
 def compute_stops(
     action: str,
     entry_price: float,

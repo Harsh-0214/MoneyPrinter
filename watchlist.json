@@ -1,6 +1,6 @@
 {
   "trade": {
-    "tech": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD"],
+    "tech": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "MRVL", "AVGO", "ARM"],
     "momentum": ["PLTR", "COIN", "SOFI", "MSTR", "SMCI"],
     "financials": ["JPM", "GS", "BAC"],
     "energy": ["XOM", "CVX"]
@@ -26,6 +26,9 @@
     "BAC": "Bank of America",
     "XOM": "Exxon Mobil",
     "CVX": "Chevron Corporation",
+    "MRVL": "Marvell Technology",
+    "AVGO": "Broadcom Inc",
+    "ARM": "Arm Holdings",
     "SPY": "SPDR S&P 500 ETF",
     "QQQ": "Invesco QQQ Trust",
     "IWM": "iShares Russell 2000 ETF"
