@@ -640,7 +640,7 @@ def session_continuous(alpaca_client, data_client) -> None:
                                get_open_positions, close_position_and_log)
     from bot.discovery import scan_rising_movers
 
-    SCAN_INTERVAL = 5           # minutes between scans
+    SCAN_INTERVAL = 10          # minutes between scans
     MOVER_SCAN_EVERY = 3        # run rising-movers screen every N cycles (~15 min)
     MARKET_OPEN_ET  = (9,  30)  # 9:30 AM ET
     SCALP_CLOSE_ET  = (15, 45)  # 3:45 PM ET — close scalps before market close

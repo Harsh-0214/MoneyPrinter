@@ -60,11 +60,14 @@ response must justify the decision in terms of both technicals AND business \
 logic, not just indicator values.\
 """
 
-# Tickers with net_score below this in absolute value are noise — skip Claude.
-_MIN_NET_FOR_AI = 20
+# Net score threshold — skip Claude on clean holds (|net| < this AND no open position)
+_SKIP_CLAUDE_NET_THRESHOLD = 40
 
 # Max parallel Claude calls per batch (avoids rate-limit bursts)
 _MAX_WORKERS = 6
+
+# Set True when Anthropic billing/credits are exhausted — disables Claude for the session
+_credits_exhausted: bool = False
 
 
 def _fallback(scorer_action: str) -> dict:
@@ -223,7 +226,13 @@ def claude_analyze_ticker(ticker: str, indicators: dict, scorer_result: dict,
     Ask Claude for an independent buy/short/hold decision on one ticker.
     Never raises — returns a fallback that preserves the scorer decision.
     """
+    global _credits_exhausted  # noqa: PLW0603
     scorer_action = scorer_result.get("action", "hold")
+
+    if _credits_exhausted:
+        logger.debug(f"[AI] {ticker}: credits exhausted — skipping Claude")
+        return _fallback(scorer_action)
+
     try:
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
@@ -276,7 +285,13 @@ def claude_analyze_ticker(ticker: str, indicators: dict, scorer_result: dict,
         }
 
     except Exception as e:
-        logger.warning(f"[AI] {ticker}: error — {e} — keeping scorer decision")
+        err_str = str(e).lower()
+        # Detect exhausted credits / billing errors — disable Claude for rest of session
+        if any(kw in err_str for kw in ("credit", "billing", "quota", "insufficient", "overloaded", "529")):
+            _credits_exhausted = True
+            logger.warning(f"[AI] Credits/billing error — disabling Claude for this session: {e}")
+        else:
+            logger.warning(f"[AI] {ticker}: error — {e} — keeping scorer decision")
         return _fallback(scorer_action)
 
 
@@ -297,9 +312,24 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
     Always returns a valid scorer_result dict, never raises.
     """
     try:
-        ticker       = scorer_result.get("ticker", "?")
+        ticker        = scorer_result.get("ticker", "?")
         scorer_action = scorer_result.get("action", "hold")
-        net_score    = abs(scorer_result.get("net_score", 0))
+        net_score     = abs(scorer_result.get("net_score", 0))
+        has_position  = bool(scorer_result.get("_position"))
+
+        # Skip Claude on clean holds with no open position — obvious non-trades
+        if (scorer_action == "hold"
+                and net_score < _SKIP_CLAUDE_NET_THRESHOLD
+                and not has_position):
+            logger.debug(f"[AI] {ticker}: clean hold (net={scorer_result.get('net_score',0)}) — skipping Claude")
+            scorer_result.setdefault("ai_confirmed", None)
+            scorer_result.setdefault("ai_reasoning", "")
+            scorer_result.setdefault("ai_entry_price", None)
+            scorer_result.setdefault("ai_stop_loss", None)
+            scorer_result.setdefault("ai_take_profit", None)
+            scorer_result.setdefault("ai_risk_reward", None)
+            scorer_result.setdefault("ai_entry_condition", "")
+            return scorer_result
 
         news = news or scorer_result.get("_news", {})
         ai = claude_analyze_ticker(ticker, indicators, scorer_result, news=news)
@@ -370,20 +400,43 @@ def run_ai_filter_batch(scored_pairs: list[tuple[dict, dict]]) -> list[dict]:
 
     results = [None] * len(scored_pairs)
 
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
-        future_to_idx = {
-            ex.submit(apply_ai_opinion, pair[0], pair[1],
-                      pair[0].get("_news", {})): i
-            for i, pair in enumerate(scored_pairs)
-        }
-        for future in as_completed(future_to_idx):
-            idx = future_to_idx[future]
-            try:
-                results[idx] = future.result()
-            except Exception as e:
-                logger.warning(f"[AI] batch future error at index {idx}: {e}")
-                results[idx] = scored_pairs[idx][0]  # return unchanged on error
+    # Pre-filter: resolve clean holds immediately without spawning a thread
+    needs_claude = {}
+    for i, pair in enumerate(scored_pairs):
+        s = pair[0]
+        action       = s.get("action", "hold")
+        net          = abs(s.get("net_score", 0))
+        has_position = bool(s.get("_position"))
+        if (action == "hold"
+                and net < _SKIP_CLAUDE_NET_THRESHOLD
+                and not has_position):
+            s.setdefault("ai_confirmed", None)
+            s.setdefault("ai_reasoning", "")
+            s.setdefault("ai_entry_price", None)
+            s.setdefault("ai_stop_loss", None)
+            s.setdefault("ai_take_profit", None)
+            s.setdefault("ai_risk_reward", None)
+            s.setdefault("ai_entry_condition", "")
+            results[i] = s
+        else:
+            needs_claude[i] = pair
 
+    if needs_claude:
+        with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as ex:
+            future_to_idx = {
+                ex.submit(apply_ai_opinion, pair[0], pair[1],
+                          pair[0].get("_news", {})): i
+                for i, pair in needs_claude.items()
+            }
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                try:
+                    results[idx] = future.result()
+                except Exception as e:
+                    logger.warning(f"[AI] batch future error at index {idx}: {e}")
+                    results[idx] = needs_claude[idx][0]
+
+    logger.info(f"[AI] batch: {len(needs_claude)} Claude calls, {len(scored_pairs)-len(needs_claude)} clean-hold skips")
     return results
 
 
