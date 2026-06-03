@@ -1,18 +1,18 @@
 {
   "meta": {
-    "last_updated": "2026-06-03T03:46:48.149651+00:00",
+    "last_updated": "2026-06-03T04:00:49.016139+00:00",
     "last_session": "test",
-    "total_runs_today": 4
+    "total_runs_today": 5
   },
   "daily_history": {
     "2026-06-03": {
       "date": "2026-06-03",
-      "total_decisions": 18,
+      "total_decisions": 22,
       "buys": 2,
-      "holds": 16,
+      "holds": 20,
       "shorts": 0,
-      "claude_confirmed": 12,
-      "claude_rejected": 4,
+      "claude_confirmed": 15,
+      "claude_rejected": 5,
       "claude_skipped": 2,
       "sessions": [
         "test"
@@ -824,6 +824,355 @@
       "atr": 0.7101626075772156,
       "vwap": 14.141414689382486,
       "ema_align": "partial_bull"
+    },
+    {
+      "timestamp": "2026-06-03T04:00:49.016139+00:00",
+      "session": "test",
+      "ticker": "SOFI",
+      "action": "hold",
+      "net_score": 9,
+      "confidence": 0.09,
+      "strategy": "mean_reversion",
+      "bull_score": 30,
+      "bear_score": 21,
+      "signals_triggered": [
+        "psar_bullish",
+        "price_below_vwap",
+        "rsi_healthy_momentum",
+        "roc_positive",
+        "bb_bandwidth_expanding_bear",
+        "obv_rising",
+        "price_above_intraday_vwap"
+      ],
+      "signals_against": [
+        "macd_hist_fading_bull",
+        "cci_overbought",
+        "bb_deeply_overbought",
+        "high_atr_volatility"
+      ],
+      "ai_confirmed": true,
+      "ai_reasoning": "Technicals are mixed \u2014 RSI healthy and PSAR bullish but %B deeply overbought, MACD histogram fading, and today's -4.52% intraday drop with a gap down suggests distribution rather than accumulation. Business logic is clouded by intensifying short-seller and legal pressure on SoFi, which explains the sell-off and warrants waiting for clarity before committing capital on a mean-reversion thesis.",
+      "entry_price": 17.74,
+      "stop_loss": null,
+      "take_profit": null,
+      "risk_reward": 2.0,
+      "reasoning": "Price 2.24% below VWAP. RSI 57.9 healthy bull momentum. %B=0.92 deeply overbought. ATR% 5.15% \u2014 high volatility, position size reduced 40%. SPY bull regime \u2014 bear signals discounted 50%",
+      "held_position": null,
+      "news_headlines": [
+        {
+          "text": "Why SoFi Stock Soared 13% in May - The Motley Fool. <a href=\"https://news.google.com/rss/articles/CBMif0FVX3lxTE5rZVVQVFZackwyVVJnRUpQSzBtU1pPdW1GR1pKY05KcEhoYy14UjQwLWRXQ2VURTZ1a3pKNEFaMUZDZzZSLXJtY1",
+          "polarity": 0.39999999999999997
+        },
+        {
+          "text": "SoFi Technologies (NASDAQ:SOFI) Stock Price Down 4.4% - Time to Sell? - MarketBeat. <a href=\"https://news.google.com/rss/articles/CBMitgFBVV95cUxPRE1ULWFIMXJwR2hZSm9VQ1VWeHo2NmFUejdyWWFPVjhJZFR5QUZXek",
+          "polarity": -0.15555555555555559
+        },
+        {
+          "text": "SOFI Stock Slides As Legal, Short-Seller Heat Intensifies - StocksToTrade. <a href=\"https://news.google.com/rss/articles/CBMif0FVX3lxTE1LVzRfc3Y4Ri1mN2ppME1ET1hIU180SldOWTRvRm5ya1pDMjJvLWhrbEJLQk1xRkY",
+          "polarity": 0.13333333333333333
+        },
+        {
+          "text": "SOFI Stock Drops despite Launch of New AI Financial Planning Tool - TipRanks. <a href=\"https://news.google.com/rss/articles/CBMimwFBVV95cUxNaDJfWGhMeVlKclhBd0cxSUU4djBHQm1hNnROYWh6ZlFWM3ZYWldsLXJOSkVq",
+          "polarity": 0.06818181818181818
+        },
+        {
+          "text": "What's Happening With SOFI Stock? - Yahoo Finance. <a href=\"https://news.google.com/rss/articles/CBMilgFBVV95cUxQWTlpOHR4SFNUTUpVcWRRTmQzcGpUbmNkQ3dEb2gzdkhSTUluUklEa2tiSFIzWk9BTGhsbGp3WXBQTTZEMTJocEN",
+          "polarity": 0.0
+        }
+      ],
+      "news_polarity": 0.0446,
+      "news_count": 10,
+      "bull_keyword_boost": 0.0,
+      "bear_keyword_boost": 0.0,
+      "earnings_risk": "clear",
+      "rsi": 57.93763116218831,
+      "macd_hist": 0.3489151707142465,
+      "volume_ratio": 1.1373901307495204,
+      "intraday_move_pct": -4.5209911519759585,
+      "gap_pct": -2.960168134117201,
+      "adx": 22.14999503876487,
+      "adx_di_plus": 30.38311740493649,
+      "adx_di_minus": 14.0101154429563,
+      "bb_pctb": 0.9155528527907596,
+      "atr": 0.9138418614318814,
+      "vwap": 18.14621129807056,
+      "ema9": 17.084205012707915,
+      "ema21": 16.709548430589106,
+      "ema50": 17.234579079014196,
+      "ema200": 19.975325443073395,
+      "stoch_rsi": null,
+      "cci": 169.85796710730014,
+      "williams_r": null,
+      "obv": 1592639100.0,
+      "mfi": 75.64223200717473,
+      "wk52_high": 32.209999084472656,
+      "wk52_low": 13.460000038146973,
+      "pct_from_52wk_high": -44.9239358107588,
+      "pct_from_52wk_low": 31.79791768827079,
+      "pct_from_ema200": -11.190434310197173,
+      "current_price": 17.739999771118164,
+      "spy_regime": null,
+      "vix": null,
+      "ema_align": "mixed"
+    },
+    {
+      "timestamp": "2026-06-03T04:00:49.016139+00:00",
+      "session": "test",
+      "ticker": "VRT",
+      "action": "hold",
+      "net_score": 47,
+      "confidence": 0.42,
+      "strategy": "mixed",
+      "bull_score": 47,
+      "bear_score": 0,
+      "signals_triggered": [
+        "psar_bullish",
+        "price_above_vwap",
+        "rsi_healthy_momentum",
+        "stochrsi_turning_up_oversold",
+        "obv_rising",
+        "price_above_intraday_vwap"
+      ],
+      "signals_against": [
+        "macd_hist_fading_bear",
+        "high_atr_volatility",
+        "above_ema200_short_penalty"
+      ],
+      "ai_confirmed": true,
+      "ai_reasoning": "Technicals are mixed \u2014 RSI is healthy and price is above VWAP following a gap-up, but MACD histogram is negative, EMA alignment is bearish, and ADX at 16 signals no established trend, making follow-through uncertain. Business logic is incrementally positive (AI data center tailwinds, new AI factory twin product, institutional buying by Northwestern Mutual), but the 3.6% gap today on neutral-sentiment news with no hard catalyst (no earnings beat, no major contract) suggests the move may lack conviction and chasing here risks buying into a one-day pop without durable momentum.",
+      "entry_price": 334.49,
+      "stop_loss": null,
+      "take_profit": null,
+      "risk_reward": 2.0,
+      "reasoning": "ADX 16.1<20 weak trend (0.5x multiplier). Price 1.83% above VWAP. RSI 53.9 healthy bull momentum. ATR% 5.21% \u2014 high volatility, position size reduced 40%. SPY bull regime \u2014 bear signals discounted 50%",
+      "held_position": null,
+      "news_headlines": [
+        {
+          "text": "Vertiv Holdings Co Stock (VRT) Closed Up by 3.41% on Jun 2: What Investors Need To Know - TradingKey. <a href=\"https://news.google.com/rss/articles/CBMiigFBVV95cUxQbUctcnY0cnFJaUpTOWdkbkdUdW1VMTgwVnc0",
+          "polarity": -0.06666666666666667
+        },
+        {
+          "text": "Inside Vertiv's new AI factory twin for faster data center build-outs - Stock Titan. <a href=\"https://news.google.com/rss/articles/CBMiuwFBVV95cUxNTEdGaEZMZDhGc05NTTAwTUdwMHFIYVRLX3FRdC1ScEdTTzJEeU5lL",
+          "polarity": 0.018181818181818174
+        },
+        {
+          "text": "Vertiv Holdings Co (VRT) Shares Surge 3.4% -- What GF Score of 8 - GuruFocus. <a href=\"https://news.google.com/rss/articles/CBMiswFBVV95cUxNV2JQS193bUVuR0Rzek53UXV0eWI4dHNkaHdNSm10R3VjODlEcmNvdGVXa1dQ",
+          "polarity": 0.0
+        },
+        {
+          "text": "How to Get Paid to Buy VRT at a Steep Discount - Trefis. <a href=\"https://news.google.com/rss/articles/CBMitgFBVV95cUxPZW0tWmh0R0dRRFhKeXQ1aEhoaVNteGZCcVVKaWJQcGlEQks0clJtbDRoVDJ0cHk4ZE5CQWJGc3p4dm5ke",
+          "polarity": 0.0
+        },
+        {
+          "text": "Vertiv Holdings Co. $VRT Shares Bought by Northwestern Mutual Wealth Management Co. - MarketBeat. <a href=\"https://news.google.com/rss/articles/CBMi2AFBVV95cUxQV2x0SndiSU9pQmRaeUhiYmRhMzIzbW01UGMyM1Ri",
+          "polarity": 0.0
+        }
+      ],
+      "news_polarity": -0.0081,
+      "news_count": 6,
+      "bull_keyword_boost": 0.0,
+      "bear_keyword_boost": 0.0,
+      "earnings_risk": "clear",
+      "rsi": 53.89860243144863,
+      "macd_hist": -4.0236899200696845,
+      "volume_ratio": 0.8708969592294393,
+      "intraday_move_pct": 3.4323804332686225,
+      "gap_pct": 3.636469499786918,
+      "adx": 16.091030049141004,
+      "adx_di_plus": 27.12846215888219,
+      "adx_di_minus": 19.920655432732136,
+      "bb_pctb": 0.4380977195233492,
+      "atr": 17.41922045103937,
+      "vwap": 328.46530642966803,
+      "ema9": 326.7601970862893,
+      "ema21": 328.48577767421125,
+      "ema50": 310.258698057562,
+      "ema200": 230.66704187374708,
+      "stoch_rsi": null,
+      "cci": -10.793359734462351,
+      "williams_r": null,
+      "obv": 136096700.0,
+      "mfi": 52.86194210057679,
+      "wk52_high": 376.2300109863281,
+      "wk52_low": 108.33607482910156,
+      "pct_from_52wk_high": -11.094282628471635,
+      "pct_from_52wk_low": 208.75217766752917,
+      "pct_from_ema200": 45.00987549727811,
+      "current_price": 334.489990234375,
+      "spy_regime": null,
+      "vix": null,
+      "ema_align": "bear"
+    },
+    {
+      "timestamp": "2026-06-03T04:00:49.016139+00:00",
+      "session": "test",
+      "ticker": "ZETA",
+      "action": "hold",
+      "net_score": 69,
+      "confidence": 0.69,
+      "strategy": "breakout",
+      "bull_score": 108,
+      "bear_score": 39,
+      "signals_triggered": [
+        "ema_full_bull_alignment",
+        "di_plus_dominant",
+        "macd_hist_rising_2bars",
+        "psar_bullish",
+        "price_above_vwap",
+        "stochrsi_turning_up_oversold",
+        "roc_positive",
+        "bb_bandwidth_expanding_bull",
+        "obv_rising",
+        "price_above_intraday_vwap"
+      ],
+      "signals_against": [
+        "rsi_extremely_overbought",
+        "cci_extremely_overbought",
+        "willr_overbought",
+        "bb_price_at_upper_band",
+        "bb_deeply_overbought",
+        "high_atr_volatility",
+        "mfi_overbought",
+        "near_52wk_high_resistance",
+        "above_ema200_short_penalty"
+      ],
+      "ai_confirmed": false,
+      "ai_reasoning": "While the trend structure is bullish with strong EMA alignment and ADX momentum, RSI at 80.4 and BB %B at 1.11 indicate the stock is severely extended after a sharp breakout run \u2014 chasing here risks buying the exhaustion, not the breakout. The news confirms a 52-week high breakout with positive IBD coverage, but there is no fundamental catalyst (earnings beat, guidance raise, major contract) to justify a new position at these stretched levels; a rational investor would wait for a pullback or consolidation before entering.",
+      "entry_price": 25.25,
+      "stop_loss": 22.6,
+      "take_profit": 33.21,
+      "risk_reward": 3.0,
+      "reasoning": "EMA9>EMA21>EMA50>EMA200 full bull alignment. ADX 30.3>30 strong trend (1.3x multiplier). MACD histogram positive and rising 2+ bars. Price 1.45% above VWAP. RSI 80.4 extremely overbought. %B=1.11 deeply overbought. ATR% 5.25% \u2014 high volatility, position size reduced 40%. SPY bull regime \u2014 bear signals discounted 50%",
+      "held_position": null,
+      "news_headlines": [
+        {
+          "text": "Zeta Stock Breaks Out. Shares Look To Extend A Win Streak. - Investor's Business Daily. <a href=\"https://news.google.com/rss/articles/CBMia0FVX3lxTE16Q3YwYmdiQXA3V0ppMkxQakllN2k4aWpPeTNxdmRzb2RoUlRBMX",
+          "polarity": 0.4
+        },
+        {
+          "text": "Olympic legend Lindsey Vonn to share lessons with AI marketers at Lincoln Center - Stock Titan. <a href=\"https://news.google.com/rss/articles/CBMiwAFBVV95cUxPam5xQjJ3ZEU4MzBpVWVaZmprTlVRblVmQWtVaUl6Yn",
+          "polarity": -0.1
+        },
+        {
+          "text": "Zeta Global stock hits 52-week high at $24.92 - Investing.com. <a href=\"https://news.google.com/rss/articles/CBMioAFBVV95cUxNcjgtV2hxZGk2NE1DX1JheHBsdmp4aTd5QktfUWVlZndLVVNsZnNjLVBNR1JpREhIdmo5ZEp2WEV",
+          "polarity": 0.064
+        }
+      ],
+      "news_polarity": 0.1213,
+      "news_count": 3,
+      "bull_keyword_boost": 0.0,
+      "bear_keyword_boost": 0.0,
+      "earnings_risk": "clear",
+      "rsi": 80.44324368969818,
+      "macd_hist": 0.7942053492373187,
+      "volume_ratio": 1.3340086448130088,
+      "intraday_move_pct": 0.11895593759838784,
+      "gap_pct": 1.3084850622153392,
+      "adx": 30.324425501516306,
+      "adx_di_plus": 49.46184857488359,
+      "adx_di_minus": 9.454950960402266,
+      "bb_pctb": 1.1050495687721371,
+      "atr": 1.3266187704885113,
+      "vwap": 24.89032364076038,
+      "ema9": 21.678845867342506,
+      "ema21": 19.755481362107332,
+      "ema50": 18.493796453059097,
+      "ema200": 18.1264828018718,
+      "stoch_rsi": null,
+      "cci": 231.13465541132393,
+      "williams_r": null,
+      "obv": 332064300.0,
+      "mfi": 87.90407350608902,
+      "wk52_high": 25.25,
+      "wk52_low": 12.15999984741211,
+      "pct_from_52wk_high": 0.0,
+      "pct_from_52wk_low": 107.64802892142885,
+      "pct_from_ema200": 39.298948814232205,
+      "current_price": 25.25,
+      "spy_regime": null,
+      "vix": null,
+      "ema_align": "full_bull"
+    },
+    {
+      "timestamp": "2026-06-03T04:00:49.016139+00:00",
+      "session": "test",
+      "ticker": "DUOL",
+      "action": "hold",
+      "net_score": 32,
+      "confidence": 0.27,
+      "strategy": "mixed",
+      "bull_score": 41,
+      "bear_score": 9,
+      "signals_triggered": [
+        "macd_bullish_cross",
+        "psar_bullish",
+        "price_below_vwap",
+        "rsi_healthy_momentum",
+        "stochrsi_turning_up_oversold",
+        "bb_squeeze_detected",
+        "obv_rising",
+        "price_below_intraday_vwap"
+      ],
+      "signals_against": [
+        "macd_hist_fading_bull",
+        "high_atr_volatility"
+      ],
+      "ai_confirmed": true,
+      "ai_reasoning": "Technicals are mixed at best \u2014 a weak trend (ADX 18), intraday drop of nearly 7%, price below VWAP, and high volatility undermine the modest MACD bullish cross. The headline explicitly cites slowing growth metrics and margin pressure as the driver of today's sell-off, which is a fundamental concern, not noise \u2014 with earnings risk flagged as 'clear,' initiating a position into this uncertainty is not warranted.",
+      "entry_price": 109.95,
+      "stop_loss": null,
+      "take_profit": null,
+      "risk_reward": 2.0,
+      "reasoning": "ADX 18.4<20 weak trend (0.5x multiplier). MACD bullish crossover (last 3 bars). Price 3.45% below VWAP. RSI 52.4 healthy bull momentum. Bollinger Band squeeze \u2014 breakout watch. ATR% 5.88% \u2014 high volatility, position size reduced 40%. SPY bull regime \u2014 bear signals discounted 50%",
+      "held_position": null,
+      "news_headlines": [
+        {
+          "text": "Duolingo shares slide 7.1% as investors refocus on slowing growth metrics and margin pressure - Quiver Quantitative. <a href=\"https://news.google.com/rss/articles/CBMixwFBVV95cUxOUUFOa2hEbldDYnlPczV3T",
+          "polarity": 0.0
+        },
+        {
+          "text": "Duolingo, Inc. $DUOL Holdings Raised by Lingotto Investment Management LLP - MarketBeat. <a href=\"https://news.google.com/rss/articles/CBMizAFBVV95cUxQbmo5Y1ZDSDlSTERScERzWlVZbHJIWHVvcnJqX1pMU09LZEdzO",
+          "polarity": 0.0
+        },
+        {
+          "text": "AXQ Capital LP Grows Stock Position in Duolingo, Inc. $DUOL - MarketBeat. <a href=\"https://news.google.com/rss/articles/CBMiuAFBVV95cUxOTDgxSFk1SEEtZTJjcU41SVlhcGc1SUhwQ2Naa0xaOFVUM0piYWIxQTBHcVVBQTFh",
+          "polarity": 0.0
+        }
+      ],
+      "news_polarity": 0.0,
+      "news_count": 3,
+      "bull_keyword_boost": 0.0,
+      "bear_keyword_boost": 0.0,
+      "earnings_risk": "clear",
+      "rsi": 52.387936874865424,
+      "macd_hist": 0.18342477578306848,
+      "volume_ratio": 0.8967055388274852,
+      "intraday_move_pct": -6.798342111955042,
+      "gap_pct": -1.2460805336036118,
+      "adx": 18.43763033274181,
+      "adx_di_plus": 26.2565903351564,
+      "adx_di_minus": 18.54521274399887,
+      "bb_pctb": 0.5756920271515291,
+      "atr": 6.466732050584325,
+      "vwap": 113.87554341735327,
+      "ema9": 110.43921968899124,
+      "ema21": 108.69272959212509,
+      "ema50": 108.78838438219921,
+      "ema200": 174.780784046374,
+      "stoch_rsi": null,
+      "cci": 67.37691000688602,
+      "williams_r": null,
+      "obv": -61610800.0,
+      "mfi": 64.40482470902806,
+      "wk52_high": 526.8499755859375,
+      "wk52_low": 90.02999877929688,
+      "pct_from_52wk_high": -79.13068196957568,
+      "pct_from_52wk_low": 22.125956280170556,
+      "pct_from_ema200": -37.09262860437248,
+      "current_price": 109.94999694824219,
+      "spy_regime": null,
+      "vix": null,
+      "ema_align": "mixed"
     }
   ]
 }
