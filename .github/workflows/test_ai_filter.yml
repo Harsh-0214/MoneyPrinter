@@ -1,0 +1,91 @@
+name: Test AI Filter
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test_ai_filter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Test Claude AI filter
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python - <<'EOF'
+          import os, json
+          from bot.ai_filter import claude_confirm_trade, apply_ai_confirmation
+
+          api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+          if not api_key:
+              print("❌ ANTHROPIC_API_KEY is not set in secrets")
+              exit(1)
+          print(f"✅ ANTHROPIC_API_KEY found ({len(api_key)} chars)")
+
+          fake_indicators = {
+              "rsi": 61.5,
+              "macd_hist": 0.42,
+              "ema9": 142.50,
+              "ema21": 140.10,
+              "ema50": 135.80,
+              "ema200": 120.00,
+              "volume_ratio": 1.8,
+              "atr": 3.20,
+              "adx": 28.0,
+              "bb_pctb": 0.62,
+              "intraday_move_pct": 2.1,
+              "news_polarity": 0.15,
+          }
+
+          fake_score = {
+              "ticker": "NVDA",
+              "action": "buy",
+              "entry_price": 142.50,
+              "net_score": 78,
+              "confidence": 0.78,
+              "strategy": "trend_follow",
+              "stop_loss": 137.70,
+              "take_profit": 154.50,
+              "risk_reward": 2.5,
+              "signals_triggered": ["rsi_neutral", "macd_bull_cross", "ema_bull_stack", "volume_surge"],
+              "signals_against": ["bb_extended"],
+              "reasoning": "EMA stack bullish, MACD positive crossover, volume 1.8x average.",
+              "vix_level": 16.5,
+              "macro_bias": "bull",
+          }
+
+          print("\n--- Calling claude_confirm_trade (NVDA buy) ---")
+          result = claude_confirm_trade("NVDA", fake_indicators, fake_score)
+          print(f"Decision:    {result['decision']}")
+          print(f"Confidence:  {result['confidence']}")
+          print(f"Reasoning:   {result['reasoning']}")
+
+          assert result["decision"] in ("confirm", "reject"), "Invalid decision value"
+          assert 0.0 <= result["confidence"] <= 1.0, "Confidence out of range"
+          assert result["reasoning"], "Reasoning is empty"
+
+          print("\n--- Testing fallback (no API key) ---")
+          os.environ.pop("ANTHROPIC_API_KEY", None)
+          fallback = claude_confirm_trade("AAPL", {}, {"action": "buy", "ticker": "AAPL"})
+          assert fallback["decision"] == "confirm", "Fallback should confirm"
+          print(f"Fallback decision: {fallback['decision']} ✅")
+
+          print("\n--- Testing hold passthrough ---")
+          hold_result = apply_ai_confirmation({"ticker": "TSLA", "action": "hold"}, {})
+          assert hold_result["action"] == "hold", "Hold should pass through unchanged"
+          assert "ai_confirmed" not in hold_result, "Hold should not trigger AI call"
+          print("Hold passthrough: ✅")
+
+          print("\n✅ All AI filter tests passed")
+          EOF
