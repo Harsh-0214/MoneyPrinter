@@ -2,80 +2,151 @@
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 FEED_PATH   = Path(__file__).parent.parent / "data" / "live_feed.json"
-MAX_ENTRIES = 200
+MAX_ENTRIES = 500
+
+
+def _load() -> dict:
+    if FEED_PATH.exists():
+        try:
+            with open(FEED_PATH) as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"[live_feed] load failed: {e} — starting fresh")
+    return {"meta": {}, "daily_history": {}, "entries": []}
+
+
+def _save(feed: dict) -> None:
+    FEED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(FEED_PATH, "w") as f:
+        json.dump(feed, f, indent=2, default=str)
 
 
 def write_live_feed(decisions: list[dict], session: str) -> None:
     """
-    Append this run's decisions to data/live_feed.json.
-
-    Each decision dict should contain the scored/AI-filtered signal fields.
-    Keeps only the last MAX_ENTRIES entries. Safe to call with an empty list.
+    Append all scored decisions (buys, holds, shorts) to live_feed.json.
+    Pulls indicator fields from _indicators if present on the decision dict.
+    Keeps last MAX_ENTRIES entries. Safe to call with an empty list.
     """
-    FEED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    feed = _load()
+    entries: list = feed.get("entries", [])
+    daily: dict   = feed.get("daily_history", {})
 
-    # Load existing feed
-    existing: dict = {}
-    if FEED_PATH.exists():
-        try:
-            with open(FEED_PATH) as f:
-                existing = json.load(f)
-        except Exception as e:
-            logger.warning(f"[live_feed] Could not load existing feed: {e} — starting fresh")
+    now_iso     = datetime.now(timezone.utc).isoformat()
+    today_str   = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    entries: list = existing.get("entries", [])
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-
-    # Count today's runs for meta
-    today_prefix = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    today_runs   = existing.get("meta", {}).get("total_runs_today", 0)
-    last_meta_date = existing.get("meta", {}).get("last_updated", "")[:10]
-    if last_meta_date != today_prefix:
-        today_runs = 0  # reset at midnight
+    # today_runs counter — reset if date rolled over
+    meta        = feed.get("meta", {})
+    today_runs  = meta.get("total_runs_today", 0)
+    if meta.get("last_updated", "")[:10] != today_str:
+        today_runs = 0
     today_runs += 1
 
-    # Build new entry rows
-    for d in decisions:
-        entries.append({
-            "timestamp":   now_iso,
-            "session":     session,
-            "ticker":      d.get("ticker", ""),
-            "action":      d.get("action", "hold"),
-            "net_score":   d.get("net_score", 0),
-            "confidence":  round(float(d.get("confidence") or 0), 4),
-            "strategy":    d.get("strategy", ""),
-            "bull_score":  d.get("bull_score", 0),
-            "bear_score":  d.get("bear_score", 0),
-            "ai_confirmed": d.get("ai_confirmed"),
-            "ai_reasoning": d.get("ai_reasoning", ""),
-            "entry_price":  d.get("entry_price"),
-            "stop_loss":    d.get("stop_loss"),
-            "take_profit":  d.get("take_profit"),
-            "reasoning":    d.get("reasoning", ""),
-        })
+    # Tally today's decisions for the daily_history block
+    today = daily.setdefault(today_str, {
+        "date": today_str,
+        "total_decisions": 0,
+        "buys":   0,
+        "holds":  0,
+        "shorts": 0,
+        "claude_confirmed": 0,
+        "claude_rejected":  0,
+        "claude_skipped":   0,
+        "sessions":         [],
+    })
+    if session not in today["sessions"]:
+        today["sessions"].append(session)
 
-    # Trim to last MAX_ENTRIES (oldest first, so trim from front)
+    # Build entry rows
+    for d in decisions:
+        ind    = d.get("_indicators") or {}
+        action = (d.get("action") or "hold").lower()
+
+        entry = {
+            "timestamp":          now_iso,
+            "session":            session,
+            "ticker":             d.get("ticker", ""),
+            "action":             action,
+            "net_score":          d.get("net_score", 0),
+            "confidence":         round(float(d.get("confidence") or 0), 4),
+            "strategy":           d.get("strategy", ""),
+            "bull_score":         d.get("bull_score", 0),
+            "bear_score":         d.get("bear_score", 0),
+            "signals_triggered":  d.get("signals_triggered", []),
+            "signals_against":    d.get("signals_against", []),
+            "ai_confirmed":       d.get("ai_confirmed"),
+            "ai_reasoning":       d.get("ai_reasoning", ""),
+            "entry_price":        d.get("entry_price"),
+            "stop_loss":          d.get("stop_loss"),
+            "take_profit":        d.get("take_profit"),
+            "risk_reward":        d.get("risk_reward"),
+            "reasoning":          d.get("reasoning", ""),
+            # Key indicators shown in dashboard detail view
+            "rsi":                ind.get("rsi"),
+            "macd_hist":          ind.get("macd_hist"),
+            "volume_ratio":       ind.get("volume_ratio"),
+            "intraday_move_pct":  ind.get("intraday_move_pct"),
+            "adx":                ind.get("adx"),
+            "bb_pctb":            ind.get("bb_pctb"),
+            "atr":                ind.get("atr"),
+            "vwap":               ind.get("vwap"),
+            "ema_align":          (
+                "full_bull"    if (ind.get("ema9") or 0) > (ind.get("ema21") or 0) > (ind.get("ema50") or 0) > (ind.get("ema200") or 0)
+                else "partial_bull" if (ind.get("ema9") or 0) > (ind.get("ema21") or 0) > (ind.get("ema50") or 0)
+                else "bear"    if (ind.get("ema9") or 0) < (ind.get("ema21") or 0)
+                else "mixed"
+            ),
+        }
+        entries.append(entry)
+
+        # Tally
+        today["total_decisions"] += 1
+        if action == "buy":            today["buys"]   += 1
+        elif action in ("short","sell"): today["shorts"] += 1
+        else:                          today["holds"]  += 1
+        ai = d.get("ai_confirmed")
+        if ai is True:   today["claude_confirmed"] += 1
+        elif ai is False: today["claude_rejected"]  += 1
+        else:             today["claude_skipped"]   += 1
+
+    # Trim entries
     if len(entries) > MAX_ENTRIES:
         entries = entries[-MAX_ENTRIES:]
 
+    # Keep only last 30 days in daily_history
+    all_days = sorted(daily.keys(), reverse=True)
+    daily = {d: daily[d] for d in all_days[:30]}
+
     feed = {
         "meta": {
-            "last_updated":    now_iso,
-            "last_session":    session,
+            "last_updated":     now_iso,
+            "last_session":     session,
             "total_runs_today": today_runs,
         },
-        "entries": entries,
+        "daily_history": daily,
+        "entries":        entries,
     }
+    _save(feed)
+    logger.info(f"[live_feed] {len(decisions)} decision(s) written — {len(entries)} total")
 
-    with open(FEED_PATH, "w") as f:
-        json.dump(feed, f, indent=2, default=str)
 
-    logger.info(f"[live_feed] Wrote {len(decisions)} decision(s) — {len(entries)} total entries")
+def write_eod_summary(date_str: str, pnl: float, trades: int,
+                      win_rate: float, portfolio_value: float) -> None:
+    """Patch today's daily_history entry with EOD P&L data."""
+    feed = _load()
+    daily = feed.get("daily_history", {})
+    today = daily.setdefault(date_str, {"date": date_str})
+    today.update({
+        "pnl_dollar":       round(pnl, 2),
+        "trades_executed":  trades,
+        "win_rate":         round(win_rate, 4),
+        "portfolio_value":  round(portfolio_value, 2),
+    })
+    feed["daily_history"] = daily
+    _save(feed)
+    logger.info(f"[live_feed] EOD summary patched for {date_str}")

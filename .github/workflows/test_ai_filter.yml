@@ -247,17 +247,15 @@ jobs:
                                        "entry": entry_price, "qty": shares, "action": action})
 
           # ─────────────────────────────────────────────────────────────────────
-          # STEP 5: HTML report
+          # STEP 5: Write all decisions to live_feed.json
           # ─────────────────────────────────────────────────────────────────────
           print("\n" + "="*70)
-          print("  STEP 5: GENERATING HTML REPORT")
+          print("  STEP 5: WRITING LIVE FEED")
           print("="*70)
 
-          import reports.daily_report as rpt
-          rpt.DB_PATH = TEST_DB
-          today       = datetime.utcnow().strftime("%Y-%m-%d")
-          report_path = rpt.generate_report(date_str=today, output_dir="reports")
-          print(f"  Report → {report_path}")
+          from bot.live_feed import write_live_feed
+          write_live_feed(updated_scores, "test")
+          print(f"  data/live_feed.json updated")
 
           # ─────────────────────────────────────────────────────────────────────
           # Summary
@@ -273,13 +271,15 @@ jobs:
           skipped = [tk for tk in ticker_data if tk not in [t["ticker"] for t in confirmed_trades]]
           for tk in skipped:
               print(f"    HOLD  {tk:6s}  (filtered by scorer or Claude)")
+          print("\n  View results on the dashboard after this run commits the feed.")
           print()
           PYEOF
 
-      - name: Upload HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-report-${{ github.run_number }}
-          path: reports/*.html
-          if-no-files-found: warn
+      - name: Commit live feed to main
+        run: |
+          git config user.name  "trading-bot"
+          git config user.email "bot@trading.local"
+          git pull --rebase origin main || true
+          git add data/live_feed.json || true
+          git diff --staged --quiet || git commit -m "test: live feed update [skip ci]"
+          git push || true

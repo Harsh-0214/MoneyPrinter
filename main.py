@@ -853,13 +853,12 @@ def session_eod_summary(alpaca_client) -> None:
             )
         console.print(table)
 
-    # Generate HTML report
+    # Patch live feed with EOD P&L so dashboard shows daily totals
     try:
-        from reports.daily_report import generate_report
-        report_path = generate_report()
-        console.print(f"[bold cyan]HTML report generated: {report_path}[/bold cyan]")
+        from bot.live_feed import write_eod_summary
+        write_eod_summary(today, gross_pnl, len(closed), win_rate, portfolio_value)
     except Exception as e:
-        logger.warning(f"[eod] HTML report generation failed: {e}")
+        logger.warning(f"[eod] live feed EOD patch failed: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
