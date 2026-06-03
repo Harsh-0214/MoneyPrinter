@@ -251,66 +251,123 @@ tr.rs > td { background: rgba(255,77,106,.04); }
 .ai-no  { background:rgba(255,77,106,.1); color:var(--red); }
 .ai-skip{ color:var(--muted); font-size:12px; }
 
-/* ── Drawer ────────────────────────────────────────────────── */
+/* ── Drawer / Analysis Panel ───────────────────────────────── */
 .drawer { display:none; }
 .drawer.open { display:table-row; }
-.drawer > td { padding:0 !important; border-bottom:2px solid var(--border2) !important; }
-.drawer-inner {
-  padding:20px 24px 24px;
-  background: linear-gradient(180deg, var(--bg3) 0%, var(--bg2) 100%);
-  display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px;
+.drawer > td { padding:0 !important; border-bottom:3px solid var(--border2) !important; }
+
+.analysis-panel {
+  background: var(--bg3);
   animation: drawer-open .2s ease;
 }
 @keyframes drawer-open { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
-@media(max-width:960px)  { .drawer-inner{grid-template-columns:1fr 1fr;} }
-@media(max-width:640px)  { .drawer-inner{grid-template-columns:1fr;} }
 
-.ds-title {
-  font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.6px;
-  color:var(--muted); margin-bottom:12px; padding-bottom:8px;
+/* Summary bar at top of panel */
+.ap-header {
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:16px 24px; border-bottom:1px solid var(--border);
+  background: var(--bg4);
+}
+.ap-ticker { font-size:1.6rem; font-weight:900; font-family:var(--mono); letter-spacing:-1px; }
+.ap-verdict {
+  padding:6px 16px; border-radius:20px; font-size:12px; font-weight:700; letter-spacing:.3px;
+}
+.ap-verdict-confirmed { background:rgba(0,214,143,.12); color:var(--green); border:1px solid rgba(0,214,143,.3); }
+.ap-verdict-rejected  { background:rgba(255,77,106,.12); color:var(--red);   border:1px solid rgba(255,77,106,.3); }
+.ap-verdict-skipped   { background:rgba(90,114,153,.1);  color:var(--muted2);border:1px solid var(--border); }
+.ap-meta { display:flex; gap:20px; flex-wrap:wrap; margin-left:auto; }
+.ap-meta-item { text-align:right; }
+.ap-meta-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:2px; }
+.ap-meta-value { font-size:13px; font-weight:700; font-family:var(--mono); }
+.ap-close {
+  margin-left:8px; background:none; border:1px solid var(--border); border-radius:6px;
+  color:var(--muted); cursor:pointer; padding:5px 10px; font-size:16px; line-height:1;
+  transition:all .15s; flex-shrink:0;
+}
+.ap-close:hover { background:var(--bg3); color:var(--text); }
+
+/* Main grid */
+.ap-grid {
+  display:grid;
+  grid-template-columns: 280px 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap:0;
+}
+@media(max-width:1100px) { .ap-grid { grid-template-columns:1fr 1fr; } }
+@media(max-width:680px)  { .ap-grid { grid-template-columns:1fr; } }
+
+.ap-section {
+  padding:20px 24px;
+  border-right:1px solid var(--border);
   border-bottom:1px solid var(--border);
-  display:flex; align-items:center; gap:6px;
 }
-.ds-title svg { opacity:.5; }
+.ap-section:last-child, .ap-section.no-border-r { border-right:none; }
+.ap-section.span2 { grid-column: span 2; }
+.ap-section.full  { grid-column: 1 / -1; border-right:none; }
 
-.kv { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px; }
-.kv-k { font-size:11px; color:var(--muted); font-family:inherit; }
-.kv-v { font-size:12px; color:var(--text); font-family:var(--mono); text-align:right; }
-
-.sig-list { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
-.sig-chip { font-size:10px; padding:2px 8px; border-radius:20px; font-weight:600; }
-.sig-for     { background:rgba(0,214,143,.1); color:var(--green); border:1px solid rgba(0,214,143,.2); }
-.sig-against { background:rgba(255,77,106,.1); color:var(--red);   border:1px solid rgba(255,77,106,.2); }
-
-.reasoning-text {
-  font-size:12px; color:var(--muted2); line-height:1.6;
-  font-family:inherit; font-style:italic; margin-top:6px;
+.ap-section-title {
+  font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.7px;
+  color:var(--muted); margin-bottom:16px; padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:8px;
 }
-.ai-box {
-  padding:12px 14px; border-radius:var(--radius-sm);
-  background:rgba(77,166,255,.05); border:1px solid rgba(77,166,255,.15);
-  font-size:12px; line-height:1.6;
-}
-.ai-box.ai-confirmed-box { background:rgba(0,214,143,.05); border-color:rgba(0,214,143,.2); }
-.ai-box.ai-rejected-box  { background:rgba(255,77,106,.05); border-color:rgba(255,77,106,.2); }
-.ai-verdict-label { font-size:10px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; margin-bottom:6px; }
-.ai-verdict-confirmed { color:var(--green); }
-.ai-verdict-rejected  { color:var(--red); }
-.ai-verdict-skipped   { color:var(--muted); }
+.ap-section-title .title-icon { font-size:13px; }
 
+/* KV pairs */
+.kv { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
+.kv-k { font-size:12px; color:var(--muted2); }
+.kv-v { font-size:12px; color:var(--text); font-family:var(--mono); font-weight:600; text-align:right; }
+.kv-divider { height:1px; background:var(--border); margin:10px 0; }
+
+/* Indicator bars */
+.ind-bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.ind-bar-label { font-size:11px; color:var(--muted2); width:80px; flex-shrink:0; }
+.ind-bar-track { flex:1; height:5px; background:var(--bg4); border-radius:3px; overflow:hidden; }
+.ind-bar-fill { height:100%; border-radius:3px; transition:width .5s ease; }
+.ind-bar-val { font-size:11px; font-family:var(--mono); font-weight:600; width:52px; text-align:right; flex-shrink:0; }
+
+/* Signals */
+.sig-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.sig-chip { font-size:11px; padding:3px 10px; border-radius:20px; font-weight:600; line-height:1.4; }
+.sig-for     { background:rgba(0,214,143,.1); color:var(--green); border:1px solid rgba(0,214,143,.25); }
+.sig-against { background:rgba(255,77,106,.1); color:var(--red);   border:1px solid rgba(255,77,106,.25); }
+
+/* Reasoning blocks */
+.reasoning-block {
+  font-size:13px; color:var(--text); line-height:1.7;
+  background:var(--bg4); border-radius:var(--radius-sm);
+  padding:14px 16px; border-left:3px solid var(--border2);
+  font-family:inherit;
+}
+.reasoning-block.scorer { border-left-color:var(--blue); }
+.reasoning-block.claude-yes { border-left-color:var(--green); background:rgba(0,214,143,.04); }
+.reasoning-block.claude-no  { border-left-color:var(--red);   background:rgba(255,77,106,.04); }
+.reasoning-block.claude-skip{ border-left-color:var(--muted); }
+
+/* News headlines */
+.headline-row {
+  display:flex; gap:12px; align-items:flex-start;
+  padding:10px 0; border-bottom:1px solid rgba(30,45,69,.5);
+}
+.headline-row:last-child { border-bottom:none; padding-bottom:0; }
+.headline-pol {
+  font-size:10px; font-weight:700; font-family:var(--mono);
+  padding:2px 7px; border-radius:4px; flex-shrink:0; margin-top:2px; white-space:nowrap;
+}
+.pol-pos { background:rgba(0,214,143,.12); color:var(--green); }
+.pol-neg { background:rgba(255,77,106,.12); color:var(--red); }
+.pol-neu { background:rgba(90,114,153,.1);  color:var(--muted2); }
+.headline-text { font-size:12px; color:var(--text); line-height:1.5; }
+
+/* Open position box */
 .pos-box {
-  padding:12px 14px; border-radius:var(--radius-sm); margin-top:12px;
   background:rgba(255,193,7,.05); border:1px solid rgba(255,193,7,.2);
+  border-radius:var(--radius-sm); padding:12px 14px; margin-top:14px;
 }
-.pos-box-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--yellow); margin-bottom:8px; }
+.pos-box-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--yellow); margin-bottom:10px; }
 
 /* ── Mini bar chart (indicator bars) ──────────────────────── */
 .ind-bar-wrap { margin-top:4px; }
-.ind-bar-row { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
-.ind-bar-label { font-size:10px; color:var(--muted); width:70px; flex-shrink:0; text-align:right; }
-.ind-bar-track { flex:1; height:4px; background:var(--bg4); border-radius:2px; overflow:hidden; }
-.ind-bar-fill { height:100%; border-radius:2px; transition:width .4s ease; }
-.ind-bar-val { font-size:10px; font-family:var(--mono); color:var(--muted2); width:44px; text-align:right; flex-shrink:0; }
 
 /* ── Daily history ─────────────────────────────────────────── */
 .day-grid {
@@ -737,83 +794,174 @@ function renderDecisions() {
 
 // ── Drawer ───────────────────────────────────────────────────
 function drawerHTML(uid, e) {
-  const aiClass = e.ai_confirmed===true?'ai-confirmed-box':e.ai_confirmed===false?'ai-rejected-box':'';
-  const aiLabelClass = e.ai_confirmed===true?'ai-verdict-confirmed':e.ai_confirmed===false?'ai-verdict-rejected':'ai-verdict-skipped';
-  const aiLabelText  = e.ai_confirmed===true?'✓ Claude Confirmed':e.ai_confirmed===false?'✗ Claude Rejected':'— Not Evaluated';
+  // ── Header values ──────────────────────────────────────────
+  const aiVerdictClass = e.ai_confirmed===true?'ap-verdict-confirmed':e.ai_confirmed===false?'ap-verdict-rejected':'ap-verdict-skipped';
+  const aiVerdictText  = e.ai_confirmed===true?'✓ Claude Confirmed':e.ai_confirmed===false?'✗ Claude Rejected':'— Not Evaluated';
+  const claudeReasoningClass = e.ai_confirmed===true?'claude-yes':e.ai_confirmed===false?'claude-no':'claude-skip';
+  const n = parseInt(e.net_score)||0;
+  const acColor = e.action==='buy'?'var(--green)':e.action==='short'||e.action==='sell'?'var(--red)':'var(--muted2)';
   const emaColor = e.ema_align==='full_bull'?'var(--green)':e.ema_align==='partial_bull'?'var(--blue)':'var(--red)';
   const rsi = parseFloat(e.rsi)||0;
   const rsiColor = rsi>70?'var(--red)':rsi<30?'var(--green)':'var(--blue)';
 
+  // ── Indicator bars ─────────────────────────────────────────
+  function iBar(label, val, min, max, color, dec=1, suffix='') {
+    const v = parseFloat(val);
+    if (isNaN(v)) return `<div class="ind-bar-row"><span class="ind-bar-label">${label}</span><span class="ind-bar-val" style="color:var(--muted)">—</span></div>`;
+    const p = Math.max(0,Math.min(100,((v-min)/(max-min))*100));
+    return `<div class="ind-bar-row">
+      <span class="ind-bar-label">${label}</span>
+      <div class="ind-bar-track"><div class="ind-bar-fill" style="width:${p}%;background:${color}"></div></div>
+      <span class="ind-bar-val" style="color:${color}">${v.toFixed(dec)}${suffix}</span>
+    </div>`;
+  }
+
+  // ── News headlines ─────────────────────────────────────────
+  const headlines = e.news_headlines || [];
+  const headlineHTML = headlines.length
+    ? headlines.map(h => {
+        const pol = parseFloat(h.polarity)||0;
+        const polClass = pol>0.05?'pol-pos':pol<-0.05?'pol-neg':'pol-neu';
+        const polStr   = (pol>=0?'+':'')+pol.toFixed(2);
+        return `<div class="headline-row">
+          <span class="headline-pol ${polClass}">${polStr}</span>
+          <span class="headline-text">${h.text||''}</span>
+        </div>`;
+      }).join('')
+    : `<div style="color:var(--muted);font-size:12px;padding:8px 0">No headlines retrieved for this scan cycle.</div>`;
+
+  // ── Open position block ────────────────────────────────────
   const posBlock = e.held_position ? `
     <div class="pos-box">
       <div class="pos-box-title">📂 Open Position</div>
       <div class="kv"><span class="kv-k">Side</span><span class="kv-v">${e.held_position.side||'—'}</span></div>
-      <div class="kv"><span class="kv-k">Shares</span><span class="kv-v">${e.held_position.qty||'—'}</span></div>
-      <div class="kv"><span class="kv-k">Avg Entry</span><span class="kv-v">$${fmt(e.held_position.avg_entry_price)}</span></div>
-      <div class="kv"><span class="kv-k">Unrealized P&L</span><span class="kv-v" style="color:${(e.held_position.unrealized_plpc||0)>=0?'var(--green)':'var(--red)'}">
-        ${e.held_position.unrealized_plpc!=null?(((e.held_position.unrealized_plpc)*100).toFixed(1)+'%'):'—'}
-      </span></div>
+      <div class="kv"><span class="kv-k">Shares held</span><span class="kv-v">${e.held_position.qty||'—'}</span></div>
+      <div class="kv"><span class="kv-k">Avg entry</span><span class="kv-v">$${fmt(e.held_position.avg_entry_price)}</span></div>
+      <div class="kv"><span class="kv-k">Unrealized P&L</span>
+        <span class="kv-v" style="color:${(e.held_position.unrealized_plpc||0)>=0?'var(--green)':'var(--red)'}">
+          ${e.held_position.unrealized_plpc!=null?(((e.held_position.unrealized_plpc)*100).toFixed(1)+'%'):'—'}
+        </span>
+      </div>
     </div>` : '';
 
   return `<tr class="drawer" id="drawer-${uid}">
   <td colspan="13">
-  <div class="drawer-inner">
+  <div class="analysis-panel">
 
-    <!-- Col 1: Indicators -->
-    <div>
-      <div class="ds-title">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        Indicators
+    <!-- ══ HEADER ══ -->
+    <div class="ap-header">
+      <span class="ap-ticker" style="color:${acColor}">${e.ticker}</span>
+      ${badge(e.action)}
+      <span class="ap-verdict ${aiVerdictClass}">${aiVerdictText}</span>
+      <div class="ap-meta">
+        <div class="ap-meta-item">
+          <div class="ap-meta-label">Net Score</div>
+          <div class="ap-meta-value" style="color:${netColor(n)}">${n>0?'+':''}${n}</div>
+        </div>
+        <div class="ap-meta-item">
+          <div class="ap-meta-label">Confidence</div>
+          <div class="ap-meta-value" style="color:var(--blue)">${pct(e.confidence)}</div>
+        </div>
+        <div class="ap-meta-item">
+          <div class="ap-meta-label">Strategy</div>
+          <div class="ap-meta-value" style="color:var(--muted2);font-size:11px">${e.strategy||'—'}</div>
+        </div>
+        <div class="ap-meta-item">
+          <div class="ap-meta-label">Session</div>
+          <div class="ap-meta-value" style="color:var(--muted2);font-size:11px">${e.session||'—'} · ${fmtT(e.timestamp)}</div>
+        </div>
       </div>
-      <div class="ind-bar-wrap">
-        ${indBar('RSI', e.rsi, 0, 100, rsiColor, 1)}
-        ${indBar('ADX', e.adx, 0, 60, 'var(--purple)', 1)}
-        ${indBar('BB %B', e.bb_pctb, 0, 1, 'var(--blue)', 3)}
-        ${indBar('Vol Ratio', e.volume_ratio, 0, 4, 'var(--yellow)', 2, 'x')}
-      </div>
-      <div style="height:10px"></div>
-      <div class="kv"><span class="kv-k">MACD Hist</span><span class="kv-v" style="color:${(parseFloat(e.macd_hist)||0)>0?'var(--green)':'var(--red)'}">${fmt(e.macd_hist,3)}</span></div>
-      <div class="kv"><span class="kv-k">ATR</span><span class="kv-v">${fmt(e.atr)}</span></div>
-      <div class="kv"><span class="kv-k">VWAP</span><span class="kv-v">$${fmt(e.vwap)}</span></div>
-      <div class="kv"><span class="kv-k">Intraday</span><span class="kv-v" style="color:${(parseFloat(e.intraday_move_pct)||0)>0?'var(--green)':'var(--red)'}">${fmt(e.intraday_move_pct,1)}%</span></div>
-      <div class="kv"><span class="kv-k">EMA Align</span><span class="kv-v" style="color:${emaColor}">${e.ema_align||'—'}</span></div>
-      <div class="kv"><span class="kv-k">Risk/Reward</span><span class="kv-v">${fmt(e.risk_reward,1)}×</span></div>
+      <button class="ap-close" onclick="event.stopPropagation();toggleDrawer('${uid}')">✕</button>
     </div>
 
-    <!-- Col 2: Signals + Scorer -->
-    <div>
-      <div class="ds-title">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        Signals
-      </div>
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">For</div>
-      <div class="sig-list">${sigChips(e.signals_triggered,'sig-for')}</div>
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:10px 0 4px">Against</div>
-      <div class="sig-list">${sigChips(e.signals_against,'sig-against')}</div>
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:14px 0 6px">Scorer Reasoning</div>
-      <div class="reasoning-text">${e.reasoning||'—'}</div>
-    </div>
+    <!-- ══ MAIN GRID ══ -->
+    <div class="ap-grid">
 
-    <!-- Col 3: Claude + Trade -->
-    <div>
-      <div class="ds-title">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        Claude Analysis
+      <!-- Col 1: Indicators -->
+      <div class="ap-section">
+        <div class="ap-section-title"><span class="title-icon">📊</span> Technical Indicators</div>
+        ${iBar('RSI (14)', e.rsi, 0, 100, rsiColor, 1)}
+        ${iBar('ADX', e.adx, 0, 60, 'var(--purple)', 1)}
+        ${iBar('BB %B', e.bb_pctb, 0, 1, 'var(--blue)', 3)}
+        ${iBar('Vol Ratio', e.volume_ratio, 0, 4, 'var(--yellow)', 2, '×')}
+        ${iBar('MFI', e.mfi, 0, 100, 'var(--blue)', 1)}
+        ${iBar('Stoch RSI', e.stoch_rsi, 0, 1, 'var(--purple)', 2)}
+        <div class="kv-divider"></div>
+        <div class="kv"><span class="kv-k">MACD Hist</span>
+          <span class="kv-v" style="color:${(parseFloat(e.macd_hist)||0)>0?'var(--green)':'var(--red)'}">${fmt(e.macd_hist,3)}</span></div>
+        <div class="kv"><span class="kv-k">CCI</span><span class="kv-v">${fmt(e.cci,1)}</span></div>
+        <div class="kv"><span class="kv-k">Williams %R</span><span class="kv-v">${fmt(e.williams_r,1)}</span></div>
+        <div class="kv"><span class="kv-k">ATR</span><span class="kv-v">${fmt(e.atr)}</span></div>
+        <div class="kv"><span class="kv-k">VWAP</span><span class="kv-v">$${fmt(e.vwap)}</span></div>
+        <div class="kv"><span class="kv-k">EMA Align</span>
+          <span class="kv-v" style="color:${emaColor}">${(e.ema_align||'—').replace('_',' ')}</span></div>
+        <div class="kv"><span class="kv-k">EMA 9 / 21 / 50 / 200</span></div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--muted2);text-align:right;margin-bottom:8px">
+          ${fmt(e.ema9)} / ${fmt(e.ema21)} / ${fmt(e.ema50)} / ${fmt(e.ema200)}
+        </div>
+        <div class="kv-divider"></div>
+        <div class="kv"><span class="kv-k">Price</span><span class="kv-v">$${fmt(e.current_price)}</span></div>
+        <div class="kv"><span class="kv-k">Intraday move</span>
+          <span class="kv-v" style="color:${(parseFloat(e.intraday_move_pct)||0)>0?'var(--green)':'var(--red)'}">${fmt(e.intraday_move_pct,1)}%</span></div>
+        <div class="kv"><span class="kv-k">Gap today</span>
+          <span class="kv-v" style="color:${(parseFloat(e.gap_pct)||0)>0?'var(--green)':'var(--red)'}">${fmt(e.gap_pct,1)}%</span></div>
+        <div class="kv"><span class="kv-k">52w High</span><span class="kv-v">$${fmt(e.wk52_high)} <span style="color:var(--muted);font-size:10px">(${fmt(e.pct_from_52wk_high,1)}%)</span></span></div>
+        <div class="kv"><span class="kv-k">52w Low</span><span class="kv-v">$${fmt(e.wk52_low)} <span style="color:var(--muted);font-size:10px">(+${fmt(e.pct_from_52wk_low,1)}%)</span></span></div>
+        <div class="kv"><span class="kv-k">vs EMA 200</span>
+          <span class="kv-v" style="color:${(parseFloat(e.pct_from_ema200)||0)>0?'var(--green)':'var(--red)'}">${fmt(e.pct_from_ema200,1)}%</span></div>
+        <div class="kv"><span class="kv-k">VIX</span><span class="kv-v">${fmt(e.vix,1)}</span></div>
+        <div class="kv"><span class="kv-k">SPY regime</span><span class="kv-v">${e.spy_regime||'—'}</span></div>
+        ${posBlock}
       </div>
-      <div class="ai-box ${aiClass}">
-        <div class="ai-verdict-label ${aiLabelClass}">${aiLabelText}</div>
-        <div style="color:var(--muted2)">${e.ai_reasoning||'No AI reasoning recorded.'}</div>
-      </div>
-      ${posBlock}
-      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px">Trade Details</div>
-      <div class="kv"><span class="kv-k">Entry</span><span class="kv-v">$${fmt(e.entry_price)}</span></div>
-      <div class="kv"><span class="kv-k">Stop Loss</span><span class="kv-v" style="color:var(--red)">$${fmt(e.stop_loss)}</span></div>
-      <div class="kv"><span class="kv-k">Take Profit</span><span class="kv-v" style="color:var(--green)">$${fmt(e.take_profit)}</span></div>
-      <div class="kv"><span class="kv-k">Session</span><span class="kv-v">${e.session||'—'}</span></div>
-      <div class="kv"><span class="kv-k">Strategy</span><span class="kv-v">${e.strategy||'—'}</span></div>
-    </div>
 
-  </div>
+      <!-- Col 2: Signals + Scorer -->
+      <div class="ap-section">
+        <div class="ap-section-title"><span class="title-icon">⚡</span> Rule-Based Signals</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+          Bull <span style="color:var(--green);font-weight:700">${e.bull_score||0}</span> pts ·
+          Bear <span style="color:var(--red);font-weight:700">${e.bear_score||0}</span> pts ·
+          Net <span style="color:${netColor(n)};font-weight:700">${n>0?'+':''}${n}</span>
+        </div>
+        <div style="font-size:11px;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:700">▲ Signals For</div>
+        <div class="sig-list">${sigChips(e.signals_triggered,'sig-for')}</div>
+        <div style="font-size:11px;color:var(--red);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px;font-weight:700">▼ Signals Against</div>
+        <div class="sig-list">${sigChips(e.signals_against,'sig-against')}</div>
+        <div style="margin-top:20px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;font-weight:700">Scorer Reasoning</div>
+          <div class="reasoning-block scorer">${e.reasoning||'No scorer reasoning recorded.'}</div>
+        </div>
+        <div style="margin-top:20px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-weight:700">Trade Details</div>
+          <div class="kv"><span class="kv-k">Entry price</span><span class="kv-v">$${fmt(e.entry_price)}</span></div>
+          <div class="kv"><span class="kv-k">Stop loss</span><span class="kv-v" style="color:var(--red)">$${fmt(e.stop_loss)}</span></div>
+          <div class="kv"><span class="kv-k">Take profit</span><span class="kv-v" style="color:var(--green)">$${fmt(e.take_profit)}</span></div>
+          <div class="kv"><span class="kv-k">Risk / Reward</span><span class="kv-v">${fmt(e.risk_reward,1)}×</span></div>
+        </div>
+      </div>
+
+      <!-- Col 3: News + Claude -->
+      <div class="ap-section no-border-r">
+        <div class="ap-section-title"><span class="title-icon">🤖</span> Claude's Analysis</div>
+        <div class="reasoning-block ${claudeReasoningClass}" style="font-size:13px;line-height:1.75;margin-bottom:20px">
+          ${e.ai_reasoning||'Claude did not evaluate this ticker.'}
+        </div>
+
+        <div class="ap-section-title" style="margin-top:4px"><span class="title-icon">📰</span> News Headlines Claude Read
+          <span style="margin-left:auto;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0">
+            ${e.news_count||0} articles · polarity
+            <span style="color:${(parseFloat(e.news_polarity)||0)>0?'var(--green)':'var(--red)'};font-weight:700">
+              ${((parseFloat(e.news_polarity)||0)>=0?'+':'')}${fmt(e.news_polarity,2)}
+            </span>
+            ${e.bull_keyword_boost?`· 🟢 bull boost +${e.bull_keyword_boost}`:''}
+            ${e.bear_keyword_boost?`· 🔴 bear boost +${e.bear_keyword_boost}`:''}
+            ${e.earnings_risk&&e.earnings_risk!=='clear'?`· ⚠ earnings ${e.earnings_risk}`:''}
+          </span>
+        </div>
+        ${headlineHTML}
+      </div>
+
+    </div><!-- end ap-grid -->
+  </div><!-- end analysis-panel -->
   </td>
   </tr>`;
 }
@@ -828,6 +976,7 @@ function toggleDrawer(uid) {
   const wasOpen = el.classList.contains('open');
   el.classList.toggle('open', !wasOpen);
   openDrawer = wasOpen ? null : uid;
+  if (!wasOpen) el.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 // ── Daily History ────────────────────────────────────────────
