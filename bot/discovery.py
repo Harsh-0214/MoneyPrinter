@@ -26,33 +26,43 @@ logger = logging.getLogger(__name__)
 DISCOVERED_PATH = Path(__file__).parent.parent / "discovered_tickers.json"
 DISCOVERY_LIMIT = 10   # max tickers added from discovery at one time
 
-# ~100 large-cap, liquid names across sectors — hand-curated to avoid micro/small caps
+# ~160 large/mid-cap liquid names across sectors — hand-curated to avoid micro caps
 UNIVERSE = [
     # Mega-cap tech
     "ORCL", "CRM", "ADBE", "INTC", "QCOM", "TXN", "NOW", "SNOW", "NET", "PANW",
     "CRWD", "ZS", "DDOG", "MDB", "SHOP", "UBER", "LYFT", "ABNB", "DASH", "RBLX",
+    "PLTR", "PATH", "AI", "BBAI", "SOUN",
     # Semis
     "AVGO", "MU", "AMAT", "LRCX", "KLAC", "MRVL", "ARM", "ON", "SWKS", "MPWR",
+    "SMCI", "NVDA", "AMD", "TSM", "ASML", "WOLF",
     # Large-cap consumer/retail
     "AMZN", "WMT", "COST", "TGT", "HD", "LOW", "NKE", "SBUX", "MCD", "YUM",
+    "BABA", "JD", "PDD", "ETSY", "CHWY", "W",
     # Financials
-    "MS", "BLK", "SCHW", "C", "WFC", "AXP", "V", "MA", "PYPL", "XYZ",
+    "MS", "BLK", "SCHW", "C", "WFC", "AXP", "V", "MA", "PYPL", "SOFI",
+    "HOOD", "AFRM", "NU", "SQ", "LC",
     # Healthcare/biotech (liquid large-caps only)
     "JNJ", "PFE", "MRNA", "ABBV", "LLY", "UNH", "CVS", "BMY", "GILD", "BIIB",
+    "REGN", "VRTX", "ISRG", "DXCM", "TDOC", "HIMS",
     # Industrials/defense
     "BA", "LMT", "RTX", "NOC", "GE", "CAT", "DE", "HON", "MMM", "UPS",
+    "AXON", "KTOS", "HII",
     # Energy
-    "SLB", "HAL", "MPC", "VLO", "PSX",
+    "SLB", "HAL", "MPC", "VLO", "PSX", "OXY", "DVN", "FANG",
     # Media/telecom
-    "NFLX", "DIS", "CMCSA", "T", "VZ", "WBD",
+    "NFLX", "DIS", "CMCSA", "T", "VZ", "WBD", "SPOT", "TTD",
     # EV / clean energy
-    "RIVN", "LCID", "NIO", "XPEV", "LI", "ENPH", "FSLR",
+    "RIVN", "LCID", "NIO", "XPEV", "LI", "ENPH", "FSLR", "RUN", "PLUG",
     # Commodities / materials
-    "FCX", "NEM", "GOLD", "AA", "CLF",
+    "FCX", "NEM", "GOLD", "AA", "CLF", "MP", "VALE",
     # Real estate / REITs (liquid)
-    "AMT", "EQIX", "PLD",
+    "AMT", "EQIX", "PLD", "O", "WELL",
     # Crypto-adjacent large-caps
-    "HOOD", "RIOT", "MARA",
+    "COIN", "RIOT", "MARA", "MSTR", "CLSK",
+    # High-beta momentum names
+    "TSLA", "GME", "AMC", "SPCE", "JOBY", "ACHR",
+    # ETFs with single-stock-like behavior (leveraged/thematic)
+    "SOXL", "TQQQ", "ARKK", "LABU",
 ]
 
 

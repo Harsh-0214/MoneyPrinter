@@ -515,47 +515,109 @@ def session_discovery() -> None:
 
 
 def session_premarket() -> None:
-    """9:00 AM EDT - fetch overnight news, flag gap moves. No trades."""
+    """
+    9:00 AM EDT — full scored dry-run scan + gap-and-go detection.
+
+    Actions:
+    1. Run complete score + Claude pass on all tickers (no orders placed).
+    2. Write all decisions to live_feed.json so the dashboard shows the
+       pre-open picture before the 9:30 session starts.
+    3. Identify gap-up stocks (>2%) with positive news catalyst and promote
+       them into discovered_tickers.json with a 'gap_catalyst' flag so the
+       9:30 continuous session treats them as priority targets.
+    4. Identify large gap-downs (>4%) as potential short setups and flag them.
+    """
     console.rule("[bold yellow]PRE-MARKET SESSION[/bold yellow]")
     macro = get_macro_context()
 
+    console.print(
+        f"[bold]VIX={macro['vix']:.1f}  Regime={macro['spy_regime']}  "
+        f"BearishMarket={macro['bearish_market']}[/bold]"
+    )
+
+    # Full scored scan — no alpaca client so no orders can fire
+    all_decisions = run_full_scan("premarket", macro, alpaca_client=None, data_client=None)
+
+    # Identify gaps from indicators already fetched during run_full_scan
     from bot.indicators import get_indicators_batch
     from bot.news       import get_news_batch
+    from bot.discovery  import get_discovered_tickers, _load_discovered, _save_discovered
 
     NEWS_API_KEY   = os.getenv("NEWS_API_KEY", "")
-    indicators_map = get_indicators_batch(get_all_trade_tickers(), max_workers=2)
-    news_map       = get_news_batch(get_all_trade_tickers(), COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
+    all_tickers    = get_all_trade_tickers()
+    indicators_map = get_indicators_batch(all_tickers, max_workers=2)
+    news_map       = get_news_batch(all_tickers, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
-    gap_ups   = []
-    gap_downs = []
+    gap_ups_with_news   = []   # (ticker, gap_pct, polarity)
+    gap_downs_large     = []   # (ticker, gap_pct)
+    gap_ups_plain       = []
 
-    for ticker in get_all_trade_tickers():
+    for ticker in all_tickers:
         ind  = indicators_map.get(ticker, {})
         news = news_map.get(ticker, {})
-        gap  = ind.get("gap_pct")
+        gap  = ind.get("gap_pct") or 0.0
+        pol  = news.get("avg_polarity") or 0.0
+        hcnt = news.get("headline_count") or 0
 
-        if gap is not None:
-            if gap > 2.0:
-                gap_ups.append((ticker, gap))
-                logger.info(f"[premarket] GAP UP: {ticker} +{gap:.2f}%")
-            elif gap < -2.0:
-                gap_downs.append((ticker, gap))
-                logger.info(f"[premarket] GAP DOWN: {ticker} {gap:.2f}%")
+        if gap > 2.0:
+            if pol > 0.1 and hcnt >= 2:
+                gap_ups_with_news.append((ticker, gap, pol))
+                logger.info(f"[premarket] GAP+NEWS: {ticker} +{gap:.1f}% polarity={pol:.2f}")
+            else:
+                gap_ups_plain.append((ticker, gap))
+                logger.info(f"[premarket] GAP UP: {ticker} +{gap:.1f}%")
+        elif gap < -4.0:
+            gap_downs_large.append((ticker, gap))
+            logger.info(f"[premarket] GAP DOWN (large): {ticker} {gap:.1f}%")
 
-        pol = news.get("avg_polarity", 0)
-        if abs(pol) > 0.3:
-            logger.info(
-                f"[premarket] News signal: {ticker} polarity={pol:.2f} "
-                f"headlines={news.get('headline_count', 0)}"
-            )
+    # Promote gap+news stocks into discovered_tickers so 9:30 picks them up
+    if gap_ups_with_news:
+        discovered_data = _load_discovered()
+        existing = set(discovered_data.get("tickers", []))
+        meta     = discovered_data.get("meta", {})
 
-    console.print(f"[cyan]Gap Ups (>2%):    {gap_ups}[/cyan]")
-    console.print(f"[red]Gap Downs (<-2%): {gap_downs}[/red]")
-    console.print(f"[bold]VIX={macro['vix']:.1f}  Regime={macro['spy_regime']}  "
-                  f"BearishMarket={macro['bearish_market']}[/bold]")
+        for ticker, gap, pol in sorted(gap_ups_with_news, key=lambda x: x[1], reverse=True)[:5]:
+            if ticker not in existing:
+                existing.add(ticker)
+                meta[ticker] = {
+                    "ticker":         ticker,
+                    "gap_pct":        round(gap, 2),
+                    "news_polarity":  round(pol, 2),
+                    "gap_catalyst":   True,
+                    "source":         "premarket_gap_news",
+                }
+                logger.info(f"[premarket] Promoted gap-catalyst: {ticker} +{gap:.1f}%")
+
+        _save_discovered({"tickers": list(existing), "meta": meta})
+
+    # Also flag large gap-downs as potential short candidates
+    if gap_downs_large:
+        discovered_data = _load_discovered()
+        existing = set(discovered_data.get("tickers", []))
+        meta     = discovered_data.get("meta", {})
+
+        for ticker, gap in sorted(gap_downs_large, key=lambda x: x[1])[:3]:
+            if ticker not in existing:
+                existing.add(ticker)
+                meta[ticker] = {
+                    "ticker":       ticker,
+                    "gap_pct":      round(gap, 2),
+                    "gap_catalyst": True,
+                    "short_watch":  True,
+                    "source":       "premarket_gap_down",
+                }
+                logger.info(f"[premarket] Promoted gap-down short watch: {ticker} {gap:.1f}%")
+
+        _save_discovered({"tickers": list(existing), "meta": meta})
+
+    console.print(f"[cyan]Gap Up + News ({len(gap_ups_with_news)}):  {[(t,round(g,1)) for t,g,_ in gap_ups_with_news]}[/cyan]")
+    console.print(f"[dim]Gap Up plain ({len(gap_ups_plain)}):   {[(t,round(g,1)) for t,g in gap_ups_plain]}[/dim]")
+    console.print(f"[red]Large Gap Down ({len(gap_downs_large)}): {[(t,round(g,1)) for t,g in gap_downs_large]}[/red]")
+    console.print(f"[bold green]Pre-open scored decisions written to live feed.[/bold green]")
 
     from bot.logger import log_scan
-    log_scan("premarket", len(get_all_trade_tickers()), 0, 0, len(gap_ups), len(gap_downs))
+    log_scan("premarket", len(all_tickers), len(all_decisions),
+             0, len(gap_ups_with_news) + len(gap_ups_plain), len(gap_downs_large))
 
 
 
@@ -596,6 +658,16 @@ def session_continuous(alpaca_client, data_client) -> None:
     console.rule("[bold cyan]CONTINUOUS TRADING SESSION[/bold cyan]")
     console.print(f"[dim]Scanning every {SCAN_INTERVAL} min from 9:30 AM to 4:00 PM ET[/dim]")
 
+    # Load gap-catalyst tickers flagged by premarket session
+    from bot.discovery import _load_discovered
+    _pm_disc = _load_discovered()
+    gap_catalyst_tickers = [
+        t for t, m in _pm_disc.get("meta", {}).items()
+        if m.get("gap_catalyst")
+    ]
+    if gap_catalyst_tickers:
+        console.print(f"[bold yellow]Gap-catalyst tickers from pre-market: {gap_catalyst_tickers}[/bold yellow]")
+
     cycle = 0
     extra_tickers: list[str] = []   # rising movers appended each mover-scan cycle
     while True:
@@ -620,9 +692,21 @@ def session_continuous(alpaca_client, data_client) -> None:
 
         macro = get_macro_context()
 
+        # ── First cycle: include gap-catalyst tickers immediately ─────────
+        if cycle == 1 and gap_catalyst_tickers:
+            extra_tickers = gap_catalyst_tickers
+            console.print(f"[bold yellow]Cycle 1: scanning gap-catalyst tickers first: {extra_tickers}[/bold yellow]")
+
         # ── Rising movers screen (every MOVER_SCAN_EVERY cycles) ──────────
         if cycle % MOVER_SCAN_EVERY == 1:
-            extra_tickers = scan_rising_movers(STATIC_TICKERS)
+            fresh_movers = scan_rising_movers(STATIC_TICKERS)
+            # Merge with gap-catalysts on first cycle, replace on subsequent
+            if cycle == 1:
+                for t in fresh_movers:
+                    if t not in extra_tickers:
+                        extra_tickers.append(t)
+            else:
+                extra_tickers = fresh_movers
             if extra_tickers:
                 console.print(f"[bold cyan]Rising movers: {extra_tickers}[/bold cyan]")
 
