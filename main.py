@@ -233,6 +233,7 @@ def run_full_scan(session: str, macro_context: dict,
             score["action"] = "hold"
 
         if action != "hold":
+            score["_indicators"] = ind   # carried forward for AI filter
             signals.append(score)
             if action == "buy":
                 bull_count += 1
@@ -346,6 +347,13 @@ def execute_signals(signals: list, alpaca_client, data_client,
         alpaca_side = "buy" if action == "buy" else "sell"
         limit_price = compute_limit_price(alpaca_side, quote, entry_price)
 
+        # ── AI final confirmation gate ─────────────────────────────────────
+        from bot.ai_filter import apply_ai_confirmation
+        sig = apply_ai_confirmation(sig, sig.get("_indicators", {}))
+        action = sig.get("action", "hold")
+        if action == "hold":
+            continue
+
         try:
             order_id = submit_order(
                 client=alpaca_client,
@@ -387,6 +395,8 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 vix_level=macro_context.get("vix", 0),
                 alpaca_order_id=order_id,
                 status=fill_status,
+                ai_confirmed=sig.get("ai_confirmed"),
+                ai_reasoning=sig.get("ai_reasoning"),
             )
             executed += 1
             horizon    = sig.get("time_horizon", "swing")

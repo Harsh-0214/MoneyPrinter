@@ -9,4 +9,5 @@ pandas-market-calendars==4.4.1
 rich==13.7.1
 python-dotenv==1.0.1
 numpy==1.26.4
+anthropic>=0.25.0
 

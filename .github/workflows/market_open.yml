@@ -43,6 +43,7 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_BASE_URL:   https://paper-api.alpaca.markets
           NEWS_API_KEY:      ${{ secrets.NEWS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DRY_RUN:           ${{ vars.DRY_RUN || 'false' }}
         run: python main.py --session market_open
 
