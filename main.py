@@ -179,9 +179,10 @@ def run_full_scan(session: str, macro_context: dict,
     indicators_map = get_indicators_batch(all_tickers, max_workers=2)
     news_map       = get_news_batch(all_tickers, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
-    signals    = []
-    bull_count = 0
-    bear_count = 0
+    signals     = []
+    signals_all = []   # all scored tickers, fed to AI batch
+    bull_count  = 0
+    bear_count  = 0
 
     for ticker in all_tickers:
         ind  = indicators_map.get(ticker, {})
@@ -220,20 +221,30 @@ def run_full_scan(session: str, macro_context: dict,
             f"src={ind.get('price_source','?')}"
         )
 
-        # Re-read confidence after classify_strategy may have applied penalties
+        # Store indicators for AI batch (run on all tickers)
+        score["_indicators"] = ind
+        score["_news"]       = news
+        signals_all.append(score)
+
+    # ── Claude second-opinion pass on every ticker ─────────────────────────
+    from bot.ai_filter import run_ai_filter_batch
+    pairs = [(s, s.get("_indicators", {})) for s in signals_all]
+    signals_all = run_ai_filter_batch(pairs)
+
+    # Re-tally after AI may have upgraded/downgraded actions
+    for score in signals_all:
+        action     = score.get("action", "hold")
         confidence = score.get("confidence", 0.0)
+
+        # Re-apply strategy/confidence gates after AI changes
         if action == "buy" and (confidence < 0.65 or score.get("strategy") == "mixed"):
-            reason = "mixed strategy" if score.get("strategy") == "mixed" else f"conf={confidence:.2f} < 0.65"
-            logger.info(f"[{ticker}] buy dropped — {reason}")
             action = "hold"
             score["action"] = "hold"
         elif action in ("short", "sell") and confidence < 0.70:
-            logger.info(f"[{ticker}] short dropped after strategy penalty — conf={confidence:.2f} < 0.75")
             action = "hold"
             score["action"] = "hold"
 
         if action != "hold":
-            score["_indicators"] = ind   # carried forward for AI filter
             signals.append(score)
             if action == "buy":
                 bull_count += 1
@@ -346,13 +357,6 @@ def execute_signals(signals: list, alpaca_client, data_client,
         quote       = get_latest_quote(data_client, ticker)
         alpaca_side = "buy" if action == "buy" else "sell"
         limit_price = compute_limit_price(alpaca_side, quote, entry_price)
-
-        # ── AI final confirmation gate ─────────────────────────────────────
-        from bot.ai_filter import apply_ai_confirmation
-        sig = apply_ai_confirmation(sig, sig.get("_indicators", {}))
-        action = sig.get("action", "hold")
-        if action == "hold":
-            continue
 
         try:
             order_id = submit_order(
