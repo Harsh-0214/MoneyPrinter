@@ -48,8 +48,9 @@ jobs:
           import bot.logger as _log_mod
           _log_mod.DB_PATH = TEST_DB
 
-          from bot.scorer    import score_ticker, classify_strategy
-          from bot.ai_filter import apply_ai_confirmation
+          from bot.scorer     import score_ticker
+          from bot.strategies import classify_strategy
+          from bot.ai_filter  import apply_ai_confirmation
           from bot.logger    import log_trade, init_db
 
           init_db()
