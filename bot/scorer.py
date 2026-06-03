@@ -549,8 +549,24 @@ def score_ticker(
     if vix > 25 and abs(confidence) < 0.80:
         return _no_signal(ticker, "vix_high_below_confidence_threshold")
 
+    # ── Intraday move filter — don't chase already-extended stocks ───────────
+    intraday_move_pct = _v(ind.get("intraday_move_pct"), default=0.0)
+    INTRADAY_HARD_BLOCK = 15.0   # >15% move → no buy regardless of score
+    INTRADAY_HIGH_BAR   = 10.0   # >10% move → require net>=90 to buy
+    INTRADAY_HIGH_NET   = 90
+
+    if intraday_move_pct > INTRADAY_HARD_BLOCK:
+        return _no_signal(ticker, "intraday_move_too_large")
+
+    effective_min_net = MIN_NET_SCORE_BUY
+    if intraday_move_pct > INTRADAY_HIGH_BAR:
+        effective_min_net = INTRADAY_HIGH_NET
+        signals_against.append(
+            f"intraday_move_{intraday_move_pct:.1f}pct_requires_net{INTRADAY_HIGH_NET}"
+        )
+
     # ── Determine action with raised thresholds ────────────────────────────
-    if net >= MIN_NET_SCORE_BUY and confidence >= MIN_CONFIDENCE_BUY:
+    if net >= effective_min_net and confidence >= MIN_CONFIDENCE_BUY:
         action = "buy"
     elif net <= -MIN_NET_SCORE_SHORT and abs(confidence) >= MIN_CONFIDENCE_SHORT:
         action = "short" if vix < 25 else "sell"
