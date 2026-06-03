@@ -1,55 +1,129 @@
 # MoneyPrinter — Autonomous Algorithmic Trading Bot
 
-A fully autonomous, rules-based algorithmic trading bot that:
-- Analyzes 20+ technical indicators and news sentiment per ticker
-- Executes trades on **Alpaca Paper Trading** (zero-cost, no real money risk)
-- Runs entirely via **GitHub Actions** on a cron schedule — no server required
-- Uses **zero external AI APIs** — all decision logic is pure Python
+A fully autonomous algorithmic trading bot that scores stocks with 30+ technical indicators, validates every trade with Claude AI, and executes orders on Alpaca Paper Trading — all running on a free GitHub Actions cron schedule with no server required.
 
 ---
 
 ## How It Works
 
-### Scoring Engine
+### 1. Rules-Based Scoring Engine
 Every ticker is scored on a **bull/bear point system** across five signal categories:
 
 | Category | Indicators |
 |---|---|
-| Trend | EMA alignment, ADX, MACD, Parabolic SAR, VWAP |
-| Momentum | RSI, Stochastic RSI, CCI, Williams %R, Rate of Change |
-| Volatility | Bollinger Bands, Keltner Channels, ATR |
+| Trend | EMA alignment (9/21/50/200), ADX, MACD, Parabolic SAR, VWAP |
+| Momentum | RSI, Stochastic RSI, CCI, Williams %R |
+| Volatility | Bollinger Bands (%B), Keltner Channels, ATR, BB squeeze |
 | Volume | OBV, Volume Ratio, MFI |
-| News | TextBlob sentiment, SEC 8-K detection |
+| News | yfinance headlines, TextBlob sentiment, keyword boosts |
 
 **Net Score** = Bull Score − Bear Score  
+**Confidence** = Net Score ÷ 100
+
 **Action thresholds:**
-- Net > 30 → `buy`
-- Net < −30 → `short`/`sell`
+- Net ≥ 65 AND confidence ≥ 0.65 → `buy`
+- Net ≥ 70 AND confidence ≥ 0.70 → `short`
 - Otherwise → `hold`
 
-**No trade is executed unless:** `|net_score| ≥ 30` AND `confidence ≥ 0.60`
+### 2. Macro Filter
+Before scoring any ticker the bot checks:
+- **VIX** — scales position sizes down as fear rises, halts new longs above VIX 35
+- **SPY regime** — discounts bull signals 20–50% when SPY is in caution/bear territory
 
-### Macro Filter
-Before scoring any ticker, the bot computes:
-- **VIX level** — scales position sizes down as fear rises, halts new longs at VIX > 35
-- **SPY regime** — discounts bull signals 20–40% when SPY is in caution/bear zone
+### 3. Fundamental Quality Filter
+Every ticker is scored on fundamentals via yfinance (cached per session):
+- Revenue growth, EPS beat history, institutional ownership, short interest
+- Adds/subtracts bull/bear points and classifies breakout quality
 
-### Strategies
+### 4. Multi-Timeframe Velocity System
+Returns over 1d / 5d / 1m / 3m are computed and compared to thresholds:
+- Large recent gains trigger a **velocity penalty** that reduces confidence
+- Penalty is halved for `fundamental` breakouts, doubled for `hype` breakouts
+- Hard cap of 0.45 penalty so no stock is completely zeroed out
+
+### 5. Hype Detection
+News headlines are scanned for:
+- **Penalties**: Jim Cramer mentions, retail FOMO language, Reddit/WSB references, short-squeeze narratives
+- **Boosts**: Earnings beats, raised guidance, insider buying, analyst upgrades with price targets
+
+### 6. Claude AI Confirmation
+Every scored ticker (buy, hold, or short) is sent to **Claude claude-sonnet-4-6** with:
+- All 30+ indicators and their values
+- Bull/bear signals triggered
+- Multi-timeframe returns and velocity data
+- News headlines and sentiment
+- Current held position context (if stock is already owned)
+
+Claude returns a structured decision with `entry_price`, `stop_loss`, `take_profit`, `risk_reward`, and `entry_condition` for every ticker — including holds.
+
+### 7. Position Awareness
+At the start of each scan the bot fetches live Alpaca positions. For stocks already held:
+- Claude's valid decisions are `hold`, `add`, or `sell`
+- A SELL signal closes the full position via Alpaca
+- The open position (qty, avg entry, unrealized P&L) is shown in the dashboard
+
+### 8. Risk Management
+- Base risk per trade: **2% of portfolio**, scaled by confidence × VIX multiplier
+- Maximum position size: **10% of portfolio** per stock
+- Stop loss: **1.5× ATR** below entry
+- Take profit: **3.75× ATR** above entry (≈2.5× risk/reward)
+- **Kill switch**: If daily P&L falls below −3% of starting value, all new orders halt
+- Hard block on stocks with intraday move > 15%; raised threshold if move > 10%
+
+---
+
+## Strategies
+
 | Strategy | Trigger | Time Horizon |
 |---|---|---|
-| `trend_follow` | EMA aligned + ADX>25 + MACD rising + volume | swing (3–10d) |
-| `mean_reversion` | RSI oversold + BB squeeze + Stoch RSI turning | scalp (1–5d) |
-| `breakout` | Price breaks R1/52wk high with volume >1.5x | swing (5–20d) |
-| `breakdown` | Price breaks S1/52wk low with volume | swing |
-| `squeeze_breakout` | BB squeeze resolved + KC breakout | swing |
-| `news_momentum` | Sentiment >0.4 + trend confirmation | scalp (1–3d) |
+| `trend_follow` | Full EMA alignment + ADX > 22 + MACD rising + volume confirmation | Swing — 2–10 days |
+| `breakout` | Price breaks R1 resistance or 52-week high with volume | Swing — 2–10 days |
+| `squeeze_breakout` | Bollinger Band squeeze resolved + Keltner Channel breakout | Swing — 2–10 days |
+| `breakdown` | Price breaks S1 support or 52-week low with volume (short side) | Swing — 2–10 days |
+| `mean_reversion` | RSI/BB/CCI deeply oversold — bounce back to mean | Scalp — same day to 2 days |
+| `news_momentum` | Positive news catalyst + EMA alignment or volume surge | Scalp — same day to 2 days |
 
-### Risk Management
-- Base risk per trade: **2% of portfolio**, scaled by confidence × VIX multiplier
-- Maximum position size: **10% of portfolio** in any single stock
-- Stop loss: **1.5× ATR** below/above entry (strategy-specific)
-- Take profit: **2.5× the stop distance** (configurable by strategy)
-- **Kill switch**: If daily P&L falls below −3% of starting value, all new orders halt
+---
+
+## GitHub Actions Schedule
+
+Runs automatically Monday–Friday, no server needed:
+
+| Workflow | UTC | EDT | Action |
+|---|---|---|---|
+| `discovery.yml` | `30 12` | 8:30 AM | Pre-market scan, identify setups |
+| `premarket.yml` | `0 13` | 9:00 AM | News and gap analysis |
+| `trading_day.yml` | `30 13` | 9:30 AM | Full continuous session — scores, Claude, execute (runs all day) |
+| `eod_summary.yml` | `15 20` | 4:15 PM | End-of-day P&L summary |
+| `test_ai_filter.yml` | Manual | — | Test specific tickers via workflow_dispatch |
+
+---
+
+## Live Dashboard
+
+A real-time web dashboard shows every decision — buy, hold, short, full indicator breakdown, Claude's reasoning, and news headlines.
+
+### Deploy to Vercel (free, ~2 minutes)
+
+1. Go to [vercel.com](https://vercel.com) and sign in with GitHub
+2. Click **Add New → Project** and import this repo
+3. Under **Root Directory**, set it to `vercel-dashboard`
+4. Click **Deploy**
+
+Vercel auto-redeploys every time the bot commits new data to `main`.
+
+### How it works
+
+- After each scan cycle the bot writes every decision to `data/live_feed.json`
+- GitHub Actions commits and pushes that file to `main`
+- The dashboard fetches the raw JSON from GitHub every 30 seconds
+- No server, no database — just a static HTML file reading a JSON file
+
+### What's in the analysis panel (click any row)
+
+- **Technical Indicators** — RSI, ADX, BB%B, Volume Ratio, MFI, StochRSI, MACD, CCI, Williams %R, ATR, VWAP, full EMA stack, 52-week range, distance from EMA200, VIX, SPY regime
+- **Rule-Based Signals** — all bull/bear signals triggered, scorer reasoning
+- **Claude's Analysis** — entry price, stop loss, take profit, risk/reward, entry condition, full Claude reasoning, news headlines with sentiment scores
 
 ---
 
@@ -57,94 +131,71 @@ Before scoring any ticker, the bot computes:
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/your-username/moneyprinter.git
-cd moneyprinter
+git clone https://github.com/Harsh-0214/MoneyPrinter.git
+cd MoneyPrinter
 ```
 
 ### 2. Install dependencies
 ```bash
 pip install -r requirements.txt
-python -c "import nltk; nltk.download('punkt'); nltk.download('averaged_perceptron_tagger')"
 ```
 
-### 3. Configure environment
-```bash
-cp .env.example .env
-# Edit .env with your API keys
-```
+### 3. Add GitHub Secrets
+Go to **Settings → Secrets and variables → Actions** and add:
 
-### 4. Get API Keys
+| Secret | Where to get it |
+|---|---|
+| `ALPACA_API_KEY` | [alpaca.markets](https://alpaca.markets) → Paper Trading → API Keys |
+| `ALPACA_SECRET_KEY` | Same as above |
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
+| `NEWS_API_KEY` | [newsapi.org](https://newsapi.org) (optional — yfinance is primary) |
 
-**Alpaca (Paper Trading — Free)**
-1. Go to [alpaca.markets](https://alpaca.markets) → Create account
-2. Switch to **Paper Trading** environment
-3. Go to **API Keys** → Generate new key
-4. Copy `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`
-
-**NewsAPI (Free tier: 100 requests/day)**
-1. Go to [newsapi.org](https://newsapi.org) → Get API Key
-2. Copy key to `NEWS_API_KEY`
-
----
-
-## Running Locally (Test Mode)
-
-```bash
-# Dry run — full logic, no real orders
-DRY_RUN=true python main.py --session premarket
-DRY_RUN=true python main.py --session market_open
-DRY_RUN=true python main.py --session midday
-DRY_RUN=true python main.py --session market_close
-DRY_RUN=true python main.py --session eod_summary
-
-# View the trade dashboard
-python dashboard/view_trades.py
-```
-
----
-
-## GitHub Actions Setup
-
-All 5 workflows run automatically on their cron schedules:
-
-| Workflow | Cron (UTC) | EDT Local | Action |
-|---|---|---|---|
-| `premarket.yml` | `0 13 * * 1-5` | 9:00 AM | News scan, gap detection |
-| `market_open.yml` | `5 14 * * 1-5` | 9:35 AM | Full score + trade execution |
-| `midday.yml` | `0 16 * * 1-5` | 12:00 PM | Stop/target checks |
-| `market_close.yml` | `30 19 * * 1-5` | 3:30 PM | Close scalps, overnight decisions |
-| `eod_summary.yml` | `15 20 * * 1-5` | 4:15 PM | P&L report |
-
-### Add secrets to GitHub
-Go to your repo → **Settings → Secrets and variables → Actions**
-
-Add these **Repository Secrets:**
-- `ALPACA_API_KEY`
-- `ALPACA_SECRET_KEY`
-- `NEWS_API_KEY`
-
-To control live vs dry run, add a **Repository Variable:**
-- `DRY_RUN` = `true` (safe default) or `false` (live paper trading)
-
-### Enable write permissions for Actions
+### 4. Enable write permissions for Actions
 Go to **Settings → Actions → General → Workflow permissions**  
-Select: **Read and write permissions** (so the bot can commit `trades.db`)
+Select: **Read and write permissions**
+
+### 5. Running locally
+```bash
+# Test a specific session
+python main.py --session discovery
+python main.py --session premarket
+python main.py --session continuous
+python main.py --session eod_summary
+
+# Test Claude AI filter on specific tickers
+python main.py --session test_ai --tickers NVDA,AAPL,MSFT
+```
 
 ---
 
-## EDT vs EST (Daylight Saving Adjustment)
+## Project Structure
 
-The cron times above use **EDT (UTC−4)**, valid **March–November**.
-
-During **November–March (EST = UTC−5)**, add 1 hour to all UTC times:
-
-| Workflow | EDT cron | EST cron |
-|---|---|---|
-| premarket | `0 13 * * 1-5` | `0 14 * * 1-5` |
-| market_open | `5 14 * * 1-5` | `5 15 * * 1-5` |
-| midday | `0 16 * * 1-5` | `0 17 * * 1-5` |
-| market_close | `30 19 * * 1-5` | `30 20 * * 1-5` |
-| eod_summary | `15 20 * * 1-5` | `15 21 * * 1-5` |
+```
+MoneyPrinter/
+├── .github/workflows/
+│   ├── discovery.yml          # 8:30 AM EDT
+│   ├── premarket.yml          # 9:00 AM EDT
+│   ├── trading_day.yml        # 9:30 AM EDT (continuous)
+│   ├── eod_summary.yml        # 4:15 PM EDT
+│   └── test_ai_filter.yml     # Manual trigger
+├── bot/
+│   ├── indicators.py          # 30+ technical indicator calculations (2yr history)
+│   ├── news.py                # News fetching (yfinance primary) + sentiment + hype detection
+│   ├── scorer.py              # Rules engine, velocity system, fundamental quality filter
+│   ├── ai_filter.py           # Claude AI confirmation + price guidance
+│   ├── risk.py                # Position sizing, VIX scaling, kill switch
+│   ├── trader.py              # Alpaca order execution
+│   ├── live_feed.py           # Writes data/live_feed.json for dashboard
+│   └── logger.py              # SQLite trade logger (data/trades.db)
+├── vercel-dashboard/
+│   └── index.html             # Full-featured responsive web dashboard
+├── data/
+│   ├── trades.db              # SQLite DB (auto-committed by Actions)
+│   └── live_feed.json         # Live decision feed (auto-committed by Actions)
+├── watchlist.json             # Tickers to scan + company name mappings
+├── main.py                    # Session router + execution logic
+└── requirements.txt
+```
 
 ---
 
@@ -156,7 +207,7 @@ Edit `watchlist.json` to add or remove tickers:
 {
   "trade": {
     "tech": ["AAPL", "MSFT", "NVDA", "YOUR_TICKER"],
-    ...
+    "finance": ["JPM", "GS"]
   },
   "company_names": {
     "YOUR_TICKER": "Your Company Inc"
@@ -164,64 +215,7 @@ Edit `watchlist.json` to add or remove tickers:
 }
 ```
 
-The `company_names` mapping is used for better news search accuracy.
-
----
-
-## Trade Dashboard
-
-```bash
-python dashboard/view_trades.py
-```
-
-Displays:
-1. Portfolio value, cash, daily P&L
-2. Open positions table (color-coded: green = profit, red = loss, yellow = near stop)
-3. Today's closed trades with WIN/LOSS labels
-4. All-time stats: win rate, profit factor, avg winner/loser
-5. 7-day P&L bar chart
-6. Last scan summary
-
----
-
-## Project Structure
-
-```
-MoneyPrinter/
-├── .github/workflows/       # 5 GitHub Actions (one per session)
-├── bot/
-│   ├── indicators.py        # All technical indicator calculations
-│   ├── news.py              # News fetching + sentiment scoring
-│   ├── scorer.py            # Rules-based decision engine
-│   ├── strategies.py        # Strategy classifier
-│   ├── risk.py              # Position sizing + kill switch
-│   ├── trader.py            # Alpaca order execution
-│   ├── portfolio.py         # Portfolio/position state
-│   └── logger.py            # SQLite trade logger
-├── dashboard/
-│   └── view_trades.py       # Rich CLI dashboard
-├── data/
-│   └── trades.db            # SQLite DB (auto-committed by Actions)
-├── watchlist.json
-├── main.py                  # Session router + all session logic
-└── requirements.txt
-```
-
----
-
-## Migrating to Robinhood (robin_stocks)
-
-The bot is designed so only `bot/trader.py` interacts with the broker API.
-To switch to Robinhood:
-
-1. `pip install robin_stocks`
-2. Replace `bot/trader.py` with a Robinhood-backed implementation exposing the same functions:
-   - `get_account()` → `robin_stocks.robinhood.account.load_portfolio_profile()`
-   - `submit_order()` → `robin_stocks.robinhood.orders.order_buy_limit()`
-   - `close_position()` → `robin_stocks.robinhood.orders.order_sell_market()`
-   - etc.
-
-Everything else — indicators, scorer, strategies, risk, logger, dashboard — remains unchanged.
+The `company_names` mapping improves news search accuracy.
 
 ---
 
@@ -230,47 +224,12 @@ Everything else — indicators, scorer, strategies, risk, logger, dashboard — 
 | Service | Cost |
 |---|---|
 | Alpaca Paper Trading | Free |
-| NewsAPI | Free (100 req/day) |
+| Anthropic API (Claude) | ~$0.01–0.05 per full scan (claude-sonnet-4-6) |
 | yfinance | Free |
-| GitHub Actions | Free (public repos) / ~2000 min/month free (private) |
-| Total | **$0/month** |
-
----
-
-## Live Dashboard
-
-A real-time web dashboard shows every decision the bot makes — buys, holds, shorts, Claude's reasoning — updated live from the repo.
-
-### Deploy to Vercel (free, ~2 minutes)
-
-1. Go to [vercel.com](https://vercel.com) and sign in with GitHub
-2. Click **Add New → Project** and import `Harsh-0214/MoneyPrinter`
-3. Under **Root Directory**, click **Edit** and set it to `vercel-dashboard`
-4. Leave everything else as default and click **Deploy**
-
-That's it. Vercel auto-redeploys every time the bot commits new data to `main`.
-
-### How it works
-
-- The bot writes every decision (buy, hold, short, AI verdict, reasoning) to `data/live_feed.json` after each scan cycle
-- GitHub Actions commits and pushes that file to `main` at the end of every session
-- The dashboard fetches `raw.githubusercontent.com/.../data/live_feed.json` every 30 seconds with a cache-bust param
-- No server, no database — just a static HTML file reading a JSON file from GitHub
-
-### What you see
-
-| Column | Description |
-|---|---|
-| Time | UTC timestamp of the scan cycle |
-| Ticker | Stock symbol |
-| Action | **BUY** (green) / **SHORT** (red) / **HOLD** (gray) |
-| Net Score | Bull minus bear points from the rules engine |
-| Conf % | Confidence (net score / 100) |
-| Strategy | Detected strategy pattern |
-| AI Verdict | ✓ Claude confirmed · ✗ Claude rejected · — not evaluated |
-| AI Reasoning | Claude's one-sentence justification (hover for full text) |
-
-Summary cards show: total decisions today, buys, holds, shorts, Claude overrides, and rejections.
+| NewsAPI | Free (100 req/day, optional) |
+| GitHub Actions | Free (public repos) |
+| Vercel Dashboard | Free |
+| **Total** | **~$0–$1/month** |
 
 ---
 
