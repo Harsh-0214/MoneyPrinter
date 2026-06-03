@@ -558,126 +558,6 @@ def session_premarket() -> None:
     log_scan("premarket", len(get_all_trade_tickers()), 0, 0, len(gap_ups), len(gap_downs))
 
 
-def session_market_open(alpaca_client, data_client) -> None:
-    """9:35 AM EDT - full score run, execute top-3 signals above threshold."""
-    console.rule("[bold green]MARKET OPEN SESSION[/bold green]")
-    macro = get_macro_context()
-
-    if macro["vix"] > 35:
-        console.print("[bold red]VIX > 35 - EXTREME FEAR. No new positions.[/bold red]")
-        return
-
-    signals  = run_full_scan("market_open", macro, alpaca_client, data_client)
-    executed = execute_signals(signals, alpaca_client, data_client, macro, "market_open",
-                               max_trades=MAX_TRADES_PER_SESSION)
-    console.print(f"[bold green]Market open complete: {executed} trades executed[/bold green]")
-
-
-def session_midday(alpaca_client, data_client) -> None:
-    """12:00 PM EDT - check stops/targets. New entries only on extreme conviction."""
-    console.rule("[bold blue]MIDDAY SESSION[/bold blue]")
-
-    from bot.portfolio import check_stops, check_targets, check_time_exits, close_position_and_log
-    macro = get_macro_context()
-
-    # Check stops
-    breached = check_stops(alpaca_client)
-    for pos in breached:
-        cp = pos.get("current_price") or pos.get("entry_price", 0)
-        close_position_and_log(alpaca_client, pos, cp, "midday", status="stopped")
-        console.print(f"[red]STOP LOSS: {pos['ticker']} closed @ {cp}[/red]")
-
-    # Check targets
-    targets_hit = check_targets(alpaca_client)
-    for pos in targets_hit:
-        cp = pos.get("current_price") or pos.get("entry_price") or 0
-        close_position_and_log(alpaca_client, pos, cp, "midday", status="closed")
-        console.print(f"[green]TAKE PROFIT: {pos['ticker']} closed @ {cp}[/green]")
-
-    # Time-based exits — close stale positions regardless of P&L
-    expired = check_time_exits(alpaca_client)
-    for pos in expired:
-        cp     = pos.get("current_price") or pos.get("entry_price") or 0
-        pnl    = pos.get("pnl_pct", 0)
-        age    = pos.get("age_days", 0)
-        color  = "green" if pnl >= 0 else "yellow"
-        close_position_and_log(alpaca_client, pos, cp, "midday", status="time_exit")
-        console.print(f"[{color}]TIME EXIT: {pos['ticker']} age={age}d pnl={pnl:+.1f}% closed @ {cp}[/{color}]")
-
-    # New entries only at extreme confidence — net_score > 80 AND confidence >= 0.85
-    signals   = run_full_scan("midday", macro, alpaca_client, data_client)
-    high_conf = [
-        s for s in signals
-        if s.get("net_score", 0) > 80 and s.get("confidence", 0) >= 0.85
-    ]
-    if high_conf:
-        executed = execute_signals(high_conf, alpaca_client, data_client, macro, "midday",
-                                   max_trades=1)   # only 1 new trade midday max
-        console.print(f"[bold]High-conviction midday entry: {executed}[/bold]")
-    else:
-        console.print("[dim]No extreme-conviction entries (net>80, conf>=0.85) at midday[/dim]")
-
-
-def session_market_close(alpaca_client, data_client) -> None:
-    """3:30 PM EDT - close scalps, re-score, decide what to hold overnight."""
-    console.rule("[bold magenta]MARKET CLOSE SESSION[/bold magenta]")
-
-    from bot.portfolio import get_open_positions, close_position_and_log, check_time_exits, check_stops, check_targets
-    macro = get_macro_context()
-
-    # Check stops and targets before anything else
-    for pos in check_stops(alpaca_client):
-        cp = pos.get("current_price") or pos.get("entry_price", 0)
-        close_position_and_log(alpaca_client, pos, cp, "market_close", status="stopped")
-        console.print(f"[red]STOP LOSS: {pos['ticker']} closed @ {cp}[/red]")
-
-    for pos in check_targets(alpaca_client):
-        cp = pos.get("current_price") or pos.get("entry_price") or 0
-        close_position_and_log(alpaca_client, pos, cp, "market_close", status="closed")
-        console.print(f"[green]TAKE PROFIT: {pos['ticker']} closed @ {cp}[/green]")
-
-    # Time-based exits
-    for pos in check_time_exits(alpaca_client):
-        cp    = pos.get("current_price") or pos.get("entry_price") or 0
-        pnl   = pos.get("pnl_pct", 0)
-        age   = pos.get("age_days", 0)
-        color = "green" if pnl >= 0 else "yellow"
-        close_position_and_log(alpaca_client, pos, cp, "market_close", status="time_exit")
-        console.print(f"[{color}]TIME EXIT: {pos['ticker']} age={age}d pnl={pnl:+.1f}% closed @ {cp}[/{color}]")
-
-    # Close all scalp positions at EOD regardless
-    open_positions = get_open_positions(alpaca_client)
-    for pos in open_positions:
-        if pos.get("time_horizon") == "scalp":
-            cp = pos.get("current_price") or pos.get("entry_price", 0)
-            close_position_and_log(alpaca_client, pos, cp, "market_close", status="closed")
-            console.print(f"[yellow]EOD scalp close: {pos['ticker']} @ {cp}[/yellow]")
-
-    # Re-score
-    signals = run_full_scan("market_close", macro, alpaca_client, data_client)
-
-    # Overnight entries: raised thresholds vs market_open
-    overnight = [
-        s for s in signals
-        if abs(s.get("net_score", 0)) >= 65 and s.get("confidence", 0) >= 0.65
-           and s.get("strategy") != "mixed"
-    ]
-    if overnight:
-        executed = execute_signals(overnight, alpaca_client, data_client, macro,
-                                   "market_close", max_trades=MAX_TRADES_PER_SESSION)
-        console.print(f"[bold]Overnight holds initiated: {executed}[/bold]")
-
-    # Close positions where signal has flipped
-    open_positions = get_open_positions(alpaca_client)
-    scored_map = {s["ticker"]: s for s in signals}
-    for pos in open_positions:
-        ticker = pos["ticker"]
-        if ticker in scored_map:
-            s = scored_map[ticker]
-            if pos.get("action") == "buy" and s.get("action") in ("short", "sell"):
-                cp = pos.get("current_price") or pos.get("entry_price", 0)
-                close_position_and_log(alpaca_client, pos, cp, "market_close", status="closed")
-                console.print(f"[red]Signal flip close: {ticker}[/red]")
 
 
 def session_continuous(alpaca_client, data_client) -> None:
@@ -1435,7 +1315,7 @@ def main() -> None:
     parser.add_argument(
         "--session",
         required=True,
-        choices=["discovery", "premarket", "market_open", "midday", "market_close", "eod_summary", "backtest", "continuous", "holdings"],
+        choices=["discovery", "premarket", "eod_summary", "backtest", "continuous", "holdings"],
         help="Which session to run",
     )
     parser.add_argument(
@@ -1505,12 +1385,6 @@ def main() -> None:
     try:
         if session == "premarket":
             session_premarket()
-        elif session == "market_open":
-            session_market_open(alpaca_client, data_client)
-        elif session == "midday":
-            session_midday(alpaca_client, data_client)
-        elif session == "market_close":
-            session_market_close(alpaca_client, data_client)
         elif session == "eod_summary":
             session_eod_summary(alpaca_client)
         elif session == "continuous":
