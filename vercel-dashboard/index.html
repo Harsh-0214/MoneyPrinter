@@ -293,7 +293,10 @@ tr.rs > td { background: rgba(255,77,106,.04); }
   grid-template-rows: auto;
   gap:0;
 }
-@media(max-width:1200px) { .ap-grid { grid-template-columns:1fr 1fr; } }
+@media(max-width:1200px) {
+  .ap-grid { grid-template-columns:1fr 1fr; }
+  .ap-section.no-border-r { grid-column: 1 / -1; border-right:none; }
+}
 @media(max-width:700px)  { .ap-grid { grid-template-columns:1fr; } }
 
 .ap-section {
@@ -774,7 +777,7 @@ function renderOverview(meta, entries, daily) {
     (d.trades_executed!=null?d.trades_executed:'—')+' closed today';
 
   // Feed
-  const recent = [...entries].reverse().slice(0,20);
+  const recent = [...entries].reverse().slice(0,50);
   const feed   = document.getElementById('recentFeed');
   if (!recent.length) {
     feed.innerHTML = `<div class="empty"><div class="empty-ico">📭</div><div class="empty-txt">No decisions yet — run the workflow to populate</div></div>`;
@@ -1035,18 +1038,19 @@ function drawerHTML(uid, e) {
           ${e.ai_reasoning||'Claude did not evaluate this ticker.'}
         </div>
 
-        <div class="ap-section-title" style="margin-top:4px"><span class="title-icon">📰</span> News Headlines Claude Read
-          <span style="margin-left:auto;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0">
+        <div class="ap-section-title" style="margin-top:4px;flex-wrap:wrap;gap:4px 8px;">
+          <span class="title-icon">📰</span> News Headlines Claude Read
+          <span style="margin-left:auto;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0;white-space:nowrap">
             ${e.news_count||0} articles · polarity
             <span style="color:${(parseFloat(e.news_polarity)||0)>0?'var(--green)':'var(--red)'};font-weight:700">
               ${((parseFloat(e.news_polarity)||0)>=0?'+':'')}${fmt(e.news_polarity,2)}
             </span>
-            ${e.bull_keyword_boost?`· 🟢 bull boost +${e.bull_keyword_boost}`:''}
-            ${e.bear_keyword_boost?`· 🔴 bear boost +${e.bear_keyword_boost}`:''}
-            ${e.earnings_risk&&e.earnings_risk!=='clear'?`· ⚠ earnings ${e.earnings_risk}`:''}
+            ${e.bull_keyword_boost?`· 🟢 +${e.bull_keyword_boost}`:''}
+            ${e.bear_keyword_boost?`· 🔴 +${e.bear_keyword_boost}`:''}
+            ${e.earnings_risk&&e.earnings_risk!=='clear'?`· ⚠ ${e.earnings_risk}`:''}
           </span>
         </div>
-        ${headlineHTML}
+        <div style="display:flex;flex-direction:column;width:100%">${headlineHTML}</div>
       </div>
 
     </div><!-- end ap-grid -->
