@@ -76,6 +76,22 @@ def _fallback(scorer_action: str) -> dict:
     }
 
 
+def _format_headlines(news: Optional[dict]) -> list[str]:
+    """Return formatted headline lines for the prompt."""
+    if not news:
+        return ["  (no news available)"]
+    top = news.get("top_headlines", [])
+    if not top:
+        return ["  (no headlines retrieved)"]
+    lines = []
+    for i, h in enumerate(top[:5], 1):
+        text = h.get("text", "").strip()
+        pol  = h.get("polarity", 0.0)
+        sentiment_tag = "positive" if pol > 0.1 else "negative" if pol < -0.1 else "neutral"
+        lines.append(f"  {i}. [{sentiment_tag:8s} {pol:+.2f}] {text[:220]}")
+    return lines
+
+
 def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = None) -> str:
     def _f(val, fmt=".2f", fallback="n/a"):
         try:
@@ -114,12 +130,14 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
         "",
         "--- NEWS ---",
         f"Sentiment polarity: {_f((news or {}).get('avg_polarity') or ind.get('news_polarity') or ind.get('news_sentiment_polarity'))}  (-1=very negative, +1=very positive)",
-        f"Articles analyzed:  {(news or {}).get('article_count', 'n/a')}",
-        f"Bull keyword boost: {(news or {}).get('bull_keyword_boost', 0)}",
-        f"Bear keyword boost: {(news or {}).get('bear_keyword_boost', 0)}",
-        f"SEC 8-K filing:     {(news or {}).get('sec_8k_flag', False)}",
-        f"Earnings risk:      {(news or {}).get('earnings_risk', {}).get('risk_level', 'none')}",
-        f"Recent headlines:   {'; '.join(((news or {}).get('headlines', []))[:3]) or 'none available'}",
+        f"Articles analyzed:  {(news or {}).get('headline_count', (news or {}).get('article_count', 0))}",
+        f"Bull keyword boost: {(news or {}).get('bull_keyword_boost', 0)}  (earnings beat, raised guidance, FDA approved, major contract, etc.)",
+        f"Bear keyword boost: {(news or {}).get('bear_keyword_boost', 0)}  (SEC probe, class action, CEO resigned, revenue miss, guidance cut, etc.)",
+        f"SEC 8-K filing:     {(news or {}).get('sec_8k_flag', False)}  (material event filed with SEC in last 24h)",
+        f"Earnings risk:      {(news or {}).get('earnings_risk', {}).get('risk_level', 'none')}  (block=within 3 days, warn=within 7 days)",
+        "",
+        "RECENT HEADLINES (read these carefully — they are the actual news):",
+        *_format_headlines(news),
         "",
         "--- RULE-BASED SIGNALS ---",
         f"For:     {json.dumps(score.get('signals_triggered', []))}",
@@ -129,12 +147,15 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
         score.get("reasoning", ""),
         "",
         "--- YOUR ANALYSIS ---",
-        "Before deciding, answer these questions internally:",
-        f"  {'FOR A BUY' if score.get('action') != 'short' else 'FOR A SHORT'}: Is there a clear business or macro reason that justifies this trade",
-        "  beyond the technical signal alone? Is momentum genuinely turning or is",
-        "  this a dip/high that could easily continue in the same direction?",
-        "  Does the news context support or contradict the technical setup?",
-        "  Would a rational investor with full market knowledge make this trade today?",
+        "Before deciding, reason through the following:",
+        f"  1. Read the headlines above. Do they explain WHY the stock is moving?",
+        f"     Does the news support or contradict the technical setup?",
+        f"     A negative headline with a buy signal = likely hold or reject.",
+        f"     A positive catalyst with a buy signal = stronger case.",
+        f"  2. Is the {'dip a buying opportunity or a falling knife?' if score.get('action') != 'short' else 'high a short opportunity or justified strength?'}",
+        f"     Is there a business/macro reason for the move to reverse?",
+        f"  3. Would a rational investor with access to these headlines and these",
+        f"     indicators make this trade today, or wait for more clarity?",
         "",
         "Based on your analysis, give your final independent decision.",
         "Your 'reasoning' must explain the business/macro logic — not just restate",
