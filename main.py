@@ -50,6 +50,15 @@ MACRO_TICKERS = WATCHLIST["macro_context_only"]
 COMPANY_NAMES = WATCHLIST["company_names"]
 DRY_RUN       = os.getenv("DRY_RUN", "true").lower() == "true"
 
+# ── Risk control constants ──────────────────────────────────────────────────
+MAX_DAILY_LOSS_PCT        = 0.03   # halt trading if session P&L drops 3% below open equity
+MAX_PORTFOLIO_EXPOSURE_PCT = 0.25  # max 25% of portfolio in any single new position
+MAX_TOTAL_EXPOSURE_PCT     = 0.60  # max 60% of portfolio deployed at once
+
+# ── Session-level state ─────────────────────────────────────────────────────
+_session_start_equity: Optional[float] = None
+_daily_loss_halt: bool = False
+
 
 def get_all_trade_tickers() -> list[str]:
     """Return static watchlist merged with any tickers promoted by discovery."""
@@ -108,6 +117,111 @@ def _check_sector_cap(ticker: str, alpaca_client=None) -> Optional[str]:
         return (f"sector_cap:{sector} already has {len(sector_positions)} positions "
                 f"({', '.join(sector_positions)})")
     return None
+
+
+def _quick_news_recheck(ticker: str) -> bool:
+    """Returns False if a breaking negative headline found in last 5 minutes."""
+    try:
+        import feedparser
+        feed = feedparser.parse("https://finance.yahoo.com/rss/")
+        for entry in feed.entries[:20]:
+            title = (getattr(entry, "title", "") or "").lower()
+            if ticker.lower() in title:
+                negative_words = ["crash", "halt", "sec", "fraud", "bankrupt", "recall", "lawsuit", "downgrade"]
+                if any(w in title for w in negative_words):
+                    logger.warning(f"[main] {ticker} breaking negative headline before order: {title[:100]}")
+                    return False
+    except Exception:
+        pass
+    return True
+
+
+def _rescore_open_positions(tickers, alpaca_client, data_client, dry_run: bool) -> None:
+    """Re-score all open buy positions and exit early if thesis is broken (net < 20)."""
+    import time as _time
+    from bot.indicators import get_indicators
+    from bot.scorer import score_ticker
+    from bot.logger import get_open_trades, update_trade_exit
+    from bot.trader import close_position, get_account
+
+    try:
+        open_trades = get_open_trades()
+        macro = get_macro_context()
+        for trade in open_trades:
+            if trade.get("action") != "buy":
+                continue
+            ticker = trade.get("ticker")
+            if not ticker:
+                continue
+            try:
+                ind = get_indicators(ticker)
+                if ind.get("error"):
+                    continue
+                score = score_ticker(ticker, ind, {}, macro)
+                net = score.get("net_score", 0)
+                if net < 20:
+                    logger.warning(f"[main] {ticker} thesis broken (net={net}) — exiting early")
+                    close_position(alpaca_client, ticker, dry_run)
+                    trade_id = trade.get("id")
+                    if trade_id:
+                        ep = float(trade.get("entry_price") or 0)
+                        cp = float(ind.get("current_price") or ep)
+                        pnl_pct = (cp - ep) / ep * 100 if ep > 0 else 0.0
+                        pnl_dollar = (cp - ep) * float(trade.get("quantity") or 0)
+                        update_trade_exit(trade_id, cp, "thesis_broken", pnl_dollar, pnl_pct)
+            except Exception as e:
+                logger.warning(f"[main] rescore error for {ticker}: {e}")
+    except Exception as e:
+        logger.warning(f"[main] _rescore_open_positions failed: {e}")
+
+
+def _check_earnings_proximity(open_trades) -> None:
+    """Tighten stop for open positions with earnings within 2 calendar days."""
+    import yfinance as yf
+    from bot.logger import update_trade_trailing
+
+    try:
+        for trade in open_trades:
+            ticker = trade.get("ticker")
+            if not ticker:
+                continue
+            try:
+                cal = yf.Ticker(ticker).calendar
+                if cal is None:
+                    continue
+                # calendar may be a DataFrame or dict
+                earnings_date = None
+                if hasattr(cal, "get"):
+                    earnings_date = cal.get("Earnings Date")
+                elif hasattr(cal, "columns") and "Earnings Date" in cal.columns:
+                    earnings_date = cal["Earnings Date"].iloc[0] if len(cal) > 0 else None
+                elif hasattr(cal, "T"):
+                    t = cal.T
+                    if "Earnings Date" in t.columns:
+                        earnings_date = t["Earnings Date"].iloc[0] if len(t) > 0 else None
+
+                if earnings_date is None:
+                    continue
+
+                from datetime import date
+                if hasattr(earnings_date, "date"):
+                    ed = earnings_date.date()
+                else:
+                    ed = earnings_date
+
+                days_until = (ed - date.today()).days
+                if 0 <= days_until <= 2:
+                    ep = float(trade.get("entry_price") or 0)
+                    if ep > 0:
+                        tight_stop = round(ep * 0.99, 2)
+                        logger.warning(f"[main] {ticker} earnings in {days_until} days — tightening stop to {tight_stop}")
+                        trade_id = trade.get("id")
+                        if trade_id:
+                            update_trade_trailing(trade_id, ep, tight_stop)
+            except Exception as e:
+                logger.debug(f"[main] earnings proximity check failed for {ticker}: {e}")
+    except Exception as e:
+        logger.warning(f"[main] _check_earnings_proximity failed: {e}")
 
 
 def is_market_open_today() -> bool:
@@ -360,6 +474,9 @@ def execute_signals(signals: list, alpaca_client, data_client,
     Submit orders for the top-N signals by confidence.
     Skips duplicates (ticker already has an open position in the DB).
     """
+    import time as _time
+    global _session_start_equity, _daily_loss_halt
+
     from bot.logger import log_trade, log_rejection
     from bot.risk   import calculate_position, is_kill_switch_active, init_daily_state
     from bot.trader import (

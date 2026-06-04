@@ -415,6 +415,7 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
         ai_conf      = ai.get("confidence", 1.0)
         ai_reasoning = ai.get("reasoning", "")
 
+        original_action = scorer_action
         scorer_result["ai_confirmed"]       = (ai_decision == scorer_action)
         scorer_result["ai_reasoning"]       = ai_reasoning
         scorer_result["ai_entry_price"]     = ai.get("entry_price")
@@ -457,6 +458,13 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
                 f"— defaulting to HOLD"
             )
             scorer_result["action"] = "hold"
+
+        # Sync signals when Claude changes the action
+        if original_action != scorer_result["action"]:
+            scorer_result["signals_against"] = scorer_result.get("signals_against", []) + [f"claude_override:{ai_reasoning[:60]}"]
+            scorer_result["signals_triggered"] = [s for s in scorer_result.get("signals_triggered", [])
+                                                   if not s.endswith("_fresh")]  # remove stale trigger claims
+            logger.info(f"[ai_filter] {ticker} action changed {original_action}→{scorer_result['action']} by Claude")
 
         return scorer_result
 

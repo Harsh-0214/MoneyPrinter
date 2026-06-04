@@ -576,13 +576,14 @@ def score_ticker(
     if isinstance(_earn_raw, dict):
         earn_risk_level = _earn_raw.get("risk_level", "clear")
         earn_risk       = earn_risk_level == "block"
-        earn_warn       = earn_risk_level == "warn"
+        earn_warn       = earn_risk_level in ("warn", "warn3")
     else:
         earn_risk  = bool(_earn_raw)
         earn_warn  = False
         earn_risk_level = "block" if earn_risk else "clear"
 
-    # Earnings warn: reduce confidence by 0.20 at scoring time
+    # Earnings warn: reduce confidence at scoring time
+    # earn_risk_level: "block" (within 1 day), "warn3" (within 3 days), "warn" (within 7 days)
     if earn_warn:
         signals_against.append("earnings_proximity")
 
@@ -684,14 +685,18 @@ def score_ticker(
     confidence_raw = net / 100.0
     confidence     = max(-1.0, min(1.0, confidence_raw))
 
-    # Earnings warn: reduce confidence 0.20
-    if earn_warn:
-        confidence = max(-1.0, min(1.0, confidence - 0.20))
-        reasoning_parts.append("Earnings within 7 days — confidence reduced 0.20")
+    # Earnings warn: reduce confidence based on proximity
+    # earn_risk_level: "block"=within 1 day, "warn3"=within 3 days, "warn"=within 7 days
+    if earn_risk_level == "warn3":
+        confidence = max(-1.0, min(1.0, confidence - 0.30))
+        reasoning_parts.append("Earnings within 3 days — confidence reduced 0.30 (heavy penalty)")
+    elif earn_warn:
+        confidence = max(-1.0, min(1.0, confidence - 0.15))
+        reasoning_parts.append("Earnings within 7 days — confidence reduced 0.15 (light warning)")
 
-    # Earnings risk: block entry entirely — binary outcome, not tradeable
+    # Earnings risk: block entry entirely — binary outcome, not tradeable (within 1 day)
     if earn_risk:
-        return _no_signal(ticker, "earnings_within_3_days")
+        return _no_signal(ticker, "earnings_within_1_day")
 
     # ──────────────────────────────────────────────────────────────
     # VELOCITY RETURNS + HYPE DETECTION
@@ -717,7 +722,7 @@ def score_ticker(
     vel_penalty = 0.0
     _earn_raw_dict = news.get("earnings_risk") or {}
     _earn_risk_level = _earn_raw_dict.get("risk_level", "clear") if isinstance(_earn_raw_dict, dict) else ("block" if _earn_raw_dict else "clear")
-    has_earnings_event = _earn_risk_level in ("block", "warn") or fq.get("eps_beat")
+    has_earnings_event = _earn_risk_level in ("block", "warn", "warn3") or fq.get("eps_beat")
 
     # 1d penalties (skip if earnings event)
     if not has_earnings_event:
@@ -798,6 +803,13 @@ def score_ticker(
             for name in trigger_names:
                 signals_triggered.append(f"{name}_fresh")
             logger.info(f"[{ticker}] FRESH TRIGGER x{fresh_count}: {trigger_names} → net boosted to {net}")
+
+            # Don't let fresh triggers override a strong hype/velocity signal
+            if total_conf_adj < -0.15 and fresh_count >= 1:
+                # Re-apply the 1.25x boost as 1.0x (cancel the boost, keep the triggers logged)
+                net = round(net / 1.25)
+                bull = round(bull / 1.25)
+                logger.info(f"[{ticker}] Hype override: trigger boost cancelled due to velocity penalty {total_conf_adj:.2f}")
         else:
             net = round(net * 0.75)
             bull = round(bull * 0.75)
@@ -843,6 +855,12 @@ def score_ticker(
         action = "short" if vix < 25 else "sell"
     else:
         action = "hold"
+
+    # Short selling disabled — requires dedicated short-specific indicator set
+    # All short signals are converted to hold
+    if action == "short":
+        action = "hold"
+        signals_against.append("shorts_disabled")
 
     # ── Short-specific filters (after action is tentatively set) ───────────
     if action in ("short", "sell"):
