@@ -31,14 +31,13 @@ def fetch_daily_bars(ticker: str, days: int = 730) -> Optional[pd.DataFrame]:
     try:
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
-        from alpaca.data.enums import Adjustment, DataFeed
+        from alpaca.data.enums import Adjustment
         client = get_data_client()
         req = StockBarsRequest(
             symbol_or_symbols=ticker,
             timeframe=TimeFrame.Day,
             start=datetime.now(timezone.utc) - timedelta(days=days),
             adjustment=Adjustment.ALL,
-            feed=DataFeed.IEX,
         )
         bars = client.get_stock_bars(req)
         if not bars or ticker not in bars:
@@ -154,14 +153,13 @@ def fetch_daily_bars_batch(tickers: list[str], days: int = 365) -> dict[str, pd.
     try:
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
-        from alpaca.data.enums import Adjustment, DataFeed
+        from alpaca.data.enums import Adjustment
         client = get_data_client()
         req = StockBarsRequest(
             symbol_or_symbols=tickers,
             timeframe=TimeFrame.Day,
             start=datetime.now(timezone.utc) - timedelta(days=days),
             adjustment=Adjustment.ALL,
-            feed=DataFeed.IEX,
         )
         bars = client.get_stock_bars(req)
         result = {}

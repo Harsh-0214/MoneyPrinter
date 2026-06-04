@@ -1,8 +1,8 @@
-name: Trading Day (All Day)
+name: Trading Day (9:30 AM EST)
 
 on:
   schedule:
-    - cron: '30 13 * * 1-5'   # 9:30 AM EDT (UTC-4)
+    - cron: '30 14 * * 1-5'   # 9:30 AM EST (UTC-5)
   workflow_dispatch:
 
 jobs:
