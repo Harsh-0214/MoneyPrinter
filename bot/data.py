@@ -110,6 +110,77 @@ def fetch_snapshot(ticker: str) -> Optional[dict]:
         return None
 
 
+def fetch_snapshots_batch(tickers: list[str]) -> dict[str, dict]:
+    """
+    Fetch snapshots for multiple tickers in a single Alpaca API call.
+    Returns dict of ticker -> snapshot dict (same format as fetch_snapshot).
+    Missing/failed tickers are simply absent from the result.
+    """
+    if not tickers:
+        return {}
+    try:
+        from alpaca.data.requests import StockSnapshotRequest
+        from alpaca.data.enums import DataFeed
+        client = get_data_client()
+        req = StockSnapshotRequest(symbol_or_symbols=tickers, feed=DataFeed.IEX)
+        snaps = client.get_stock_snapshot(req)
+        result = {}
+        for ticker, s in (snaps or {}).items():
+            try:
+                result[ticker] = {
+                    "price":       float(s.latest_trade.price) if s.latest_trade else None,
+                    "prev_close":  float(s.previous_daily_bar.close) if s.previous_daily_bar else None,
+                    "last_volume": float(s.daily_bar.volume) if s.daily_bar else None,
+                    "daily_open":  float(s.daily_bar.open)   if s.daily_bar else None,
+                    "daily_high":  float(s.daily_bar.high)   if s.daily_bar else None,
+                    "daily_low":   float(s.daily_bar.low)    if s.daily_bar else None,
+                }
+            except Exception:
+                pass
+        return result
+    except Exception as e:
+        logger.warning(f"[data] batch snapshot failed: {e}")
+        return {}
+
+
+def fetch_daily_bars_batch(tickers: list[str], days: int = 365) -> dict[str, pd.DataFrame]:
+    """
+    Fetch daily bars for multiple tickers in a single Alpaca API call.
+    Returns dict of ticker -> DataFrame (Open/High/Low/Close/Volume, date-indexed).
+    Missing/failed tickers are absent from the result.
+    """
+    if not tickers:
+        return {}
+    try:
+        from alpaca.data.requests import StockBarsRequest
+        from alpaca.data.timeframe import TimeFrame
+        from alpaca.data.enums import Adjustment, DataFeed
+        client = get_data_client()
+        req = StockBarsRequest(
+            symbol_or_symbols=tickers,
+            timeframe=TimeFrame.Day,
+            start=datetime.now(timezone.utc) - timedelta(days=days),
+            adjustment=Adjustment.ALL,
+            feed=DataFeed.IEX,
+        )
+        bars = client.get_stock_bars(req)
+        result = {}
+        for ticker in tickers:
+            try:
+                if bars and ticker in bars:
+                    df = bars[ticker].df.copy()
+                    if not df.empty:
+                        df.index = pd.to_datetime(df.index).tz_localize(None)
+                        df.columns = [c.capitalize() for c in df.columns]
+                        result[ticker] = df
+            except Exception:
+                pass
+        return result
+    except Exception as e:
+        logger.warning(f"[data] batch daily bars failed: {e}")
+        return {}
+
+
 def fetch_vix(days: int = 5) -> Optional[pd.DataFrame]:
     """Fetch VIX history — Alpaca doesn't carry ^VIX so falls back to yfinance."""
     try:

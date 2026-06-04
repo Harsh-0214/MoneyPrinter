@@ -16,11 +16,11 @@ Criteria for promotion:
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
-import yfinance as yf  # kept only for market_cap
-from bot.data import fetch_snapshot, fetch_daily_bars
+from bot.data import fetch_snapshots_batch, fetch_daily_bars_batch
 
 logger = logging.getLogger(__name__)
 
@@ -86,92 +86,75 @@ def run_discovery(static_tickers: list[str]) -> list[str]:
     """
     Screen UNIVERSE for active movers not already in static_tickers.
     Returns the updated list of discovered tickers (persisted to JSON).
+    Uses batched Alpaca calls — all snapshots in one request, all bars in one request.
     """
     static_set = set(t.upper() for t in static_tickers)
+    to_screen = [t for t in UNIVERSE if t not in static_set]
+
+    logger.info(f"[discovery] Screening {len(to_screen)} tickers (batch mode)...")
+
+    # Single batch call for all snapshots
+    snapshots = fetch_snapshots_batch(to_screen)
+
+    # Single batch call for all daily bars (365 days covers avg_vol + 52wk high)
+    bars_map = fetch_daily_bars_batch(to_screen, days=365)
+
     candidates = []
-
-    logger.info(f"[discovery] Screening {len(UNIVERSE)} tickers...")
-
-    for ticker in UNIVERSE:
-        if ticker in static_set:
-            continue
+    for ticker in to_screen:
         try:
-            snap = fetch_snapshot(ticker)
+            snap = snapshots.get(ticker)
             if not snap or not snap.get("price"):
                 continue
-            price = snap["price"]
+            price      = snap["price"]
             prev_close = snap["prev_close"]
-            last_vol = snap["last_volume"]
+            last_vol   = snap["last_volume"]
 
             if not price or price < 10:
                 continue
 
-            # Compute avg_vol and 52wk high from daily bars
-            daily = fetch_daily_bars(ticker, days=365)
+            daily = bars_map.get(ticker)
             if daily is None or len(daily) < 10:
                 continue
-            avg_vol = float(daily["Volume"].iloc[-63:].mean()) if len(daily) >= 63 else float(daily["Volume"].mean())
-            wk52_high = float(daily["High"].iloc[-252:].max()) if len(daily) >= 252 else float(daily["High"].max())
+
+            avg_vol   = float(daily["Volume"].iloc[-63:].mean()) if len(daily) >= 63 else float(daily["Volume"].mean())
+            wk52_high = float(daily["High"].iloc[-252:].max())   if len(daily) >= 252 else float(daily["High"].max())
 
             if not avg_vol or avg_vol < 2_000_000:
                 continue
 
-            vol_ratio = (last_vol / avg_vol) if last_vol and avg_vol else 0
-
-            # Price change vs previous close
+            vol_ratio  = (last_vol / avg_vol) if last_vol and avg_vol else 0
             pct_change = abs((price - prev_close) / prev_close * 100) if prev_close else 0
+            near_52wk  = bool(wk52_high and price >= wk52_high * 0.97)
 
-            # 52-week proximity
-            near_52wk = wk52_high and price >= wk52_high * 0.97
-
-            # market_cap still needs yfinance — try it but don't block on failure
-            mkt_cap = None
-            try:
-                mkt_cap = yf.Ticker(ticker).fast_info.market_cap
-            except Exception:
-                pass
-
-            if mkt_cap and mkt_cap < 10_000_000_000:  # < $10B
-                continue
-
-            # Promotion criteria
             if vol_ratio >= 1.5 and (pct_change >= 1.5 or near_52wk):
                 candidates.append({
                     "ticker":     ticker,
                     "price":      round(float(price), 2),
                     "pct_change": round(float(pct_change), 2),
                     "vol_ratio":  round(float(vol_ratio), 2),
-                    "mkt_cap_b":  round(float(mkt_cap) / 1e9, 1) if mkt_cap else None,
-                    "near_52wk":  bool(near_52wk),
+                    "near_52wk":  near_52wk,
                 })
                 logger.info(
                     f"[discovery] CANDIDATE {ticker}: ${price:.2f} "
                     f"chg={pct_change:+.1f}% vol={vol_ratio:.1f}x near52wk={near_52wk}"
                 )
-
         except Exception as e:
             logger.debug(f"[discovery] {ticker} skipped: {e}")
-            continue
 
-    # Rank by volume ratio, keep top N before Claude screen
+    # Rank by volume ratio, pass top 2x to Claude so it has room to reject
     candidates.sort(key=lambda x: x["vol_ratio"], reverse=True)
-    pre_claude = candidates[:DISCOVERY_LIMIT * 2]  # pass 2x to Claude so it has room to reject
+    pre_claude = candidates[:DISCOVERY_LIMIT * 2]
 
-    # Claude qualitative screen
     logger.info(f"[discovery] Sending {len(pre_claude)} candidates to Claude for qualitative screen...")
     approved = claude_screen_discovery_candidates(pre_claude)
 
-    # Take top DISCOVERY_LIMIT from Claude-approved set (still ranked by vol_ratio)
     promoted = approved[:DISCOVERY_LIMIT]
     promoted_tickers = [c["ticker"] for c in promoted]
 
-    # Persist
     meta = {c["ticker"]: c for c in promoted}
     _save_discovered({"tickers": promoted_tickers, "meta": meta})
 
-    logger.info(
-        f"[discovery] {len(promoted)} tickers promoted after Claude screen: {promoted_tickers}"
-    )
+    logger.info(f"[discovery] {len(promoted)} tickers promoted after Claude screen: {promoted_tickers}")
     return promoted_tickers
 
 
@@ -195,10 +178,87 @@ Rules:
 """
 
 
+def _fetch_newsapi_headlines(ticker: str, api_key: str) -> str:
+    """Fetch recent headlines for a ticker using NewsAPI (reliable in cloud environments)."""
+    if not api_key:
+        return "(no headlines fetched)"
+    try:
+        import urllib.request
+        import urllib.parse
+        query = urllib.parse.quote(ticker)
+        url = (
+            f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt"
+            f"&pageSize=5&language=en&apiKey={api_key}"
+        )
+        with urllib.request.urlopen(url, timeout=8) as resp:
+            data = json.loads(resp.read())
+        articles = data.get("articles") or []
+        hits = [a["title"][:150] for a in articles[:3] if a.get("title")]
+        return "\n".join(f"  - {h}" for h in hits) if hits else "(no headlines found)"
+    except Exception:
+        return "(no headlines fetched)"
+
+
+def _screen_one(c: dict, client, newsapi_key: str) -> Optional[dict]:
+    """Screen a single candidate through Claude. Returns candidate (approved) or None (rejected)."""
+    ticker     = c["ticker"]
+    price      = c.get("price", 0)
+    pct_change = c.get("pct_change", 0)
+    vol_ratio  = c.get("vol_ratio", 0)
+    near_52wk  = c.get("near_52wk", False)
+
+    headlines_text = _fetch_newsapi_headlines(ticker, newsapi_key)
+
+    prompt = (
+        f"DISCOVERY CANDIDATE: {ticker}\n\n"
+        f"Price:        ${price:.2f}\n"
+        f"Change today: {pct_change:+.1f}%\n"
+        f"Volume ratio: {vol_ratio:.1f}x 3-month average\n"
+        f"Near 52-wk high: {near_52wk}\n\n"
+        f"Recent headlines:\n{headlines_text}\n\n"
+        f"Should this stock be added to the short-term trading watchlist for the next 1-3 sessions?\n\n"
+        f'Answer ONLY with a JSON object: '
+        f'{{"decision": "approve" or "reject", "confidence": 0.0-1.0, '
+        f'"reasoning": "one sentence explaining the business reason or why there is none"}}'
+    )
+
+    try:
+        msg = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=200,
+            system=_DISCOVERY_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+            timeout=15,
+        )
+        raw = msg.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        result    = json.loads(raw)
+        decision  = str(result.get("decision", "approve")).lower()
+        reasoning = str(result.get("reasoning", ""))
+        conf      = float(result.get("confidence", 1.0))
+
+        if decision == "approve":
+            c["claude_reasoning"]  = reasoning
+            c["claude_confidence"] = conf
+            logger.info(f"[discovery] Claude APPROVED {ticker} (conf={conf:.2f}): {reasoning}")
+            return c
+        else:
+            logger.info(f"[discovery] Claude REJECTED {ticker}: {reasoning}")
+            return None
+    except Exception as e:
+        logger.warning(f"[discovery] Claude screen failed for {ticker}: {e} — keeping candidate")
+        c["claude_reasoning"] = "AI screen error — kept by default"
+        return c
+
+
 def claude_screen_discovery_candidates(candidates: list[dict]) -> list[dict]:
     """
     Pass quantitative discovery candidates through Claude for a qualitative screen.
-    Returns the subset Claude approves, each with 'claude_reasoning' attached.
+    Runs all Claude calls in parallel (up to 6 workers).
     Falls back to returning all candidates unchanged if the API is unavailable.
     """
     if not candidates:
@@ -209,6 +269,8 @@ def claude_screen_discovery_candidates(candidates: list[dict]) -> list[dict]:
         logger.info("[discovery] ANTHROPIC_API_KEY not set — skipping Claude screen")
         return candidates
 
+    newsapi_key = os.environ.get("NEWS_API_KEY", "")
+
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
@@ -216,78 +278,24 @@ def claude_screen_discovery_candidates(candidates: list[dict]) -> list[dict]:
         logger.warning(f"[discovery] Claude client init failed: {e} — skipping screen")
         return candidates
 
-    approved = []
-    for c in candidates:
-        ticker     = c["ticker"]
-        price      = c.get("price", 0)
-        pct_change = c.get("pct_change", 0)
-        vol_ratio  = c.get("vol_ratio", 0)
-        mkt_cap_b  = c.get("mkt_cap_b")
-        near_52wk  = c.get("near_52wk", False)
+    approved_map: dict[str, dict] = {}
 
-        headlines_text = "(no headlines fetched)"
-        try:
-            import feedparser
-            feed = feedparser.parse("https://finance.yahoo.com/rss/")
-            hits = []
-            for entry in feed.entries[:40]:
-                title = getattr(entry, "title", "") or ""
-                if ticker.lower() in title.lower():
-                    hits.append(title[:150])
-                    if len(hits) >= 3:
-                        break
-            if hits:
-                headlines_text = "\n".join(f"  - {h}" for h in hits)
-        except Exception:
-            pass
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {
+            executor.submit(_screen_one, c, client, newsapi_key): c["ticker"]
+            for c in candidates
+        }
+        for future in as_completed(futures):
+            ticker = futures[future]
+            try:
+                result = future.result()
+                if result is not None:
+                    approved_map[ticker] = result
+            except Exception as e:
+                logger.warning(f"[discovery] screen future failed for {ticker}: {e}")
 
-        prompt = (
-            f"DISCOVERY CANDIDATE: {ticker}\n\n"
-            f"Price:        ${price:.2f}\n"
-            f"Change today: {pct_change:+.1f}%\n"
-            f"Volume ratio: {vol_ratio:.1f}x 3-month average  (unusually high activity)\n"
-            f"Market cap:   ${mkt_cap_b}B\n"
-            f"Near 52-wk high: {near_52wk}\n\n"
-            f"Recent headlines (Yahoo Finance RSS, may be incomplete):\n"
-            f"{headlines_text}\n\n"
-            f"Should this stock be added to the trading watchlist for the next 1-3 sessions?\n\n"
-            f'Answer ONLY with a JSON object:\n'
-            f'{{"decision": "approve" or "reject", "confidence": 0.0-1.0, '
-            f'"reasoning": "one sentence explaining the business reason for the activity, or why there is none"}}'
-        )
-
-        try:
-            msg = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=200,
-                system=_DISCOVERY_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": prompt}],
-                timeout=15,
-            )
-            raw = msg.content[0].text.strip()
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-                raw = raw.strip()
-            result    = json.loads(raw)
-            decision  = str(result.get("decision", "approve")).lower()
-            reasoning = str(result.get("reasoning", ""))
-            conf      = float(result.get("confidence", 1.0))
-
-            if decision == "approve":
-                c["claude_reasoning"]  = reasoning
-                c["claude_confidence"] = conf
-                approved.append(c)
-                logger.info(f"[discovery] Claude APPROVED {ticker} (conf={conf:.2f}): {reasoning}")
-            else:
-                logger.info(f"[discovery] Claude REJECTED {ticker}: {reasoning}")
-
-        except Exception as e:
-            logger.warning(f"[discovery] Claude screen failed for {ticker}: {e} — keeping candidate")
-            c["claude_reasoning"] = "AI screen error — kept by default"
-            approved.append(c)
-
+    # Preserve original ranking order
+    approved = [approved_map[c["ticker"]] for c in candidates if c["ticker"] in approved_map]
     logger.info(f"[discovery] Claude screen: {len(approved)}/{len(candidates)} candidates approved")
     return approved
 
@@ -312,17 +320,19 @@ def scan_rising_movers(static_tickers: list[str], top_n: int = 5) -> list[str]:
       - Volume ratio >= 1.3x average
       - Price >= $5
 
-    Returns list of ticker symbols (not persisted — just returned for the
-    current scan cycle).
+    Uses batch Alpaca calls — all snapshots in one request.
+    Returns list of ticker symbols (not persisted).
     """
     static_set = set(t.upper() for t in static_tickers)
-    movers = []
+    to_screen  = [t for t in UNIVERSE if t not in static_set]
 
-    for ticker in UNIVERSE:
-        if ticker in static_set:
-            continue
+    snapshots = fetch_snapshots_batch(to_screen)
+    bars_map  = fetch_daily_bars_batch(to_screen, days=365)
+
+    movers = []
+    for ticker in to_screen:
         try:
-            snap = fetch_snapshot(ticker)
+            snap = snapshots.get(ticker)
             if not snap or not snap.get("price"):
                 continue
             price      = snap["price"]
@@ -332,23 +342,23 @@ def scan_rising_movers(static_tickers: list[str], top_n: int = 5) -> list[str]:
             if not price or price < 5:
                 continue
 
-            # Compute avg_vol and 52wk high from daily bars
-            daily = fetch_daily_bars(ticker, days=365)
+            daily = bars_map.get(ticker)
             if daily is None or len(daily) < 10:
                 continue
+
             avg_vol   = float(daily["Volume"].iloc[-63:].mean()) if len(daily) >= 63 else float(daily["Volume"].mean())
-            wk52_high = float(daily["High"].iloc[-252:].max()) if len(daily) >= 252 else float(daily["High"].max())
+            wk52_high = float(daily["High"].iloc[-252:].max())   if len(daily) >= 252 else float(daily["High"].max())
 
             pct_change = ((price - prev_close) / prev_close * 100) if prev_close else 0
             vol_ratio  = (last_vol / avg_vol) if last_vol and avg_vol else 0
-            near_52wk  = wk52_high and price >= wk52_high * 0.99
+            near_52wk  = bool(wk52_high and price >= wk52_high * 0.99)
 
             if vol_ratio >= 1.3 and (pct_change >= 1.5 or near_52wk):
                 movers.append((ticker, pct_change, vol_ratio))
         except Exception:
             continue
 
-    movers.sort(key=lambda x: x[1], reverse=True)  # rank by % gain
+    movers.sort(key=lambda x: x[1], reverse=True)
     result = [t for t, _, _ in movers[:top_n]]
     if result:
         logger.info(f"[discovery] rising movers this cycle: {result}")
