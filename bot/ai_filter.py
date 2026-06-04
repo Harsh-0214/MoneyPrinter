@@ -26,6 +26,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+_AUTO_EXECUTE_NET   = 85
+_AUTO_EXECUTE_CONF  = 0.85
+_CLAUDE_MIN_NET     = 60
+_CLAUDE_MIN_CONF    = 0.65
+
 _SYSTEM_PROMPT = """\
 You are a senior portfolio manager and quantitative analyst providing a \
 second opinion before any trade is executed.
@@ -57,7 +62,12 @@ one direction is clearly better.
 Be conservative. A two-sentence reasoning that cannot explain the business \
 logic behind the trade should result in a 'hold'. The reasoning field in your \
 response must justify the decision in terms of both technicals AND business \
-logic, not just indicator values.\
+logic, not just indicator values.
+
+You have access to tactical real-time context showing what JUST happened on the chart.
+Prioritize fresh_triggers_fired — if NONE triggered this cycle, the setup is STALE and you
+should be very reluctant to enter. A setup unchanged for 3+ cycles should be passed.
+Focus on momentum and recency — a fresh signal is worth 3x a stale one.\
 """
 
 # Net score threshold — skip Claude on clean holds (|net| < this AND no open position)
@@ -68,6 +78,18 @@ _MAX_WORKERS = 6
 
 # Set True when Anthropic billing/credits are exhausted — disables Claude for the session
 _credits_exhausted: bool = False
+
+
+def _apply_defaults(scorer_result: dict) -> dict:
+    """Copy scorer fields into the expected AI output format (no Claude call)."""
+    scorer_result.setdefault("ai_confirmed", True)
+    scorer_result.setdefault("ai_reasoning", "scorer-auto: thresholds met, no Claude call")
+    scorer_result.setdefault("ai_entry_price", scorer_result.get("entry_price"))
+    scorer_result.setdefault("ai_stop_loss", scorer_result.get("stop_loss"))
+    scorer_result.setdefault("ai_take_profit", scorer_result.get("take_profit"))
+    scorer_result.setdefault("ai_risk_reward", scorer_result.get("risk_reward"))
+    scorer_result.setdefault("ai_entry_condition", "scorer-auto")
+    return scorer_result
 
 
 def _fallback(scorer_action: str) -> dict:
@@ -98,6 +120,56 @@ def _format_headlines(news: Optional[dict]) -> list[str]:
         sentiment_tag = "positive" if pol > 0.1 else "negative" if pol < -0.1 else "neutral"
         lines.append(f"  {i}. [{sentiment_tag:8s} {pol:+.2f}] {text[:220]}")
     return lines
+
+
+def _build_tactical_context(ind: dict, score: dict) -> list[str]:
+    """Build tactical context block from entry triggers and indicators."""
+    try:
+        triggers = ind.get("entry_triggers") or {}
+        fresh_names = triggers.get("fresh_trigger_names", [])
+
+        # Volume trend
+        vol_ratio = ind.get("volume_ratio")
+        if vol_ratio and vol_ratio > 1.3:
+            vol_trend = "increasing on this move"
+        elif vol_ratio and vol_ratio < 0.7:
+            vol_trend = "fading (below average)"
+        else:
+            vol_trend = "normal"
+
+        # MACD direction
+        macd_hist      = ind.get("macd_hist") or 0
+        macd_hist_prev = ind.get("macd_hist_prev1") or 0
+        if macd_hist > macd_hist_prev:
+            macd_dir = "rising"
+        elif macd_hist < macd_hist_prev:
+            macd_dir = "falling"
+        else:
+            macd_dir = "flat"
+
+        # Setup type
+        triggered_sigs = score.get("signals_triggered") or []
+        if ("price_just_broke_r1_fresh" in triggered_sigs
+                or triggers.get("price_just_broke_52wk_high")):
+            setup_type = "breakout"
+        elif triggers.get("rsi_just_crossed_30_up") or triggers.get("stochrsi_just_crossed_bullish"):
+            setup_type = "bounce_off_support"
+        elif triggers.get("rsi_just_crossed_70_down"):
+            setup_type = "mean_reversion_oversold"
+        else:
+            setup_type = score.get("strategy", "unknown")
+
+        display_names = fresh_names if fresh_names else ["NONE — setup is stale"]
+        return [
+            "",
+            "TACTICAL CONTEXT (what JUST happened):",
+            f"Fresh triggers fired this cycle: {display_names}",
+            f"Volume trend: {vol_trend}",
+            f"MACD direction: {macd_dir}",
+            f"Setup type: {setup_type}",
+        ]
+    except Exception:
+        return ["", "TACTICAL CONTEXT: unavailable"]
 
 
 def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = None) -> str:
@@ -196,6 +268,8 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
         f"     Is there a business/macro reason for the move to reverse?",
         f"  3. Would a rational investor with access to these headlines and these",
         f"     indicators make this trade today, or wait for more clarity?",
+        "",
+        *_build_tactical_context(ind, score),
         "",
         "Based on your analysis, give your final independent decision.",
         "Your 'reasoning' must explain the business/macro logic — not just restate",
@@ -298,30 +372,25 @@ def claude_analyze_ticker(ticker: str, indicators: dict, scorer_result: dict,
 def apply_ai_opinion(scorer_result: dict, indicators: dict,
                      news: Optional[dict] = None) -> dict:
     """
-    Run Claude's second opinion on any ticker, regardless of scorer action.
-    Runs Claude on every ticker regardless of net score.
+    3-tier AI filter:
+      Tier 3 — Auto-hold: no Claude for clean holds below threshold
+      Tier 1 — Auto-execute: no Claude for very high confidence buys/shorts
+      Tier 2 — Claude reviews borderline cases
 
-    Possible outcomes:
-      scorer buy  + Claude buy   → confirmed buy
-      scorer buy  + Claude hold  → downgraded to hold
-      scorer buy  + Claude short → downgraded to hold (don't reverse blindly)
-      scorer hold + Claude buy   → upgraded to buy
-      scorer hold + Claude hold  → hold unchanged
-      scorer short + Claude short → confirmed short
-      scorer short + Claude hold  → downgraded to hold
     Always returns a valid scorer_result dict, never raises.
     """
     try:
         ticker        = scorer_result.get("ticker", "?")
         scorer_action = scorer_result.get("action", "hold")
-        net_score     = abs(scorer_result.get("net_score", 0))
+        net           = scorer_result.get("net_score", 0)
+        conf          = scorer_result.get("confidence", 0.0)
         has_position  = bool(scorer_result.get("_position"))
 
-        # Skip Claude on clean holds with no open position — obvious non-trades
+        # Tier 3: Auto-hold (no Claude) — clean holds with low conviction and no open position
         if (scorer_action == "hold"
-                and net_score < _SKIP_CLAUDE_NET_THRESHOLD
+                and abs(net) < _CLAUDE_MIN_NET
                 and not has_position):
-            logger.debug(f"[AI] {ticker}: clean hold (net={scorer_result.get('net_score',0)}) — skipping Claude")
+            logger.info(f"[AI] {ticker} [SKIP] net={net} — below threshold, no Claude call")
             scorer_result.setdefault("ai_confirmed", None)
             scorer_result.setdefault("ai_reasoning", "")
             scorer_result.setdefault("ai_entry_price", None)
@@ -331,23 +400,30 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
             scorer_result.setdefault("ai_entry_condition", "")
             return scorer_result
 
-        news = news or scorer_result.get("_news", {})
-        ai = claude_analyze_ticker(ticker, indicators, scorer_result, news=news)
+        # Tier 1: Auto-execute (no Claude) — very high conviction buys/shorts only
+        if (scorer_action in ("buy", "short")
+                and net > _AUTO_EXECUTE_NET
+                and conf > _AUTO_EXECUTE_CONF
+                and not has_position):
+            logger.info(f"[AI] {ticker} [AUTO] net={net} conf={conf:.2f} — executing without Claude")
+            return _apply_defaults(scorer_result)
+
+        # Tier 2: Claude reviews
+        news_data = news or scorer_result.get("_news", {})
+        ai = claude_analyze_ticker(ticker, indicators, scorer_result, news=news_data)
         ai_decision  = ai.get("decision", scorer_action)
         ai_conf      = ai.get("confidence", 1.0)
         ai_reasoning = ai.get("reasoning", "")
 
-        scorer_result["ai_confirmed"]      = (ai_decision == scorer_action)
-        scorer_result["ai_reasoning"]      = ai_reasoning
-        scorer_result["ai_entry_price"]    = ai.get("entry_price")
-        scorer_result["ai_stop_loss"]      = ai.get("stop_loss")
-        scorer_result["ai_take_profit"]    = ai.get("take_profit")
-        scorer_result["ai_risk_reward"]    = ai.get("risk_reward")
-        scorer_result["ai_entry_condition"]= ai.get("entry_condition", "")
-        has_position = bool(scorer_result.get("_position"))
+        scorer_result["ai_confirmed"]       = (ai_decision == scorer_action)
+        scorer_result["ai_reasoning"]       = ai_reasoning
+        scorer_result["ai_entry_price"]     = ai.get("entry_price")
+        scorer_result["ai_stop_loss"]       = ai.get("stop_loss")
+        scorer_result["ai_take_profit"]     = ai.get("take_profit")
+        scorer_result["ai_risk_reward"]     = ai.get("risk_reward")
+        scorer_result["ai_entry_condition"] = ai.get("entry_condition", "")
 
         if has_position:
-            # For held positions Claude chooses: sell (exit), buy (add more), hold (keep)
             if ai_decision == "sell":
                 logger.info(f"[AI] {ticker}: SELL (exit position) recommended by Claude — {ai_reasoning}")
                 scorer_result["action"] = "sell"
@@ -376,7 +452,6 @@ def apply_ai_opinion(scorer_result: dict, indicators: dict,
             scorer_result["action"] = ai_decision
             scorer_result["confidence"] = ai_conf
         else:
-            # e.g. scorer=buy, claude=short → don't blindly reverse, just hold
             logger.info(
                 f"[AI] {ticker}: Claude said {ai_decision.upper()} vs scorer {scorer_action.upper()} "
                 f"— defaulting to HOLD"
@@ -400,15 +475,17 @@ def run_ai_filter_batch(scored_pairs: list[tuple[dict, dict]]) -> list[dict]:
 
     results = [None] * len(scored_pairs)
 
-    # Pre-filter: resolve clean holds immediately without spawning a thread
+    # Pre-filter: resolve Tier 1 (auto-execute) and Tier 3 (auto-hold) without spawning threads
     needs_claude = {}
     for i, pair in enumerate(scored_pairs):
         s = pair[0]
         action       = s.get("action", "hold")
-        net          = abs(s.get("net_score", 0))
+        net          = s.get("net_score", 0)
+        conf         = s.get("confidence", 0.0)
         has_position = bool(s.get("_position"))
+        # Tier 3: auto-hold
         if (action == "hold"
-                and net < _SKIP_CLAUDE_NET_THRESHOLD
+                and abs(net) < _CLAUDE_MIN_NET
                 and not has_position):
             s.setdefault("ai_confirmed", None)
             s.setdefault("ai_reasoning", "")
@@ -418,6 +495,12 @@ def run_ai_filter_batch(scored_pairs: list[tuple[dict, dict]]) -> list[dict]:
             s.setdefault("ai_risk_reward", None)
             s.setdefault("ai_entry_condition", "")
             results[i] = s
+        # Tier 1: auto-execute
+        elif (action in ("buy", "short")
+                and net > _AUTO_EXECUTE_NET
+                and conf > _AUTO_EXECUTE_CONF
+                and not has_position):
+            results[i] = _apply_defaults(s)
         else:
             needs_claude[i] = pair
 

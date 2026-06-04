@@ -786,6 +786,34 @@ def score_ticker(
         f"vel_penalty={vel_penalty:.2f} hype_penalty={hype.get('hype_penalty', 0):.2f} bq={bq}"
     )
 
+    # ── Entry Trigger Multiplier ───────────────────────────────────────────
+    try:
+        triggers = ind.get("entry_triggers") or {}
+        fresh_count = triggers.get("fresh_trigger_count", 0)
+        trigger_names = triggers.get("fresh_trigger_names", [])
+
+        if fresh_count >= 1:
+            net = round(net * 1.25)
+            bull = round(bull * 1.25)
+            for name in trigger_names:
+                signals_triggered.append(f"{name}_fresh")
+            logger.info(f"[{ticker}] FRESH TRIGGER x{fresh_count}: {trigger_names} → net boosted to {net}")
+        else:
+            net = round(net * 0.75)
+            bull = round(bull * 0.75)
+            signals_against.append("no_fresh_trigger")
+            logger.info(f"[{ticker}] NO fresh triggers → net discounted to {net}")
+
+        # Recompute confidence after trigger adjustment
+        confidence_raw = net / 100.0
+        confidence = max(-1.0, min(1.0, confidence_raw))
+        # Re-apply velocity/hype confidence adjustments
+        confidence = max(0.0, confidence + total_conf_adj)
+        if fq.get("no_revenue"):
+            confidence = min(confidence, 0.65)
+    except Exception as e:
+        logger.warning(f"[{ticker}] trigger multiplier failed: {e}")
+
     # VIX high fear gates
     if vix > 35 and net > 0:
         return _no_signal(ticker, "vix_extreme_fear_no_longs")

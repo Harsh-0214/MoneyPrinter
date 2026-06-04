@@ -10,6 +10,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 import pandas_market_calendars as mcal
 from dotenv import load_dotenv
@@ -63,6 +64,51 @@ def get_all_trade_tickers() -> list[str]:
 # Max trades per session to limit overexposure
 MAX_TRADES_PER_SESSION = 3
 
+SECTOR_GROUPS = {
+    "ai_chips":   ["NVDA", "AMD", "MRVL", "SMCI", "AVGO", "ARM"],
+    "big_tech":   ["AAPL", "MSFT", "GOOGL", "META", "AMZN"],
+    "crypto":     ["COIN", "MSTR", "SOFI", "RIOT", "MARA"],
+    "energy":     ["XOM", "CVX", "SLB", "OXY"],
+    "financials": ["JPM", "GS", "BAC", "MS"],
+    "healthcare": ["LLY", "UNH", "ABBV", "MRNA"],
+}
+MAX_POSITIONS_PER_SECTOR = 2
+
+
+def _sector_of(ticker: str) -> Optional[str]:
+    for sector, tickers in SECTOR_GROUPS.items():
+        if ticker.upper() in tickers:
+            return sector
+    return None
+
+
+def _check_sector_cap(ticker: str, alpaca_client=None) -> Optional[str]:
+    """Returns blocking reason string if sector cap exceeded, else None."""
+    sector = _sector_of(ticker)
+    if sector is None:
+        return None
+
+    from bot.logger import get_open_trades
+    from bot.trader import get_positions
+
+    open_tickers = set()
+    for t in get_open_trades():
+        if t.get("status") in ("open", "dry_run"):
+            open_tickers.add(t.get("ticker", ""))
+
+    if alpaca_client:
+        try:
+            for p in get_positions(alpaca_client):
+                open_tickers.add(p["symbol"])
+        except Exception:
+            pass
+
+    sector_positions = [t for t in open_tickers if _sector_of(t) == sector and t != ticker]
+    if len(sector_positions) >= MAX_POSITIONS_PER_SECTOR:
+        return (f"sector_cap:{sector} already has {len(sector_positions)} positions "
+                f"({', '.join(sector_positions)})")
+    return None
+
 
 def is_market_open_today() -> bool:
     nyse = mcal.get_calendar("NYSE")
@@ -74,14 +120,18 @@ def is_market_open_today() -> bool:
 def _has_open_position(ticker: str, alpaca_client=None) -> bool:
     """Return True if ticker has an open position (DB or live Alpaca) or was traded today."""
     from bot.logger import get_open_trades, get_trades_today
+
+    # Source 1: SQLite open trades
     for t in get_open_trades():
         if t.get("ticker") == ticker and t.get("status") in ("open", "dry_run"):
             return True
-    # Also block if we already bought/shorted this ticker today
+
+    # Source 2: traded today (any action)
     for t in get_trades_today():
-        if t.get("ticker") == ticker and t.get("action") in ("buy", "short"):
+        if t.get("ticker") == ticker:
             return True
-    # Cross-check Alpaca live positions (catches positions from previous runs not in DB)
+
+    # Source 3: Alpaca live positions (ground truth)
     if alpaca_client:
         try:
             from bot.trader import get_positions
@@ -90,6 +140,7 @@ def _has_open_position(ticker: str, alpaca_client=None) -> bool:
                 return True
         except Exception:
             pass
+
     return False
 
 
@@ -309,7 +360,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
     Submit orders for the top-N signals by confidence.
     Skips duplicates (ticker already has an open position in the DB).
     """
-    from bot.logger import log_trade
+    from bot.logger import log_trade, log_rejection
     from bot.risk   import calculate_position, is_kill_switch_active, init_daily_state
     from bot.trader import (
         get_account, submit_order, compute_limit_price,
@@ -318,6 +369,23 @@ def execute_signals(signals: list, alpaca_client, data_client,
 
     if is_kill_switch_active():
         logger.warning("[execute] Kill switch active - no orders will be placed")
+        # Log kill_switch rejections for all signals
+        try:
+            for sig in signals:
+                if sig.get("action") in ("buy", "short"):
+                    log_rejection(
+                        session=session,
+                        ticker=sig["ticker"],
+                        net_score=sig.get("net_score", 0),
+                        confidence=sig.get("confidence", 0.0),
+                        action=sig.get("action", "hold"),
+                        rejection_reason="kill_switch",
+                        bull_score=sig.get("bull_score", 0),
+                        bear_score=sig.get("bear_score", 0),
+                        strategy=sig.get("strategy", ""),
+                    )
+        except Exception:
+            pass
         return 0
 
     account         = get_account(alpaca_client)
@@ -331,7 +399,32 @@ def execute_signals(signals: list, alpaca_client, data_client,
     executed = 0
     for sig in ranked:
         if is_kill_switch_active():
+            log_rejection(
+                session=session,
+                ticker=sig["ticker"],
+                net_score=sig.get("net_score", 0),
+                confidence=sig.get("confidence", 0.0),
+                action=sig.get("action", "hold"),
+                rejection_reason="kill_switch",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0),
+                strategy=sig.get("strategy", ""),
+            )
             break
+
+        if executed >= max_trades:
+            log_rejection(
+                session=session,
+                ticker=sig["ticker"],
+                net_score=sig.get("net_score", 0),
+                confidence=sig.get("confidence", 0.0),
+                action=sig.get("action", "hold"),
+                rejection_reason="max_trades",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0),
+                strategy=sig.get("strategy", ""),
+            )
+            continue
 
         ticker      = sig["ticker"]
         action      = sig["action"]
@@ -377,7 +470,36 @@ def execute_signals(signals: list, alpaca_client, data_client,
         # ── Duplicate position guard (for new buys/shorts) ────────────────
         if action not in ("sell",) and _has_open_position(ticker, alpaca_client):
             logger.info(f"[SKIP] Already have open position in {ticker} — skipping new entry")
+            log_rejection(
+                session=session,
+                ticker=ticker,
+                net_score=sig.get("net_score", 0),
+                confidence=confidence,
+                action=action,
+                rejection_reason="duplicate",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0),
+                strategy=strategy,
+            )
             continue
+
+        # ── Sector cap guard ───────────────────────────────────────────────
+        if action not in ("sell",):
+            sector_reason = _check_sector_cap(ticker, alpaca_client)
+            if sector_reason:
+                logger.info(f"[SECTOR CAP] {ticker} — {sector_reason}")
+                log_rejection(
+                    session=session,
+                    ticker=ticker,
+                    net_score=sig.get("net_score", 0),
+                    confidence=confidence,
+                    action=action,
+                    rejection_reason=sector_reason,
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0),
+                    strategy=strategy,
+                )
+                continue
 
         # ── Correlation guard ──────────────────────────────────────────────
         group_info = _correlation_group(ticker)

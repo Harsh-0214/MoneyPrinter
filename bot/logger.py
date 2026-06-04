@@ -27,6 +27,20 @@ def init_db() -> None:
     cur = conn.cursor()
 
     cur.executescript("""
+    CREATE TABLE IF NOT EXISTS rejections (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp        TEXT,
+        session          TEXT,
+        ticker           TEXT,
+        net_score        INTEGER,
+        confidence       REAL,
+        action           TEXT,
+        rejection_reason TEXT,
+        bull_score       INTEGER,
+        bear_score       INTEGER,
+        strategy         TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS trades (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp           TEXT,
@@ -369,5 +383,37 @@ def get_last_scan() -> Optional[dict]:
             "SELECT * FROM scan_log ORDER BY timestamp DESC LIMIT 1"
         ).fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def log_rejection(
+    session: str,
+    ticker: str,
+    net_score: int,
+    confidence: float,
+    action: str,
+    rejection_reason: str,
+    bull_score: int = 0,
+    bear_score: int = 0,
+    strategy: str = "",
+) -> None:
+    """Log a rejected trade signal to the rejections table."""
+    init_db()
+    conn = _connect()
+    try:
+        conn.execute("""
+        INSERT INTO rejections (
+            timestamp, session, ticker, net_score, confidence,
+            action, rejection_reason, bull_score, bear_score, strategy
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.utcnow().isoformat(),
+            session, ticker, net_score, confidence,
+            action, rejection_reason, bull_score, bear_score, strategy,
+        ))
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"[logger] log_rejection failed for {ticker}: {e}")
     finally:
         conn.close()

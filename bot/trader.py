@@ -127,14 +127,33 @@ def submit_order(
     qty: int,
     limit_price: float,
     dry_run: bool = False,
+    stop_loss: Optional[float] = None,
+    take_profit: Optional[float] = None,
+    volume_ratio: Optional[float] = None,
 ) -> str:
     """
-    Submit a limit order. Returns order ID string.
+    Submit a limit order (or bracket order when stop_loss+take_profit provided for buys).
+    Returns order ID string.
     side: 'buy' or 'sell'
     """
     if dry_run:
+        # Simulated slippage
+        slippage_pct = 0.001
+        if volume_ratio is not None:
+            if volume_ratio < 0.5:
+                slippage_pct = 0.005
+            elif volume_ratio < 1.0:
+                slippage_pct = 0.002
+        if side.lower() == "buy":
+            simulated_fill = round(limit_price * (1 + slippage_pct), 2)
+        else:
+            simulated_fill = round(limit_price * (1 - slippage_pct), 2)
         fake_id = f"dry-{uuid.uuid4().hex[:8]}"
-        logger.info(f"[trader] DRY_RUN: would submit {side} {qty} {ticker} @ ${limit_price:.2f} -> fake_id={fake_id}")
+        logger.info(
+            f"[trader] DRY_RUN: would submit {side} {qty} {ticker} @ ${limit_price:.2f} "
+            f"(slippage {slippage_pct*100:.1f}% → fill ~${simulated_fill:.2f}) "
+            f"stop={stop_loss} tp={take_profit} -> fake_id={fake_id}"
+        )
         return fake_id
 
     from alpaca.trading.requests import LimitOrderRequest
@@ -143,13 +162,30 @@ def submit_order(
     alpaca_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
 
     def _submit():
-        req = LimitOrderRequest(
-            symbol        = ticker,
-            qty           = qty,
-            side          = alpaca_side,
-            time_in_force = TimeInForce.DAY,
-            limit_price   = round(limit_price, 2),
-        )
+        if stop_loss and take_profit and side.lower() == "buy":
+            from alpaca.trading.requests import TakeProfitRequest, StopLossRequest
+            from alpaca.trading.enums import OrderClass
+            req = LimitOrderRequest(
+                symbol=ticker,
+                qty=qty,
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.DAY,
+                limit_price=round(limit_price, 2),
+                order_class=OrderClass.BRACKET,
+                take_profit=TakeProfitRequest(limit_price=round(take_profit, 2)),
+                stop_loss=StopLossRequest(
+                    stop_price=round(stop_loss, 2),
+                    limit_price=round(stop_loss * 0.995, 2),
+                ),
+            )
+        else:
+            req = LimitOrderRequest(
+                symbol        = ticker,
+                qty           = qty,
+                side          = alpaca_side,
+                time_in_force = TimeInForce.DAY,
+                limit_price   = round(limit_price, 2),
+            )
         order = client.submit_order(req)
         return str(order.id)
 
@@ -210,3 +246,59 @@ def compute_limit_price(side: str, quote: dict, current_price: float) -> float:
     else:
         bid = quote.get("bid") or current_price
         return round(bid - 0.03, 2)
+
+
+def check_stops(client, dry_run: bool = False) -> list[dict]:
+    """Poll all open positions against their DB stop/target levels. Returns list of closed trades."""
+    from bot.logger import get_open_trades, update_trade_exit
+    closed = []
+    try:
+        open_trades = get_open_trades()
+        if not open_trades:
+            return closed
+
+        live_positions = {p["symbol"]: p for p in get_positions(client)}
+
+        for trade in open_trades:
+            ticker   = trade.get("ticker")
+            stop     = trade.get("stop_loss")
+            target   = trade.get("take_profit")
+            entry    = trade.get("entry_price")
+            trade_id = trade.get("id")
+
+            if not ticker or not stop:
+                continue
+
+            pos = live_positions.get(ticker)
+            if not pos:
+                continue
+
+            current = pos.get("current_price")
+            if not current:
+                continue
+
+            reason = None
+            if current <= stop:
+                reason = "stopped"
+            elif target and current >= target:
+                reason = "target_hit"
+
+            if reason:
+                qty = trade.get("quantity", 0)
+                pnl_dollar = (current - entry) * qty if entry else 0
+                pnl_pct    = (current - entry) / entry * 100 if entry else 0
+                if not dry_run:
+                    try:
+                        close_position(client, ticker, dry_run=False)
+                    except Exception as e:
+                        logger.error(f"[trader] stop close failed for {ticker}: {e}")
+                        continue
+                else:
+                    logger.info(f"[trader] DRY_RUN: would close {ticker} @ ${current:.2f} ({reason})")
+
+                update_trade_exit(trade_id, current, reason, pnl_dollar, pnl_pct)
+                logger.info(f"[trader] {reason.upper()}: {ticker} @ ${current:.2f} pnl=${pnl_dollar:.2f}")
+                closed.append({"ticker": ticker, "reason": reason, "price": current, "pnl": pnl_dollar})
+    except Exception as e:
+        logger.error(f"[trader] check_stops failed: {e}")
+    return closed

@@ -1,8 +1,10 @@
 """Technical indicator calculations using yfinance + ta library."""
 
+import json
 import logging
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -16,6 +18,160 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 _cache: dict = {}
+
+_PREV_IND_PATH = Path(__file__).parent.parent / "data" / "prev_indicators.json"
+
+
+def load_prev_indicators() -> dict:
+    """Load previous-cycle indicators from data/prev_indicators.json."""
+    try:
+        if _PREV_IND_PATH.exists():
+            with open(_PREV_IND_PATH, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.debug(f"[indicators] load_prev_indicators failed: {e}")
+    return {}
+
+
+def save_prev_indicators(data: dict) -> None:
+    """Save current indicators to data/prev_indicators.json."""
+    try:
+        _PREV_IND_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_PREV_IND_PATH, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.warning(f"[indicators] save_prev_indicators failed: {e}")
+
+
+def compute_entry_triggers(current_ind: dict, prev_ind: dict) -> dict:
+    """
+    Detect FRESH entry trigger events by comparing current vs previous cycle indicators.
+    Returns a dict of boolean trigger flags plus summary counts.
+    """
+    triggers = {}
+
+    def _g(d, k):
+        return (d.get(k) if d else None)
+
+    try:
+        # ── Trend ───────────────────────────────────────────────────────────
+        cur_macd_line  = _g(current_ind, "macd_line")
+        cur_macd_sig   = _g(current_ind, "macd_signal")
+        prev_macd_line = _g(prev_ind, "macd_line")
+        prev_macd_sig  = _g(prev_ind, "macd_signal")
+
+        if None not in (cur_macd_line, cur_macd_sig, prev_macd_line, prev_macd_sig):
+            triggers["macd_just_crossed_bullish"] = (
+                prev_macd_line <= prev_macd_sig and cur_macd_line > cur_macd_sig
+            )
+            triggers["macd_just_crossed_bearish"] = (
+                prev_macd_line >= prev_macd_sig and cur_macd_line < cur_macd_sig
+            )
+        else:
+            triggers["macd_just_crossed_bullish"] = False
+            triggers["macd_just_crossed_bearish"] = False
+
+        cur_e9   = _g(current_ind, "ema9")
+        cur_e21  = _g(current_ind, "ema21")
+        prev_e9  = _g(prev_ind, "ema9")
+        prev_e21 = _g(prev_ind, "ema21")
+
+        if None not in (cur_e9, cur_e21, prev_e9, prev_e21):
+            triggers["ema9_just_crossed_ema21_bullish"] = (
+                prev_e9 <= prev_e21 and cur_e9 > cur_e21
+            )
+            triggers["ema9_just_crossed_ema21_bearish"] = (
+                prev_e9 >= prev_e21 and cur_e9 < cur_e21
+            )
+        else:
+            triggers["ema9_just_crossed_ema21_bullish"] = False
+            triggers["ema9_just_crossed_ema21_bearish"] = False
+
+        cur_price   = _g(current_ind, "current_price")
+        prev_price  = _g(prev_ind, "current_price")
+        cur_r1      = _g(current_ind, "R1")
+        prev_r1     = _g(prev_ind, "R1")
+        cur_vol_rat = _g(current_ind, "volume_ratio")
+        cur_s1      = _g(current_ind, "S1")
+        prev_s1     = _g(prev_ind, "S1")
+
+        if None not in (cur_price, prev_price, cur_r1, prev_r1, cur_vol_rat):
+            triggers["price_just_broke_r1"] = (
+                prev_price <= prev_r1 and cur_price > cur_r1 and cur_vol_rat >= 1.3
+            )
+        else:
+            triggers["price_just_broke_r1"] = False
+
+        if None not in (cur_price, prev_price, cur_s1, prev_s1):
+            triggers["price_just_broke_s1"] = (
+                prev_price >= prev_s1 and cur_price < cur_s1
+            )
+        else:
+            triggers["price_just_broke_s1"] = False
+
+        cur_pct52h  = _g(current_ind, "pct_from_52wk_high")
+        prev_pct52h = _g(prev_ind, "pct_from_52wk_high")
+
+        if None not in (cur_pct52h, prev_pct52h):
+            triggers["price_just_broke_52wk_high"] = (
+                prev_pct52h < 0 and cur_pct52h >= 0
+            )
+        else:
+            triggers["price_just_broke_52wk_high"] = False
+
+        # ── Momentum ────────────────────────────────────────────────────────
+        cur_rsi  = _g(current_ind, "rsi")
+        prev_rsi = _g(prev_ind, "rsi")
+
+        if None not in (cur_rsi, prev_rsi):
+            triggers["rsi_just_crossed_50_up"]  = prev_rsi < 50  and cur_rsi >= 50
+            triggers["rsi_just_crossed_30_up"]  = prev_rsi < 30  and cur_rsi >= 30
+            triggers["rsi_just_crossed_70_down"] = prev_rsi > 70 and cur_rsi <= 70
+        else:
+            triggers["rsi_just_crossed_50_up"]  = False
+            triggers["rsi_just_crossed_30_up"]  = False
+            triggers["rsi_just_crossed_70_down"] = False
+
+        cur_sk  = _g(current_ind, "stoch_k")
+        cur_sd  = _g(current_ind, "stoch_d")
+        prev_sk = _g(prev_ind, "stoch_k")
+        prev_sd = _g(prev_ind, "stoch_d")
+
+        if None not in (cur_sk, cur_sd, prev_sk, prev_sd):
+            triggers["stochrsi_just_crossed_bullish"] = (
+                prev_sk <= prev_sd and cur_sk > cur_sd and prev_sk < 20
+            )
+            triggers["stochrsi_just_crossed_bearish"] = (
+                prev_sk >= prev_sd and cur_sk < cur_sd and prev_sk > 80
+            )
+        else:
+            triggers["stochrsi_just_crossed_bullish"] = False
+            triggers["stochrsi_just_crossed_bearish"] = False
+
+        # ── Volume ──────────────────────────────────────────────────────────
+        cur_vol_today = _g(current_ind, "volume_today")
+        cur_vol_avg20 = _g(current_ind, "volume_avg20")
+
+        if None not in (cur_vol_today, cur_vol_avg20) and cur_vol_avg20 > 0:
+            triggers["volume_surge_this_candle"] = cur_vol_today > 2.0 * cur_vol_avg20
+        else:
+            triggers["volume_surge_this_candle"] = False
+
+    except Exception as e:
+        logger.warning(f"[indicators] compute_entry_triggers failed: {e}")
+        for k in ["macd_just_crossed_bullish", "macd_just_crossed_bearish",
+                  "ema9_just_crossed_ema21_bullish", "ema9_just_crossed_ema21_bearish",
+                  "price_just_broke_r1", "price_just_broke_s1", "price_just_broke_52wk_high",
+                  "rsi_just_crossed_50_up", "rsi_just_crossed_30_up", "rsi_just_crossed_70_down",
+                  "stochrsi_just_crossed_bullish", "stochrsi_just_crossed_bearish",
+                  "volume_surge_this_candle"]:
+            triggers.setdefault(k, False)
+
+    # Summary
+    bool_keys = [k for k, v in triggers.items() if isinstance(v, bool) and v]
+    triggers["fresh_trigger_count"] = len(bool_keys)
+    triggers["fresh_trigger_names"] = bool_keys
+    return triggers
 
 
 def _safe(val) -> Optional[float]:
@@ -555,4 +711,22 @@ def get_indicators_batch(tickers: list, max_workers: int = 8) -> dict:
                 results[ticker] = {"ticker": ticker, "error": str(e)}
     elapsed = _time.time() - t0
     logger.info(f"[perf] Fetched {len(tickers)} tickers in {elapsed:.1f}s")
+
+    # Compute entry triggers by comparing against previous cycle
+    try:
+        prev_all = load_prev_indicators()
+        new_prev = {}
+        for ticker, ind in results.items():
+            if ind.get("error"):
+                continue
+            prev_ind = prev_all.get(ticker, {})
+            triggers = compute_entry_triggers(ind, prev_ind)
+            ind["entry_triggers"] = triggers
+            # Store current for next cycle (strip large nested dicts to keep file small)
+            new_prev[ticker] = {k: v for k, v in ind.items()
+                                if k not in ("entry_triggers", "_indicators", "_news", "_position")}
+        save_prev_indicators(new_prev)
+    except Exception as e:
+        logger.warning(f"[indicators] entry trigger batch failed: {e}")
+
     return results
