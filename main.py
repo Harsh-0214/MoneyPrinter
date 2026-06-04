@@ -507,7 +507,18 @@ def execute_signals(signals: list, alpaca_client, data_client,
 
     account         = get_account(alpaca_client)
     portfolio_value = account.get("portfolio_value", 100_000)
+    current_equity  = account.get("equity", portfolio_value)
     init_daily_state(portfolio_value)
+
+    # ── Daily loss circuit breaker ─────────────────────────────────────────
+    if _session_start_equity is None:
+        _session_start_equity = current_equity
+        logger.info(f"[main] Session start equity recorded: ${_session_start_equity:,.2f}")
+
+    if (_session_start_equity and _session_start_equity > 0
+            and (current_equity - _session_start_equity) / _session_start_equity < -MAX_DAILY_LOSS_PCT):
+        _daily_loss_halt = True
+        logger.warning("[main] DAILY LOSS LIMIT HIT — halting new entries for this session")
 
     # Sort by confidence descending, cap at max_trades
     ranked  = sorted(signals, key=lambda s: s.get("confidence", 0), reverse=True)
@@ -553,6 +564,25 @@ def execute_signals(signals: list, alpaca_client, data_client,
 
         if entry_price == 0:
             continue
+
+        # ── Daily loss halt: skip new buys/shorts ─────────────────────────
+        if _daily_loss_halt and action in ("buy", "short"):
+            log_rejection(
+                session=session,
+                ticker=ticker,
+                net_score=sig.get("net_score", 0),
+                confidence=confidence,
+                action=action,
+                rejection_reason="daily_loss_halt",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0),
+                strategy=strategy,
+            )
+            continue
+
+        # Short selling is disabled pending dedicated short indicator set
+        if action in ("short", "sell") and not _has_open_position(ticker, alpaca_client):
+            continue  # not an open position exit — skip
 
         # ── Sell action: exit existing position via Alpaca ────────────────
         if action == "sell":
@@ -632,6 +662,31 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 continue
 
+        # ── Portfolio exposure cap ─────────────────────────────────────────
+        if action == "buy":
+            try:
+                from bot.logger import get_open_trades as _got
+                current_exposure = sum(
+                    float(t.get("quantity") or 0) * float(t.get("entry_price") or 0)
+                    for t in _got()
+                    if t.get("status") in ("open", "dry_run")
+                )
+                if portfolio_value > 0 and current_exposure / portfolio_value >= MAX_TOTAL_EXPOSURE_PCT:
+                    log_rejection(
+                        session=session,
+                        ticker=ticker,
+                        net_score=sig.get("net_score", 0),
+                        confidence=confidence,
+                        action=action,
+                        rejection_reason="total_exposure_cap",
+                        bull_score=sig.get("bull_score", 0),
+                        bear_score=sig.get("bear_score", 0),
+                        strategy=strategy,
+                    )
+                    continue
+            except Exception as _exp_err:
+                logger.warning(f"[execute] exposure cap check failed: {_exp_err}")
+
         pos = calculate_position(
             portfolio_value=portfolio_value,
             confidence=confidence,
@@ -642,14 +697,58 @@ def execute_signals(signals: list, alpaca_client, data_client,
         )
 
         shares = pos["shares"]
+
+        # Cap position dollar value at MAX_PORTFOLIO_EXPOSURE_PCT of portfolio
+        if action == "buy" and portfolio_value > 0 and entry_price > 0:
+            max_shares = int((portfolio_value * MAX_PORTFOLIO_EXPOSURE_PCT) / entry_price)
+            if max_shares < shares:
+                shares = max_shares
+            if shares < 1:
+                log_rejection(
+                    session=session,
+                    ticker=ticker,
+                    net_score=sig.get("net_score", 0),
+                    confidence=confidence,
+                    action=action,
+                    rejection_reason="position_too_small",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0),
+                    strategy=strategy,
+                )
+                continue
+
         if shares <= 0:
             logger.info(f"[execute] {ticker}: 0 shares - skipping ({pos['reason']})")
             continue
+
+        # Record signal timestamp for stale check
+        signal_timestamp = _time.time()
 
         # Quote for limit price calculation; entry_price stays as the real-time price
         quote       = get_latest_quote(data_client, ticker)
         alpaca_side = "buy" if action == "buy" else "sell"
         limit_price = compute_limit_price(alpaca_side, quote, entry_price)
+
+        # ── Stale signal latency guard ─────────────────────────────────────
+        signal_age = _time.time() - signal_timestamp
+        if signal_age > 90:
+            logger.warning(f"[main] {ticker} signal is {signal_age:.0f}s stale — skipping")
+            continue
+
+        # ── News recheck before order ──────────────────────────────────────
+        if action == "buy" and not _quick_news_recheck(ticker):
+            log_rejection(
+                session=session,
+                ticker=ticker,
+                net_score=sig.get("net_score", 0),
+                confidence=confidence,
+                action=action,
+                rejection_reason="breaking_negative_news",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0),
+                strategy=strategy,
+            )
+            continue
 
         try:
             order_id = submit_order(
@@ -907,6 +1006,18 @@ def session_continuous(alpaca_client, data_client) -> None:
     if gap_catalyst_tickers:
         console.print(f"[bold yellow]Gap-catalyst tickers from pre-market: {gap_catalyst_tickers}[/bold yellow]")
 
+    # ── One-time session setup ─────────────────────────────────────────────
+    global _session_start_equity, _daily_loss_halt
+    _daily_loss_halt = False
+    _session_start_equity = None  # will be set on first execute_signals call
+
+    # Initial earnings proximity check for any already-open positions
+    try:
+        from bot.logger import get_open_trades as _got_init
+        _check_earnings_proximity(_got_init())
+    except Exception as _e:
+        logger.warning(f"[main] initial earnings check failed: {_e}")
+
     cycle = 0
     extra_tickers: list[str] = []   # rising movers appended each mover-scan cycle
     while True:
@@ -948,6 +1059,13 @@ def session_continuous(alpaca_client, data_client) -> None:
                 extra_tickers = fresh_movers
             if extra_tickers:
                 console.print(f"[bold cyan]Rising movers: {extra_tickers}[/bold cyan]")
+
+        # ── Earnings proximity check ───────────────────────────────────────
+        try:
+            from bot.logger import get_open_trades as _got_earnings
+            _check_earnings_proximity(_got_earnings())
+        except Exception as _earn_err:
+            logger.warning(f"[main] earnings proximity check error: {_earn_err}")
 
         # ── Exit checks on all open positions ─────────────────────────────
         stopped  = check_stops(alpaca_client)
@@ -1000,6 +1118,14 @@ def session_continuous(alpaca_client, data_client) -> None:
                     cp = pos.get("current_price") or pos.get("entry_price", 0)
                     close_position_and_log(alpaca_client, pos, cp, "continuous", status="closed")
                     console.print(f"[yellow]EOD scalp close: {pos['ticker']} @ {cp}[/yellow]")
+
+        # ── Re-score open positions for thesis check ──────────────────────
+        _rescore_open_positions(
+            tickers=get_all_trade_tickers(),
+            alpaca_client=alpaca_client,
+            data_client=data_client,
+            dry_run=DRY_RUN,
+        )
 
         # ── Scan for new signals ───────────────────────────────────────────
         session_label = "market_open" if cycle == 1 else "continuous"
