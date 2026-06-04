@@ -1,8 +1,8 @@
-name: End of Day Summary
+name: End of Day Summary (4:15 PM EST)
 
 on:
   schedule:
-    - cron: '15 20 * * 1-5'  # 4:15 PM EDT (UTC-4)
+    - cron: '15 21 * * 1-5'  # 4:15 PM EST (UTC-5)
   workflow_dispatch:
 
 jobs:
