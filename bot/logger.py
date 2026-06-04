@@ -367,6 +367,17 @@ def update_trade_trailing(trade_id: int, highest_price_seen: float, trailing_sto
 
 
 
+def update_trade_stop(trade_id: int, new_stop: float) -> None:
+    """Update the stop_loss for an open trade (e.g. move to breakeven after partial exit)."""
+    init_db()
+    conn = _connect()
+    try:
+        conn.execute("UPDATE trades SET stop_loss = ? WHERE id = ?", (new_stop, trade_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def log_rejection(
     session: str,
     ticker: str,

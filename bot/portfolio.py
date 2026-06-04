@@ -140,6 +140,56 @@ def check_time_exits(alpaca_client=None) -> list[dict]:
 
 
 
+def calculate_partial_exit(position: dict, current_price: float) -> dict:
+    """
+    Determine whether to partially or fully exit a profitable position.
+
+    Rules:
+      - If price >= entry + 60% of (take_profit - entry): close 50% of shares,
+        move logical stop to breakeven.
+      - If price >= take_profit: close 100% of remaining shares.
+
+    Returns dict with keys:
+      close_pct      : 0.0, 0.5, or 1.0
+      shares_to_close: int
+      new_stop       : float or None   (breakeven when partial exit fires)
+      reason         : str
+    """
+    empty = {"close_pct": 0.0, "shares_to_close": 0, "new_stop": None, "reason": "hold"}
+
+    entry = float(position.get("entry_price") or 0)
+    tp    = float(position.get("take_profit")  or 0)
+    qty   = int(position.get("quantity")       or 0)
+
+    if entry <= 0 or tp <= 0 or qty <= 0 or current_price <= entry:
+        return empty
+
+    distance      = tp - entry
+    if distance <= 0:
+        return empty
+
+    progress      = (current_price - entry) / distance   # 0.0 → 1.0+
+
+    if progress >= 1.0:
+        return {
+            "close_pct":       1.0,
+            "shares_to_close": qty,
+            "new_stop":        None,
+            "reason":          "target_reached",
+        }
+
+    if progress >= 0.60:
+        shares_to_close = max(1, qty // 2)
+        return {
+            "close_pct":       0.5,
+            "shares_to_close": shares_to_close,
+            "new_stop":        round(entry, 2),   # move stop to breakeven
+            "reason":          "partial_60pct",
+        }
+
+    return empty
+
+
 def close_position_and_log(
     alpaca_client,
     trade: dict,

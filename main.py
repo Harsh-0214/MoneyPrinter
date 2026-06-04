@@ -616,19 +616,58 @@ def execute_signals(signals: list, alpaca_client, data_client,
             continue
 
         # ── Duplicate position guard (for new buys/shorts) ────────────────
+        # Exception: high-confidence buy on existing position → attempt scale-in
         if action not in ("sell",) and _has_open_position(ticker, alpaca_client):
-            logger.info(f"[SKIP] Already have open position in {ticker} — skipping new entry")
-            log_rejection(
-                session=session,
-                ticker=ticker,
-                net_score=sig.get("net_score", 0),
-                confidence=confidence,
-                action=action,
-                rejection_reason="duplicate",
-                bull_score=sig.get("bull_score", 0),
-                bear_score=sig.get("bear_score", 0),
-                strategy=strategy,
-            )
+            if action == "buy" and confidence > 0.75:
+                # Attempt scale-in instead of a full new entry
+                from bot.risk import calculate_scale_in as _scale_in
+                from bot.portfolio import get_open_positions as _get_op
+                from bot.logger import get_open_trades as _got_scale
+                try:
+                    open_pos_map = {p["ticker"]: p for p in _get_op(alpaca_client)}
+                    existing = open_pos_map.get(ticker)
+                    if existing:
+                        scale_shares = _scale_in(
+                            existing_position=existing,
+                            current_price=entry_price,
+                            confidence=confidence,
+                            atr=atr,
+                            portfolio_value=portfolio_value,
+                        )
+                        if scale_shares > 0:
+                            from bot.trader import get_latest_quote as _gq, compute_limit_price as _clp
+                            quote       = _gq(data_client, ticker)
+                            limit_price = _clp("buy", quote, entry_price)
+                            order_id    = submit_order(
+                                client=alpaca_client,
+                                ticker=ticker,
+                                side="buy",
+                                qty=scale_shares,
+                                limit_price=limit_price,
+                                dry_run=DRY_RUN,
+                            )
+                            console.print(
+                                f"[blue]↑ SCALE-IN {scale_shares}x {ticker} @ "
+                                f"${entry_price:.2f} (conf={confidence:.2f})[/blue]"
+                            )
+                            executed += 1
+                        else:
+                            logger.info(f"[execute] Scale-in for {ticker} returned 0 shares — skipped")
+                except Exception as _si_err:
+                    logger.warning(f"[execute] Scale-in check failed for {ticker}: {_si_err}")
+            else:
+                logger.info(f"[SKIP] Already have open position in {ticker} — skipping new entry")
+                log_rejection(
+                    session=session,
+                    ticker=ticker,
+                    net_score=sig.get("net_score", 0),
+                    confidence=confidence,
+                    action=action,
+                    rejection_reason="duplicate",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0),
+                    strategy=strategy,
+                )
             continue
 
         # ── Sector cap guard ───────────────────────────────────────────────
@@ -956,7 +995,8 @@ def session_continuous(alpaca_client, data_client) -> None:
     import time as _time
     from datetime import datetime, timezone, timedelta
     from bot.portfolio import (check_stops, check_targets, check_time_exits,
-                               get_open_positions, close_position_and_log)
+                               get_open_positions, close_position_and_log,
+                               calculate_partial_exit)
     from bot.discovery import scan_rising_movers
 
     SCAN_INTERVAL = 10          # minutes between scans
@@ -1090,6 +1130,43 @@ def session_continuous(alpaca_client, data_client) -> None:
                     f"[red]TRAILING STOP: {pos['ticker']} @ {current_price} "
                     f"(trail={updated.get('trailing_stop_price', 0):.2f})[/red]"
                 )
+
+        # ── Partial-exit checks ────────────────────────────────────────────
+        from bot.trader import submit_order as _submit, get_latest_quote as _quote
+        from bot.logger import update_trade_stop as _upd_stop
+        for pos in get_open_positions(alpaca_client):
+            if pos.get("action", "buy") != "buy":
+                continue
+            cp = pos.get("current_price") or pos.get("entry_price")
+            if not cp:
+                continue
+            partial = calculate_partial_exit(pos, float(cp))
+            if partial["close_pct"] <= 0:
+                continue
+            shares_to_close = partial["shares_to_close"]
+            reason          = partial["reason"]
+            try:
+                q  = _quote(data_client, pos["ticker"])
+                lp = float(q.get("ask_price") or q.get("bid_price") or cp) * 0.999
+                _submit(
+                    client=alpaca_client,
+                    ticker=pos["ticker"],
+                    side="sell",
+                    qty=shares_to_close,
+                    limit_price=round(lp, 2),
+                    dry_run=DRY_RUN,
+                )
+                console.print(
+                    f"[cyan]PARTIAL EXIT ({reason}): {shares_to_close}x {pos['ticker']} "
+                    f"@ ${float(cp):.2f} ({partial['close_pct']*100:.0f}%)[/cyan]"
+                )
+                if partial["new_stop"] and pos.get("id"):
+                    try:
+                        _upd_stop(pos["id"], partial["new_stop"])
+                    except Exception:
+                        pass
+            except Exception as _pe:
+                logger.warning(f"[continuous] partial exit failed for {pos['ticker']}: {_pe}")
 
         # ── Scalp close at 3:45 PM ─────────────────────────────────────────
         if now_hm >= SCALP_CLOSE_ET:

@@ -95,6 +95,60 @@ def calculate_position(
     }
 
 
+def calculate_scale_in(
+    existing_position: dict,
+    current_price: float,
+    confidence: float,
+    atr: float,
+    portfolio_value: float,
+) -> int:
+    """
+    Return shares to add to a profitable open position (scale-in).
+
+    Conditions that must all be met:
+      - Position is profitable by >= 2% unrealised gain
+      - confidence > 0.75
+      - Total position value after adding would not exceed 15% of portfolio
+      - Scale-in size capped at 50% of original entry shares
+
+    Returns 0 if any condition is not met.
+    """
+    if is_kill_switch_active():
+        return 0
+    if confidence <= 0.75 or atr <= 0 or current_price <= 0 or portfolio_value <= 0:
+        return 0
+
+    entry_price  = float(existing_position.get("entry_price") or 0)
+    orig_qty     = int(existing_position.get("quantity") or 0)
+    if entry_price <= 0 or orig_qty <= 0:
+        return 0
+
+    unrealised_pct = (current_price - entry_price) / entry_price
+    if unrealised_pct < 0.02:
+        return 0
+
+    # Max allowed total position value: 15% of portfolio
+    max_position_value = portfolio_value * 0.15
+    current_value      = current_price * orig_qty
+    if current_value >= max_position_value:
+        return 0
+
+    headroom_dollars = max_position_value - current_value
+    max_add_shares   = floor(headroom_dollars / current_price)
+
+    # 50% of original entry size
+    scale_in_shares = floor(orig_qty * 0.50)
+    scale_in_shares = min(scale_in_shares, max_add_shares)
+    scale_in_shares = max(0, scale_in_shares)
+
+    if scale_in_shares > 0:
+        logger.info(
+            f"[risk] scale-in approved: {scale_in_shares} shares "
+            f"(unrealised={unrealised_pct*100:.1f}% conf={confidence:.2f})"
+        )
+    return scale_in_shares
+
+
 TRAILING_ACTIVATE_PCT = 0.08   # activate when up 8%
 TRAILING_TRAIL_PCT    = 0.05   # trail 5% below highest price
 
