@@ -1000,6 +1000,7 @@ def session_continuous(alpaca_client, data_client) -> None:
     """
     import time as _time
     from datetime import datetime, timezone, timedelta
+    from zoneinfo import ZoneInfo
     from bot.portfolio import (check_stops, check_targets, check_time_exits,
                                get_open_positions, close_position_and_log,
                                calculate_partial_exit)
@@ -1011,7 +1012,7 @@ def session_continuous(alpaca_client, data_client) -> None:
     SCALP_CLOSE_ET  = (15, 45)  # 3:45 PM ET — close scalps before market close
     LOOP_END_ET     = (16, 0)   # 4:00 PM ET — stop looping
 
-    ET = timezone(timedelta(hours=-4))  # EDT; Nov-Mar use -5
+    ET = ZoneInfo("America/New_York")  # handles EST/EDT automatically
 
     def _et_now():
         return datetime.now(ET)
