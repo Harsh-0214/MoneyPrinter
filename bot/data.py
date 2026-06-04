@@ -40,16 +40,22 @@ def fetch_daily_bars(ticker: str, days: int = 730) -> Optional[pd.DataFrame]:
             adjustment=Adjustment.ALL,
         )
         bars = client.get_stock_bars(req)
-        if not bars or ticker not in bars:
+        if not bars:
+            logger.warning(f"[data] {ticker}: get_stock_bars returned empty/None")
+            return None
+        if ticker not in bars:
+            logger.warning(f"[data] {ticker}: ticker missing from bars response (keys={list(bars.data.keys())[:5] if hasattr(bars, 'data') else '?'})")
             return None
         df = bars[ticker].df.copy()
         if df.empty:
+            logger.warning(f"[data] {ticker}: bars DataFrame is empty")
             return None
+        logger.info(f"[data] {ticker}: got {len(df)} daily bars, index tz={df.index.tz}")
         df.index = pd.to_datetime(df.index).tz_convert(None)
         df.columns = [c.capitalize() for c in df.columns]
         return df
     except Exception as e:
-        logger.warning(f"[data] daily bars failed for {ticker}: {e}")
+        logger.warning(f"[data] daily bars failed for {ticker}: {e}", exc_info=True)
         return None
 
 
