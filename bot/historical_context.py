@@ -207,7 +207,7 @@ def _fetch_and_compute(ticker: str, data_client=None) -> dict:
     try:
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
-        from alpaca.data.enums import Adjustment, DataFeed
+        from alpaca.data.enums import Adjustment
         from datetime import datetime, timedelta, timezone
         from bot.data import get_data_client
 
@@ -217,7 +217,6 @@ def _fetch_and_compute(ticker: str, data_client=None) -> dict:
             timeframe=TimeFrame.Day,
             start=datetime.now(timezone.utc) - timedelta(days=_FETCH_DAYS),
             adjustment=Adjustment.ALL,
-            feed=DataFeed.IEX,
         )
         bars = client.get_stock_bars(req)
         if bars and ticker in bars:
