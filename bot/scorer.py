@@ -35,7 +35,8 @@ def get_velocity_returns(ticker: str, df) -> dict:
 def _fetch_velocity(ticker: str) -> dict:
     """Fetch 90-day daily data and compute velocity returns."""
     try:
-        df = yf.Ticker(ticker).history(period="90d", interval="1d")
+        from bot.data import fetch_daily_bars
+        df = fetch_daily_bars(ticker, days=90)
         if df is None or df.empty:
             return {"return_1d": None, "return_5d": None, "return_1m": None, "return_3m": None}
         return get_velocity_returns(ticker, df)

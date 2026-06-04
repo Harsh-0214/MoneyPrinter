@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
@@ -13,7 +13,7 @@ import ta.trend as ta_trend
 import ta.momentum as ta_momentum
 import ta.volatility as ta_volatility
 import ta.volume as ta_volume
-import yfinance as yf
+from bot.data import fetch_daily_bars, fetch_intraday_bars, fetch_snapshot, fetch_vix
 
 logger = logging.getLogger(__name__)
 
@@ -188,29 +188,11 @@ def _safe(val) -> Optional[float]:
 
 
 def _fetch_daily(ticker: str) -> Optional[pd.DataFrame]:
-    try:
-        t = yf.Ticker(ticker)
-        df = t.history(period="2y", interval="1d", auto_adjust=True)
-        if df is None or df.empty:
-            return None
-        df.index = pd.to_datetime(df.index)
-        return df
-    except Exception as e:
-        logger.warning(f"[indicators] daily fetch failed for {ticker}: {e}")
-        return None
+    return fetch_daily_bars(ticker, days=730)
 
 
 def _fetch_intraday(ticker: str) -> Optional[pd.DataFrame]:
-    try:
-        t = yf.Ticker(ticker)
-        df = t.history(period="2d", interval="5m", auto_adjust=True)
-        if df is None or df.empty:
-            return None
-        df.index = pd.to_datetime(df.index)
-        return df
-    except Exception as e:
-        logger.warning(f"[indicators] intraday fetch failed for {ticker}: {e}")
-        return None
+    return fetch_intraday_bars(ticker, days=2)
 
 
 def _fetch_realtime_price(ticker: str, df: pd.DataFrame) -> tuple[Optional[float], str]:
@@ -222,22 +204,20 @@ def _fetch_realtime_price(ticker: str, df: pd.DataFrame) -> tuple[Optional[float
     """
     avg5 = float(df["Close"].iloc[-5:].mean()) if len(df) >= 5 else float(df["Close"].iloc[-1])
 
-    # Attempt real-time price from fast_info
+    # Attempt real-time price from Alpaca snapshot
     try:
-        fi = yf.Ticker(ticker).fast_info
-        last = getattr(fi, "last_price", None)
-        if last is not None:
-            last = float(last)
-            if last > 0:
-                if avg5 > 0 and abs(last - avg5) / avg5 <= 0.40:
-                    return last, "fast_info"
-                elif avg5 > 0:
-                    logger.warning(
-                        f"[indicators] {ticker}: fast_info ${last:.2f} is "
-                        f"{abs(last-avg5)/avg5*100:.1f}% from 5d-avg ${avg5:.2f} — ignoring"
-                    )
+        snap = fetch_snapshot(ticker)
+        if snap and snap.get("price"):
+            last = float(snap["price"])
+            if last > 0 and (avg5 <= 0 or abs(last - avg5) / avg5 <= 0.40):
+                return last, "alpaca_snapshot"
+            elif avg5 > 0:
+                logger.warning(
+                    f"[indicators] {ticker}: snapshot ${last:.2f} is "
+                    f"{abs(last-avg5)/avg5*100:.1f}% from 5d-avg ${avg5:.2f} — ignoring"
+                )
     except Exception as e:
-        logger.debug(f"[indicators] {ticker}: fast_info unavailable: {e}")
+        logger.debug(f"[indicators] {ticker}: snapshot unavailable: {e}")
 
     # Fall back to last close
     fallback = float(df["Close"].iloc[-1])
@@ -653,11 +633,27 @@ def get_intraday_indicators(ticker: str) -> dict:
         "intraday_vs_vwap": None,
     }
     try:
-        t = yf.Ticker(ticker)
-        df = t.history(period="5d", interval="15m", auto_adjust=True)
+        from alpaca.data.requests import StockBarsRequest
+        from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+        from alpaca.data.enums import Adjustment, DataFeed
+        from bot.data import get_data_client
+        from datetime import timezone as _tz
+        client = get_data_client()
+        req = StockBarsRequest(
+            symbol_or_symbols=ticker,
+            timeframe=TimeFrame(15, TimeFrameUnit.Minute),
+            start=datetime.now(_tz.utc) - timedelta(days=5),
+            adjustment=Adjustment.ALL,
+            feed=DataFeed.IEX,
+        )
+        bars = client.get_stock_bars(req)
+        if not bars or ticker not in bars:
+            return result
+        df = bars[ticker].df.copy()
         if df is None or df.empty:
             return result
-        df.index = pd.to_datetime(df.index)
+        df.index = pd.to_datetime(df.index).tz_localize(None)
+        df.columns = [c.capitalize() for c in df.columns]
 
         # Filter to today's bars for VWAP
         today = datetime.now().date()

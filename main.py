@@ -260,7 +260,7 @@ def _has_open_position(ticker: str, alpaca_client=None) -> bool:
 
 def get_macro_context() -> dict:
     """Compute macro context: VIX, SPY regime, bearish_market flag, position size multiplier."""
-    import yfinance as yf
+    from bot.data import fetch_vix
     from bot.indicators import get_indicators
     from bot.risk import get_vix_multiplier
 
@@ -276,8 +276,8 @@ def get_macro_context() -> dict:
 
     # VIX
     try:
-        vix_data = yf.Ticker("^VIX").history(period="2d", interval="1d")
-        if not vix_data.empty:
+        vix_data = fetch_vix(days=2)
+        if vix_data is not None and not vix_data.empty:
             macro["vix"] = float(vix_data["Close"].iloc[-1])
     except Exception as e:
         logger.warning(f"VIX fetch failed: {e}")
@@ -1258,7 +1258,7 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
     relaxed=True lowers thresholds to net_score>=40 / confidence>=0.60.
     Live trading is unaffected.
     """
-    import yfinance as yf
+    from bot.data import fetch_daily_bars, fetch_vix
     import numpy as np
     from bot.indicators import compute_indicators_from_df
     from bot.scorer     import score_ticker
@@ -1286,19 +1286,19 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
     all_hist: dict = {}
     for ticker in tickers_to_fetch:
         try:
-            h = yf.Ticker(ticker).history(period=fetch_period, interval="1d", auto_adjust=True)
+            h = fetch_daily_bars(ticker, days=730)
             if h is not None and len(h) >= 60:
                 all_hist[ticker] = h
         except Exception as e:
             logger.warning(f"[backtest] fetch {ticker}: {e}")
 
     try:
-        spy_full = yf.Ticker("SPY").history(period=fetch_period, interval="1d", auto_adjust=True)
+        spy_full = fetch_daily_bars("SPY", days=730)
     except Exception:
         spy_full = None
 
     try:
-        vix_full = yf.Ticker("^VIX").history(period=fetch_period, interval="1d", auto_adjust=True)
+        vix_full = fetch_vix(days=730)
     except Exception:
         vix_full = None
 

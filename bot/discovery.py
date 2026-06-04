@@ -19,7 +19,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import yfinance as yf
+import yfinance as yf  # kept only for market_cap
+from bot.data import fetch_snapshot, fetch_daily_bars
 
 logger = logging.getLogger(__name__)
 
@@ -95,32 +96,43 @@ def run_discovery(static_tickers: list[str]) -> list[str]:
         if ticker in static_set:
             continue
         try:
-            t = yf.Ticker(ticker)
-            info = t.fast_info
+            snap = fetch_snapshot(ticker)
+            if not snap or not snap.get("price"):
+                continue
+            price = snap["price"]
+            prev_close = snap["prev_close"]
+            last_vol = snap["last_volume"]
 
-            # Price and market cap guard
-            price = getattr(info, "last_price", None) or getattr(info, "previous_close", None)
-            mkt_cap = getattr(info, "market_cap", None)
             if not price or price < 10:
                 continue
-            if mkt_cap and mkt_cap < 10_000_000_000:  # < $10B
-                continue
 
-            # Volume
-            avg_vol = getattr(info, "three_month_average_volume", None)
-            last_vol = getattr(info, "last_volume", None)
+            # Compute avg_vol and 52wk high from daily bars
+            daily = fetch_daily_bars(ticker, days=365)
+            if daily is None or len(daily) < 10:
+                continue
+            avg_vol = float(daily["Volume"].iloc[-63:].mean()) if len(daily) >= 63 else float(daily["Volume"].mean())
+            wk52_high = float(daily["High"].iloc[-252:].max()) if len(daily) >= 252 else float(daily["High"].max())
+
             if not avg_vol or avg_vol < 2_000_000:
                 continue
 
             vol_ratio = (last_vol / avg_vol) if last_vol and avg_vol else 0
 
             # Price change vs previous close
-            prev_close = getattr(info, "previous_close", None)
             pct_change = abs((price - prev_close) / prev_close * 100) if prev_close else 0
 
             # 52-week proximity
-            wk52_high = getattr(info, "year_high", None)
             near_52wk = wk52_high and price >= wk52_high * 0.97
+
+            # market_cap still needs yfinance — try it but don't block on failure
+            mkt_cap = None
+            try:
+                mkt_cap = yf.Ticker(ticker).fast_info.market_cap
+            except Exception:
+                pass
+
+            if mkt_cap and mkt_cap < 10_000_000_000:  # < $10B
+                continue
 
             # Promotion criteria
             if vol_ratio >= 1.5 and (pct_change >= 1.5 or near_52wk):
@@ -310,15 +322,23 @@ def scan_rising_movers(static_tickers: list[str], top_n: int = 5) -> list[str]:
         if ticker in static_set:
             continue
         try:
-            info = yf.Ticker(ticker).fast_info
-            price      = getattr(info, "last_price", None) or getattr(info, "previous_close", None)
-            prev_close = getattr(info, "previous_close", None)
-            avg_vol    = getattr(info, "three_month_average_volume", None)
-            last_vol   = getattr(info, "last_volume", None)
-            wk52_high  = getattr(info, "year_high", None)
+            snap = fetch_snapshot(ticker)
+            if not snap or not snap.get("price"):
+                continue
+            price      = snap["price"]
+            prev_close = snap["prev_close"]
+            last_vol   = snap["last_volume"]
 
             if not price or price < 5:
                 continue
+
+            # Compute avg_vol and 52wk high from daily bars
+            daily = fetch_daily_bars(ticker, days=365)
+            if daily is None or len(daily) < 10:
+                continue
+            avg_vol   = float(daily["Volume"].iloc[-63:].mean()) if len(daily) >= 63 else float(daily["Volume"].mean())
+            wk52_high = float(daily["High"].iloc[-252:].max()) if len(daily) >= 252 else float(daily["High"].max())
+
             pct_change = ((price - prev_close) / prev_close * 100) if prev_close else 0
             vol_ratio  = (last_vol / avg_vol) if last_vol and avg_vol else 0
             near_52wk  = wk52_high and price >= wk52_high * 0.99
