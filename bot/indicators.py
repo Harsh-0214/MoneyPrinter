@@ -677,7 +677,7 @@ def get_intraday_indicators(ticker: str) -> dict:
         df = bars[ticker].df.copy()
         if df is None or df.empty:
             return result
-        df.index = pd.to_datetime(df.index).tz_localize(None)
+        df.index = pd.to_datetime(df.index).tz_convert(None)
         df.columns = [c.capitalize() for c in df.columns]
 
         # Filter to today's bars for VWAP

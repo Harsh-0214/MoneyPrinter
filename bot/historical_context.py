@@ -222,7 +222,7 @@ def _fetch_and_compute(ticker: str, data_client=None) -> dict:
         if bars and ticker in bars:
             raw = bars[ticker].df.copy()
             if not raw.empty:
-                raw.index = pd.to_datetime(raw.index).tz_localize(None)
+                raw.index = pd.to_datetime(raw.index).tz_convert(None)
                 raw.columns = [c.capitalize() for c in raw.columns]
                 df = raw
     except Exception as e:
@@ -234,7 +234,7 @@ def _fetch_and_compute(ticker: str, data_client=None) -> dict:
             import yfinance as yf
             raw = yf.Ticker(ticker).history(period="10d", interval="1d")
             if raw is not None and not raw.empty:
-                raw.index = pd.to_datetime(raw.index).tz_localize(None)
+                raw.index = pd.to_datetime(raw.index).tz_convert(None)
                 df = raw
         except Exception as e:
             logger.debug(f"[hist_ctx] yfinance fallback failed for {ticker}: {e}")

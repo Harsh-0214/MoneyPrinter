@@ -45,8 +45,8 @@ def fetch_daily_bars(ticker: str, days: int = 730) -> Optional[pd.DataFrame]:
         df = bars[ticker].df.copy()
         if df.empty:
             return None
-        df.index = pd.to_datetime(df.index).tz_localize(None)
-        df.columns = [c.capitalize() for c in df.columns]  # open→Open etc.
+        df.index = pd.to_datetime(df.index).tz_convert(None)
+        df.columns = [c.capitalize() for c in df.columns]
         return df
     except Exception as e:
         logger.warning(f"[data] daily bars failed for {ticker}: {e}")
@@ -73,7 +73,7 @@ def fetch_intraday_bars(ticker: str, days: int = 2) -> Optional[pd.DataFrame]:
         df = bars[ticker].df.copy()
         if df.empty:
             return None
-        df.index = pd.to_datetime(df.index).tz_localize(None)
+        df.index = pd.to_datetime(df.index).tz_convert(None)
         df.columns = [c.capitalize() for c in df.columns]
         return df
     except Exception as e:
@@ -168,7 +168,7 @@ def fetch_daily_bars_batch(tickers: list[str], days: int = 365) -> dict[str, pd.
                 if bars and ticker in bars:
                     df = bars[ticker].df.copy()
                     if not df.empty:
-                        df.index = pd.to_datetime(df.index).tz_localize(None)
+                        df.index = pd.to_datetime(df.index).tz_convert(None)
                         df.columns = [c.capitalize() for c in df.columns]
                         result[ticker] = df
             except Exception:
