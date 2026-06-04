@@ -5,52 +5,46 @@ import logging
 logger = logging.getLogger(__name__)
 
 STRATEGY_CONFIGS = {
-    "position": {
-        "description": "Full EMA stack + price>EMA200 + ADX>25 + RSI 45-70: multi-week trend trade",
-        "time_horizon": "position",
-        "sl_atr_mult": 3.0,   # wide — designed to survive corrections up to ~8-10%
-        "tp_rr": 4.0,         # go for bigger moves when the trend is strong
-    },
     "trend_follow": {
-        "description": "EMA9>EMA21>EMA50 + ADX>22 + MACD hist positive + volume confirm",
+        "description": "EMA9>EMA21>EMA50 + ADX>22 + MACD hist positive + volume confirm — 2-5 day swing",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.5,   # wide enough to survive normal daily swings
+        "sl_atr_mult": 2.0,
         "tp_rr": 2.5,
     },
     "mean_reversion": {
-        "description": "RSI<35 or >72 AND Bollinger %B extreme + NOT in full bull alignment",
+        "description": "RSI<35 or >72 AND Bollinger %B extreme — same-day to 2-day scalp",
         "time_horizon": "scalp",
-        "sl_atr_mult": 2.5,
+        "sl_atr_mult": 1.5,
         "tp_rr": 2.0,
     },
     "breakout": {
-        "description": "Price within 1% above R1 or 52-week high AND volume ratio > 1.4x",
+        "description": "Price breaks R1 or 52-week high with volume surge — 1-3 day momentum",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.0,   # breakouts often retest before continuing
+        "sl_atr_mult": 1.5,
         "tp_rr": 3.0,
     },
     "breakdown": {
-        "description": "Price breaks S1 or 52-week low with volume",
+        "description": "Price breaks S1 with volume — 1-3 day momentum",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.0,
+        "sl_atr_mult": 1.5,
         "tp_rr": 2.5,
     },
     "squeeze_breakout": {
-        "description": "BB squeeze resolved + KC breakout",
+        "description": "BB squeeze resolved + KC breakout — 2-4 day expansion play",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.5,   # squeezes can snap back sharply before the real move
+        "sl_atr_mult": 2.0,
         "tp_rr": 2.5,
     },
     "news_momentum": {
-        "description": "Sentiment > 0.4 + trend/breakout confirmation",
+        "description": "Catalyst-driven move with trend confirmation — same-day scalp",
         "time_horizon": "scalp",
-        "sl_atr_mult": 2.0,
+        "sl_atr_mult": 1.5,
         "tp_rr": 2.0,
     },
     "mixed": {
-        "description": "Mixed signals — no dominant strategy pattern",
+        "description": "Mixed signals — no dominant pattern, short hold only",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.5,
+        "sl_atr_mult": 2.0,
         "tp_rr": 2.0,
     },
 }
@@ -150,22 +144,7 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     rsi_extreme = rsi < 38 or rsi > 68
     mean_rev_ok = (rsi_extreme or bb_extreme) and not ema_full_bull
 
-    # ── Long-term position trade: all EMAs stacked, price above EMA200, healthy RSI ──
-    e200       = float(ind.get("ema200") or 0)
-    above_e200 = e200 > 0 and cp > e200
-    rsi_healthy = 45 <= rsi <= 70
-    position_ok = (
-        "ema_full_bull_alignment" in sigs   # 9>21>50 stacked
-        and above_e200                       # also above the 200 — secular uptrend
-        and adx > 25                         # trend is strong
-        and macd_hist > 0                    # momentum still positive
-        and rsi_healthy                      # not overbought, not oversold
-        and vol_ratio >= 0.8                 # at least normal volume
-    )
-
     # Classify
-    if position_ok:
-        return "position"
     if squeeze and kc_break:
         return "squeeze_breakout"
     if r1_break:

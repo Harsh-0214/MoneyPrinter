@@ -70,8 +70,8 @@ def get_all_trade_tickers() -> list[str]:
             combined.append(t)
     return combined
 
-# Max trades per session to limit overexposure
-MAX_TRADES_PER_SESSION = 3
+# Max new entries per session — higher turnover acceptable for short-term style
+MAX_TRADES_PER_SESSION = 5
 
 SECTOR_GROUPS = {
     "ai_chips":   ["NVDA", "AMD", "MRVL", "SMCI", "AVGO", "ARM"],

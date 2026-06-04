@@ -8,13 +8,11 @@ from bot.logger import get_open_trades, get_trades_today, update_trade_exit
 from bot.risk import record_trade_pnl
 
 # Time-based exit rules per strategy horizon.
+# Bot is designed for short-term and swing trades only — no multi-week holds.
 # If a trade reaches this age WITHOUT hitting stop or target, close it.
-# Profitable trades are closed to bank the gain.
-# Flat/losing trades are closed to free capital.
 MAX_HOLD_DAYS = {
-    "scalp":    2,    # scalp trades must resolve in 2 days
-    "swing":    10,   # swing trades get 10 trading days max
-    "position": 45,   # position trades can hold through corrections — ~9 calendar weeks
+    "scalp": 2,   # scalp must resolve by end of next day
+    "swing": 7,   # swing trades get one calendar week max
 }
 
 logger = logging.getLogger(__name__)

@@ -266,11 +266,11 @@ def score_ticker(
         reasoning_parts.append("MACD histogram negative and falling 2+ bars")
 
     if macd_bull_cross:
-        bull += 12
+        bull += 18  # fresh crossover = short-term momentum signal
         signals_triggered.append("macd_bullish_cross")
         reasoning_parts.append("MACD bullish crossover (last 3 bars)")
     if macd_bear_cross:
-        bear += 12
+        bear += 18
         signals_triggered.append("macd_bearish_cross")
 
     # Fading momentum
@@ -290,16 +290,16 @@ def score_ticker(
         bear += 8
         signals_triggered.append("psar_bearish")
 
-    # VWAP
+    # VWAP — strong intraday anchor for short-term trades
     vwap = _v(ind.get("vwap"))
     if vwap > 0 and cp > 0:
         vwap_diff_pct = (cp - vwap) / vwap * 100
         if vwap_diff_pct > 0.3:
-            bull += 8
+            bull += 12
             signals_triggered.append("price_above_vwap")
             reasoning_parts.append(f"Price {vwap_diff_pct:.2f}% above VWAP")
         elif vwap_diff_pct < -0.3:
-            bear += 8
+            bear += 12
             signals_triggered.append("price_below_vwap")
             reasoning_parts.append(f"Price {abs(vwap_diff_pct):.2f}% below VWAP")
 
@@ -465,6 +465,14 @@ def score_ticker(
             vol_mult = 0.8
             signals_against.append("low_volume_conviction")
             reasoning_parts.append(f"Volume ratio {vol_ratio:.2f} — low conviction")
+        elif vol_ratio >= 3.0:
+            if price_up:
+                bull += 28  # extreme surge = very high conviction short-term move
+                signals_triggered.append("volume_surge_extreme_bull")
+                reasoning_parts.append(f"Volume {vol_ratio:.1f}x avg — extreme surge with price up")
+            else:
+                bear += 28
+                signals_triggered.append("volume_surge_extreme_bear")
         elif vol_ratio >= 2.0:
             if price_up:
                 bull += 20
@@ -475,11 +483,11 @@ def score_ticker(
                 signals_triggered.append("volume_surge_bear")
         elif vol_ratio >= 1.5:
             if price_up:
-                bull += 12
+                bull += 14
                 signals_triggered.append("volume_confirm_bull")
                 reasoning_parts.append(f"Volume {vol_ratio:.1f}x avg confirms upward move")
             else:
-                bear += 12
+                bear += 14
                 signals_triggered.append("volume_confirm_bear")
 
     if vol_mult != 1.0:
@@ -1019,4 +1027,4 @@ def _time_horizon(strategy: str) -> str:
         "news_momentum":   "scalp",
         "mixed":           "swing",
         "none":            "none",
-    }.get(strategy, "swing")
+    }.get(strategy, "swing")  # default to swing — no long-term position holds
