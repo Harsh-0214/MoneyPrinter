@@ -149,8 +149,9 @@ def _build_tactical_context(ind: dict, score: dict) -> list[str]:
 
         # Setup type
         triggered_sigs = score.get("signals_triggered") or []
-        if ("price_just_broke_r1_fresh" in triggered_sigs
-                or triggers.get("price_just_broke_52wk_high")):
+        if ("price_just_broke_r1_with_volume_fresh" in triggered_sigs
+                or triggers.get("price_just_broke_52wk_high")
+                or triggers.get("price_just_crossed_ema50_up")):
             setup_type = "breakout"
         elif triggers.get("rsi_just_crossed_30_up") or triggers.get("stochrsi_just_crossed_bullish"):
             setup_type = "bounce_off_support"

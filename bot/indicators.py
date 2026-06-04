@@ -59,6 +59,8 @@ def compute_entry_triggers(current_ind: dict, prev_ind: dict) -> dict:
         cur_macd_sig   = _g(current_ind, "macd_signal")
         prev_macd_line = _g(prev_ind, "macd_line")
         prev_macd_sig  = _g(prev_ind, "macd_signal")
+        cur_macd_hist  = _g(current_ind, "macd_hist")
+        prev_macd_hist = _g(prev_ind, "macd_hist")
 
         if None not in (cur_macd_line, cur_macd_sig, prev_macd_line, prev_macd_sig):
             triggers["macd_just_crossed_bullish"] = (
@@ -70,6 +72,14 @@ def compute_entry_triggers(current_ind: dict, prev_ind: dict) -> dict:
         else:
             triggers["macd_just_crossed_bullish"] = False
             triggers["macd_just_crossed_bearish"] = False
+
+        # MACD histogram crossed zero from below (momentum turned positive)
+        if None not in (cur_macd_hist, prev_macd_hist):
+            triggers["macd_hist_just_turned_positive"] = (
+                prev_macd_hist <= 0 and cur_macd_hist > 0
+            )
+        else:
+            triggers["macd_hist_just_turned_positive"] = False
 
         cur_e9   = _g(current_ind, "ema9")
         cur_e21  = _g(current_ind, "ema21")
@@ -94,13 +104,24 @@ def compute_entry_triggers(current_ind: dict, prev_ind: dict) -> dict:
         cur_vol_rat = _g(current_ind, "volume_ratio")
         cur_s1      = _g(current_ind, "S1")
         prev_s1     = _g(prev_ind, "S1")
+        cur_ema50   = _g(current_ind, "ema50")
+        prev_ema50  = _g(prev_ind, "ema50")
 
-        if None not in (cur_price, prev_price, cur_r1, prev_r1, cur_vol_rat):
-            triggers["price_just_broke_r1"] = (
-                prev_price <= prev_r1 and cur_price > cur_r1 and cur_vol_rat >= 1.3
+        # Price crossed above EMA50 (was below, now above)
+        if None not in (cur_price, prev_price, cur_ema50, prev_ema50):
+            triggers["price_just_crossed_ema50_up"] = (
+                prev_price < prev_ema50 and cur_price >= cur_ema50
             )
         else:
-            triggers["price_just_broke_r1"] = False
+            triggers["price_just_crossed_ema50_up"] = False
+
+        # R1 breakout requires 2x volume confirmation
+        if None not in (cur_price, prev_price, cur_r1, prev_r1, cur_vol_rat):
+            triggers["price_just_broke_r1_with_volume"] = (
+                prev_price <= prev_r1 and cur_price > cur_r1 and cur_vol_rat >= 2.0
+            )
+        else:
+            triggers["price_just_broke_r1_with_volume"] = False
 
         if None not in (cur_price, prev_price, cur_s1, prev_s1):
             triggers["price_just_broke_s1"] = (
@@ -112,9 +133,10 @@ def compute_entry_triggers(current_ind: dict, prev_ind: dict) -> dict:
         cur_pct52h  = _g(current_ind, "pct_from_52wk_high")
         prev_pct52h = _g(prev_ind, "pct_from_52wk_high")
 
-        if None not in (cur_pct52h, prev_pct52h):
+        # 52-week high breakout requires 1.5x volume confirmation
+        if None not in (cur_pct52h, prev_pct52h, cur_vol_rat):
             triggers["price_just_broke_52wk_high"] = (
-                prev_pct52h < 0 and cur_pct52h >= 0
+                prev_pct52h < 0 and cur_pct52h >= 0 and cur_vol_rat >= 1.5
             )
         else:
             triggers["price_just_broke_52wk_high"] = False
@@ -139,10 +161,10 @@ def compute_entry_triggers(current_ind: dict, prev_ind: dict) -> dict:
 
         if None not in (cur_sk, cur_sd, prev_sk, prev_sd):
             triggers["stochrsi_just_crossed_bullish"] = (
-                prev_sk <= prev_sd and cur_sk > cur_sd and prev_sk < 20
+                prev_sk <= prev_sd and cur_sk > cur_sd and prev_sk < 30
             )
             triggers["stochrsi_just_crossed_bearish"] = (
-                prev_sk >= prev_sd and cur_sk < cur_sd and prev_sk > 80
+                prev_sk >= prev_sd and cur_sk < cur_sd and prev_sk > 70
             )
         else:
             triggers["stochrsi_just_crossed_bullish"] = False
@@ -160,8 +182,11 @@ def compute_entry_triggers(current_ind: dict, prev_ind: dict) -> dict:
     except Exception as e:
         logger.warning(f"[indicators] compute_entry_triggers failed: {e}")
         for k in ["macd_just_crossed_bullish", "macd_just_crossed_bearish",
+                  "macd_hist_just_turned_positive",
                   "ema9_just_crossed_ema21_bullish", "ema9_just_crossed_ema21_bearish",
-                  "price_just_broke_r1", "price_just_broke_s1", "price_just_broke_52wk_high",
+                  "price_just_crossed_ema50_up",
+                  "price_just_broke_r1_with_volume", "price_just_broke_s1",
+                  "price_just_broke_52wk_high",
                   "rsi_just_crossed_50_up", "rsi_just_crossed_30_up", "rsi_just_crossed_70_down",
                   "stochrsi_just_crossed_bullish", "stochrsi_just_crossed_bearish",
                   "volume_surge_this_candle"]:
