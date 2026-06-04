@@ -22,6 +22,22 @@ def get_data_client():
     return _data_client
 
 
+def _bars_to_df(bar_list: list) -> Optional[pd.DataFrame]:
+    """Convert a list of Alpaca Bar objects to a capitalised OHLCV DataFrame."""
+    if not bar_list:
+        return None
+    df = pd.DataFrame([{
+        "timestamp": b.timestamp,
+        "Open":   float(b.open),
+        "High":   float(b.high),
+        "Low":    float(b.low),
+        "Close":  float(b.close),
+        "Volume": float(b.volume),
+    } for b in bar_list]).set_index("timestamp")
+    df.index = pd.to_datetime(df.index).tz_convert(None)
+    return df
+
+
 def fetch_daily_bars(ticker: str, days: int = 730) -> Optional[pd.DataFrame]:
     """
     Fetch daily OHLCV bars from Alpaca. Returns DataFrame with columns:
@@ -40,19 +56,12 @@ def fetch_daily_bars(ticker: str, days: int = 730) -> Optional[pd.DataFrame]:
             adjustment=Adjustment.ALL,
         )
         bars = client.get_stock_bars(req)
-        if not bars:
-            logger.warning(f"[data] {ticker}: get_stock_bars returned empty/None")
+        bar_list = (bars.data or {}).get(ticker) if bars and hasattr(bars, "data") else None
+        if not bar_list:
+            logger.warning(f"[data] {ticker}: no daily bars returned")
             return None
-        if ticker not in bars:
-            logger.warning(f"[data] {ticker}: ticker missing from bars response (keys={list(bars.data.keys())[:5] if hasattr(bars, 'data') else '?'})")
-            return None
-        df = bars[ticker].df.copy()
-        if df.empty:
-            logger.warning(f"[data] {ticker}: bars DataFrame is empty")
-            return None
-        logger.info(f"[data] {ticker}: got {len(df)} daily bars, index tz={df.index.tz}")
-        df.index = pd.to_datetime(df.index).tz_convert(None)
-        df.columns = [c.capitalize() for c in df.columns]
+        df = _bars_to_df(bar_list)
+        logger.info(f"[data] {ticker}: got {len(df)} daily bars")
         return df
     except Exception as e:
         logger.warning(f"[data] daily bars failed for {ticker}: {e}", exc_info=True)
@@ -74,14 +83,10 @@ def fetch_intraday_bars(ticker: str, days: int = 2) -> Optional[pd.DataFrame]:
             feed=DataFeed.IEX,
         )
         bars = client.get_stock_bars(req)
-        if not bars or ticker not in bars:
+        bar_list = (bars.data or {}).get(ticker) if bars and hasattr(bars, "data") else None
+        if not bar_list:
             return None
-        df = bars[ticker].df.copy()
-        if df.empty:
-            return None
-        df.index = pd.to_datetime(df.index).tz_convert(None)
-        df.columns = [c.capitalize() for c in df.columns]
-        return df
+        return _bars_to_df(bar_list)
     except Exception as e:
         logger.warning(f"[data] intraday bars failed for {ticker}: {e}")
         return None
@@ -168,17 +173,14 @@ def fetch_daily_bars_batch(tickers: list[str], days: int = 365) -> dict[str, pd.
             adjustment=Adjustment.ALL,
         )
         bars = client.get_stock_bars(req)
+        bars_data = (bars.data or {}) if bars and hasattr(bars, "data") else {}
         result = {}
         for ticker in tickers:
-            try:
-                if bars and ticker in bars:
-                    df = bars[ticker].df.copy()
-                    if not df.empty:
-                        df.index = pd.to_datetime(df.index).tz_convert(None)
-                        df.columns = [c.capitalize() for c in df.columns]
-                        result[ticker] = df
-            except Exception:
-                pass
+            bar_list = bars_data.get(ticker)
+            if bar_list:
+                df = _bars_to_df(bar_list)
+                if df is not None:
+                    result[ticker] = df
         return result
     except Exception as e:
         logger.warning(f"[data] batch daily bars failed: {e}")

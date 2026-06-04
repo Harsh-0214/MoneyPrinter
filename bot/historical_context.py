@@ -219,12 +219,10 @@ def _fetch_and_compute(ticker: str, data_client=None) -> dict:
             adjustment=Adjustment.ALL,
         )
         bars = client.get_stock_bars(req)
-        if bars and ticker in bars:
-            raw = bars[ticker].df.copy()
-            if not raw.empty:
-                raw.index = pd.to_datetime(raw.index).tz_convert(None)
-                raw.columns = [c.capitalize() for c in raw.columns]
-                df = raw
+        bar_list = (bars.data or {}).get(ticker) if bars and hasattr(bars, "data") else None
+        if bar_list:
+            from bot.data import _bars_to_df
+            df = _bars_to_df(bar_list)
     except Exception as e:
         logger.debug(f"[hist_ctx] Alpaca fetch failed for {ticker}: {e}")
 

@@ -672,13 +672,13 @@ def get_intraday_indicators(ticker: str) -> dict:
             feed=DataFeed.IEX,
         )
         bars = client.get_stock_bars(req)
-        if not bars or ticker not in bars:
+        bar_list = (bars.data or {}).get(ticker) if bars and hasattr(bars, "data") else None
+        if not bar_list:
             return result
-        df = bars[ticker].df.copy()
+        from bot.data import _bars_to_df
+        df = _bars_to_df(bar_list)
         if df is None or df.empty:
             return result
-        df.index = pd.to_datetime(df.index).tz_convert(None)
-        df.columns = [c.capitalize() for c in df.columns]
 
         # Filter to today's bars for VWAP
         today = datetime.now().date()
