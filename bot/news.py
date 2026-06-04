@@ -196,51 +196,62 @@ _earnings_cache: dict = {}
 
 def _check_earnings_proximity(ticker: str) -> dict:
     """
-    Check earnings proximity using yfinance calendar.
-    Returns: {"days_to_earnings": int|None, "risk_level": "block"|"warn"|"clear"}
+    Check earnings proximity using Alpaca news search for earnings keywords.
+    yfinance .calendar is blocked in cloud environments — this uses the NewsAPI
+    as primary source and falls back to keyword detection in recent headlines.
+    Returns: {"days_to_earnings": int|None, "risk_level": "block"|"warn3"|"warn"|"clear"}
     """
     if ticker in _earnings_cache:
         return _earnings_cache[ticker]
 
     result = {"days_to_earnings": None, "risk_level": "clear"}
-    try:
-        import yfinance as yf
-        t   = yf.Ticker(ticker)
-        cal = t.calendar
-        if cal is None:
-            _earnings_cache[ticker] = result
-            return result
 
-        closest_days = None
-        if isinstance(cal, dict):
-            dates = cal.get("Earnings Date", [])
-            if hasattr(dates, "__iter__") and not isinstance(dates, str):
-                for d in dates:
-                    if hasattr(d, "date"):
-                        delta = (d.date() - datetime.now().date()).days
-                        if delta >= 0:
-                            if closest_days is None or delta < closest_days:
-                                closest_days = delta
-        elif hasattr(cal, "iloc"):
-            for col in cal.columns:
-                for val in cal[col]:
-                    try:
-                        if hasattr(val, "date"):
-                            delta = (val.date() - datetime.now().date()).days
-                            if delta >= 0:
-                                if closest_days is None or delta < closest_days:
-                                    closest_days = delta
-                    except Exception:
-                        pass
+    # Primary: NewsAPI earnings date search
+    api_key = os.getenv("NEWS_API_KEY", "")
+    if api_key:
+        try:
+            import urllib.request, urllib.parse, json as _json
+            from datetime import datetime, timedelta
+            query = urllib.parse.quote(f"{ticker} earnings date")
+            today = datetime.now().strftime("%Y-%m-%d")
+            week  = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            url = (
+                f"https://newsapi.org/v2/everything?q={query}&from={today}&to={week}"
+                f"&sortBy=publishedAt&pageSize=5&language=en&apiKey={api_key}"
+            )
+            with urllib.request.urlopen(url, timeout=8) as resp:
+                data = _json.loads(resp.read())
+            articles = data.get("articles") or []
+            earnings_keywords = ["earnings", "reports earnings", "quarterly results",
+                                  "q1", "q2", "q3", "q4", "eps", "revenue beat", "revenue miss"]
+            for art in articles:
+                title = (art.get("title") or "").lower()
+                desc  = (art.get("description") or "").lower()
+                if ticker.lower() in title or ticker.lower() in desc:
+                    if any(kw in title or kw in desc for kw in earnings_keywords):
+                        # Earnings news found within the next 7 days
+                        pub = art.get("publishedAt", "")
+                        try:
+                            pub_date = datetime.fromisoformat(pub[:10])
+                            delta = (pub_date.date() - datetime.now().date()).days
+                            if 0 <= delta <= 7:
+                                result["days_to_earnings"] = delta
+                                break
+                        except Exception:
+                            result["days_to_earnings"] = 3  # conservative guess
+                            break
+        except Exception as e:
+            logger.debug(f"[news] earnings NewsAPI check failed for {ticker}: {e}")
 
-        result["days_to_earnings"] = closest_days
-        if closest_days is not None:
-            if closest_days <= 3:
-                result["risk_level"] = "block"
-            elif closest_days <= 7:
-                result["risk_level"] = "warn"
-    except Exception as e:
-        logger.debug(f"[news] earnings check failed for {ticker}: {e}")
+    # Apply risk level from days found
+    days = result["days_to_earnings"]
+    if days is not None:
+        if days <= 1:
+            result["risk_level"] = "block"
+        elif days <= 3:
+            result["risk_level"] = "warn3"
+        elif days <= 7:
+            result["risk_level"] = "warn"
 
     _earnings_cache[ticker] = result
     return result

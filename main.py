@@ -405,7 +405,8 @@ def run_full_scan(session: str, macro_context: dict,
             f"src={ind.get('price_source','?')}"
         )
 
-        # Store indicators and live position context for AI batch
+        # Stamp when this signal was scored so execute_signals can detect staleness
+        score["scored_at"]   = _time.time()
         score["_indicators"] = ind
         score["_news"]       = news
         if ticker in live_positions:
@@ -721,16 +722,13 @@ def execute_signals(signals: list, alpaca_client, data_client,
             logger.info(f"[execute] {ticker}: 0 shares - skipping ({pos['reason']})")
             continue
 
-        # Record signal timestamp for stale check
-        signal_timestamp = _time.time()
-
         # Quote for limit price calculation; entry_price stays as the real-time price
         quote       = get_latest_quote(data_client, ticker)
         alpaca_side = "buy" if action == "buy" else "sell"
         limit_price = compute_limit_price(alpaca_side, quote, entry_price)
 
         # ── Stale signal latency guard ─────────────────────────────────────
-        signal_age = _time.time() - signal_timestamp
+        signal_age = _time.time() - sig.get("scored_at", _time.time())
         if signal_age > 90:
             logger.warning(f"[main] {ticker} signal is {signal_age:.0f}s stale — skipping")
             continue
