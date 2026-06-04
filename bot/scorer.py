@@ -171,6 +171,7 @@ def score_ticker(
     indicators: dict,
     news_sentiment: dict,
     macro_context: dict,
+    historical_context: dict = None,
 ) -> dict:
     """
     Score a ticker and return a full signal dict.
@@ -799,6 +800,51 @@ def score_ticker(
         f"[{ticker}] velocity: 1d={r1d:.1%} 5d={r5d:.1%} 1m={r1m:.1%} 3m={r3m:.1%} "
         f"vel_penalty={vel_penalty:.2f} hype_penalty={hype.get('hype_penalty', 0):.2f} bq={bq}"
     )
+
+    # ── Historical context (multi-day progression) ────────────────────────
+    if historical_context:
+        try:
+            maturity  = historical_context.get("maturity_label", "none")
+            days_conf = historical_context.get("days_of_confluence", 0)
+            bull_adj  = 0
+
+            if maturity == "strong":
+                bull_adj = 15
+                signals_triggered.append("3day_confluence_strong")
+                reasoning_parts.append(
+                    f"3-day confluence strong ({days_conf}/4 signals building)"
+                )
+            elif maturity == "developing":
+                bull_adj = 8
+                signals_triggered.append("2day_confluence_building")
+                reasoning_parts.append(
+                    f"Setup building over 2+ days ({days_conf}/4 signals)"
+                )
+            elif maturity == "weak":
+                bull_adj = -5
+                signals_against.append("setup_immature")
+            else:  # "none"
+                bull_adj = -10
+                signals_against.append("single_day_spike_no_history")
+                reasoning_parts.append(
+                    "Single-day spike — no multi-day confirmation"
+                )
+
+            bull = max(0, bull + bull_adj)
+            net  = bull - bear
+            # Re-derive confidence with the updated net so velocity/hype adj
+            # anchors correctly for the trigger multiplier
+            confidence_raw = net / 100.0
+            confidence = max(0.0, min(1.0, confidence_raw) + total_conf_adj)
+            if fq.get("no_revenue"):
+                confidence = min(confidence, 0.65)
+
+            logger.info(
+                f"[{ticker}] hist_ctx: maturity={maturity} ({days_conf}/4) "
+                f"bull_adj={bull_adj:+d}  net={net}"
+            )
+        except Exception as _hc_err:
+            logger.warning(f"[{ticker}] hist_ctx scoring failed: {_hc_err}")
 
     # ── Entry Trigger Multiplier ───────────────────────────────────────────
     try:

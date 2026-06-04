@@ -114,6 +114,9 @@ def write_live_feed(decisions: list[dict], session: str) -> None:
             "fundamental_score":  d.get("fundamental_score"),
             "hype_penalty":       d.get("hype_penalty_applied"),
             "breakout_quality":   d.get("breakout_quality", "unknown"),
+            # Multi-day setup maturity (from historical_context)
+            "setup_maturity":     (d.get("_historical_context") or {}).get("maturity_label", "unknown"),
+            "setup_confluence":   (d.get("_historical_context") or {}).get("days_of_confluence", 0),
             # Full indicator set
             "rsi":                ind.get("rsi"),
             "macd_hist":          ind.get("macd_hist"),

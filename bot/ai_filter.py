@@ -67,7 +67,18 @@ logic, not just indicator values.
 You have access to tactical real-time context showing what JUST happened on the chart.
 Prioritize fresh_triggers_fired — if NONE triggered this cycle, the setup is STALE and you
 should be very reluctant to enter. A setup unchanged for 3+ cycles should be passed.
-Focus on momentum and recency — a fresh signal is worth 3x a stale one.\
+Focus on momentum and recency — a fresh signal is worth 3x a stale one.
+
+You also have access to a MULTI-DAY SETUP ANALYSIS showing how the setup evolved over the \
+last 3 trading days. Weight this heavily:
+- A 'strong' maturity label (3-4 progression signals confirmed across multiple days) means \
+  the setup is genuine and not a one-day spike. This is meaningful confirmation — treat it \
+  as a significant positive factor supporting entry.
+- A 'developing' label (2 signals) means the setup is building but not yet confirmed. \
+  Require fresh triggers and clean news before buying.
+- A 'none' maturity label (zero progression signals) is a significant red flag. It means \
+  only today's candle triggered the alert with no multi-day confirmation. Require an \
+  exceptionally strong fundamental catalyst to still consider buying — otherwise hold.\
 """
 
 # Net score threshold — skip Claude on clean holds (|net| < this AND no open position)
@@ -120,6 +131,56 @@ def _format_headlines(news: Optional[dict]) -> list[str]:
         sentiment_tag = "positive" if pol > 0.1 else "negative" if pol < -0.1 else "neutral"
         lines.append(f"  {i}. [{sentiment_tag:8s} {pol:+.2f}] {text[:220]}")
     return lines
+
+
+def _build_multiday_analysis(score: dict) -> list[str]:
+    """Format the 3-day historical context block for Claude."""
+    try:
+        hc = score.get("_historical_context") or {}
+        if not hc:
+            return [
+                "",
+                "--- MULTI-DAY SETUP ANALYSIS (last 3 days) ---",
+                "Setup maturity:    unavailable (data not fetched)",
+            ]
+
+        def _fv(val, fmt=".2f"):
+            try:
+                return format(float(val), fmt) if val is not None else "n/a"
+            except (TypeError, ValueError):
+                return "n/a"
+
+        maturity   = hc.get("maturity_label", "none")
+        confluence = hc.get("days_of_confluence", 0)
+        d2 = hc.get("day_minus_2") or {}
+        d1 = hc.get("day_minus_1") or {}
+        d0 = hc.get("day_0") or {}
+
+        rsi_str  = "rising over 2+ days"   if hc.get("rsi_trending_up")           else "not trending"
+        macd_str = "rising over 2+ days"   if hc.get("macd_hist_rising")           else "not rising"
+        vol_str  = "sustained above average" if hc.get("volume_sustained")         else "inconsistent"
+        ema_str  = "holding above for 2+ days" if hc.get("price_above_ema50_holding") else "mixed"
+
+        return [
+            "",
+            "--- MULTI-DAY SETUP ANALYSIS (last 3 days) ---",
+            f"Setup maturity:    {maturity}  ({confluence}/4 signals building)",
+            f"RSI trend:         {rsi_str}",
+            f"MACD histogram:    {macd_str}",
+            f"Volume pattern:    {vol_str}",
+            f"Price vs EMA50:    {ema_str}",
+            (f"Day -2 close:      ${_fv(d2.get('close'))}  "
+             f"RSI: {_fv(d2.get('rsi'), '.1f')}  "
+             f"Vol: {_fv(d2.get('volume_ratio'))}x"),
+            (f"Day -1 close:      ${_fv(d1.get('close'))}  "
+             f"RSI: {_fv(d1.get('rsi'), '.1f')}  "
+             f"Vol: {_fv(d1.get('volume_ratio'))}x"),
+            (f"Today close:       ${_fv(d0.get('close'))}  "
+             f"RSI: {_fv(d0.get('rsi'), '.1f')}  "
+             f"Vol: {_fv(d0.get('volume_ratio'))}x"),
+        ]
+    except Exception:
+        return ["", "--- MULTI-DAY SETUP ANALYSIS ---", "unavailable"]
 
 
 def _build_tactical_context(ind: dict, score: dict) -> list[str]:
@@ -269,6 +330,8 @@ def _build_prompt(ticker: str, ind: dict, score: dict, news: Optional[dict] = No
         f"     Is there a business/macro reason for the move to reverse?",
         f"  3. Would a rational investor with access to these headlines and these",
         f"     indicators make this trade today, or wait for more clarity?",
+        "",
+        *_build_multiday_analysis(score),
         "",
         *_build_tactical_context(ind, score),
         "",

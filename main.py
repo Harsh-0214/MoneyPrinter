@@ -363,6 +363,9 @@ def run_full_scan(session: str, macro_context: dict,
     indicators_map = get_indicators_batch(all_tickers, max_workers=2)
     news_map       = get_news_batch(all_tickers, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
+    from bot.historical_context import get_historical_context_batch
+    hist_ctx_map = get_historical_context_batch(all_tickers, data_client)
+
     signals     = []
     signals_all = []   # all scored tickers, fed to AI batch
     bull_count  = 0
@@ -376,9 +379,12 @@ def run_full_scan(session: str, macro_context: dict,
             logger.warning(f"Skipping {ticker}: {ind['error']}")
             continue
 
+        hist_ctx = hist_ctx_map.get(ticker, {})
         try:
-            score = score_ticker(ticker, ind, news, macro_context)
+            score = score_ticker(ticker, ind, news, macro_context,
+                                 historical_context=hist_ctx)
             score = classify_strategy(score, ind)
+            score["_historical_context"] = hist_ctx
         except Exception as e:
             logger.warning(f"Scoring failed for {ticker}: {e}")
             continue
