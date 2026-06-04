@@ -270,15 +270,6 @@ def get_trades_today() -> list[dict]:
         conn.close()
 
 
-def get_all_trades() -> list[dict]:
-    init_db()
-    conn = _connect()
-    try:
-        rows = conn.execute("SELECT * FROM trades ORDER BY timestamp DESC").fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
-
 
 def log_daily_summary(
     date: str,
@@ -374,17 +365,6 @@ def update_trade_trailing(trade_id: int, highest_price_seen: float, trailing_sto
     finally:
         conn.close()
 
-
-def get_last_scan() -> Optional[dict]:
-    init_db()
-    conn = _connect()
-    try:
-        row = conn.execute(
-            "SELECT * FROM scan_log ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
 
 
 def log_rejection(

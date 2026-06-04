@@ -20,18 +20,6 @@ MAX_HOLD_DAYS = {
 logger = logging.getLogger(__name__)
 
 
-def get_state(alpaca_client) -> dict:
-    """Fetch portfolio value, cash, and positions from Alpaca."""
-    from bot.trader import get_account, get_positions
-    account = get_account(alpaca_client)
-    positions = get_positions(alpaca_client)
-    return {
-        "portfolio_value": account.get("portfolio_value", 0),
-        "cash": account.get("cash", 0),
-        "buying_power": account.get("buying_power", 0),
-        "positions": positions,
-    }
-
 
 def get_open_positions(alpaca_client=None) -> list[dict]:
     """
@@ -152,16 +140,6 @@ def check_time_exits(alpaca_client=None) -> list[dict]:
             )
     return expired
 
-
-def get_daily_pnl() -> float:
-    """Sum realized P&L from closed trades today."""
-    trades = get_trades_today()
-    total = 0.0
-    for t in trades:
-        pnl = t.get("pnl_dollar")
-        if pnl is not None:
-            total += float(pnl)
-    return total
 
 
 def close_position_and_log(

@@ -530,7 +530,3 @@ def run_ai_filter_batch(scored_pairs: list[tuple[dict, dict]]) -> list[dict]:
     logger.info(f"[AI] batch: {len(needs_claude)} Claude calls, {len(scored_pairs)-len(needs_claude)} clean-hold skips")
     return results
 
-
-# Keep old name as alias so execute_signals import doesn't break during transition
-def apply_ai_confirmation(scorer_result: dict, indicators: dict) -> dict:
-    return apply_ai_opinion(scorer_result, indicators)

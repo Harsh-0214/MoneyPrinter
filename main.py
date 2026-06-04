@@ -1265,7 +1265,6 @@ def session_backtest(days: int = 30, relaxed: bool = False) -> None:
     from bot.strategies import classify_strategy
     from rich.table     import Table
     from rich.panel     import Panel
-    from rich.progress  import Progress, SpinnerColumn, TextColumn
 
     SCAN_STEP = 5   # re-score every 5 trading days (weekly)
 

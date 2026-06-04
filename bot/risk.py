@@ -158,27 +158,3 @@ def update_trailing_stop(trade_record: dict, current_price: float) -> dict:
     return result
 
 
-def compute_stops(
-    action: str,
-    entry_price: float,
-    atr: float,
-    strategy: str = "trend_follow",
-    rr_target: float = 2.5,
-) -> dict:
-    """Compute stop loss and take profit based on strategy ATR multipliers."""
-    from bot.strategies import STRATEGY_CONFIGS
-    cfg = STRATEGY_CONFIGS.get(strategy, STRATEGY_CONFIGS["mixed"])
-    sl_mult = cfg["sl_atr_mult"]
-    rr      = rr_target if rr_target else cfg["tp_rr"]
-
-    if action == "buy":
-        sl = round(entry_price - atr * sl_mult, 2)
-        tp = round(entry_price + atr * sl_mult * rr, 2)
-    elif action in ("short", "sell"):
-        sl = round(entry_price + atr * sl_mult, 2)
-        tp = round(entry_price - atr * sl_mult * rr, 2)
-    else:
-        sl = None
-        tp = None
-
-    return {"stop_loss": sl, "take_profit": tp, "risk_reward": rr}
