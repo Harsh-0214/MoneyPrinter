@@ -171,11 +171,27 @@ def compute_entry_triggers(current_ind: dict, prev_ind: dict) -> dict:
             triggers["stochrsi_just_crossed_bearish"] = False
 
         # ── Volume ──────────────────────────────────────────────────────────
-        cur_vol_today = _g(current_ind, "volume_today")
-        cur_vol_avg20 = _g(current_ind, "volume_avg20")
-
+        cur_vol_today  = _g(current_ind, "volume_today")
+        cur_vol_avg20  = _g(current_ind, "volume_avg20")
+        prev_vol_today = _g(prev_ind, "volume_today")
+        prev_vol_avg20 = _g(prev_ind, "volume_avg20")
+        cur_prev_close = _g(current_ind, "prev_close")
+        # Only fire on up-days; volume on a down day is distribution, not accumulation.
+        # Also deduplicate: don't re-fire every cycle if the surge was already present
+        # last cycle (same intraday candle accumulating volume all morning).
+        price_up_today = (
+            cur_price is not None and cur_prev_close is not None
+            and cur_price >= cur_prev_close
+        )
         if None not in (cur_vol_today, cur_vol_avg20) and cur_vol_avg20 > 0:
-            triggers["volume_surge_this_candle"] = cur_vol_today > 2.0 * cur_vol_avg20
+            is_surging_now = cur_vol_today > 2.0 * cur_vol_avg20
+            was_surging_prev = (
+                None not in (prev_vol_today, prev_vol_avg20) and prev_vol_avg20 > 0
+                and prev_vol_today > 2.0 * prev_vol_avg20
+            )
+            triggers["volume_surge_this_candle"] = (
+                is_surging_now and not was_surging_prev and price_up_today
+            )
         else:
             triggers["volume_surge_this_candle"] = False
 
