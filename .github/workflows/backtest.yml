@@ -1,0 +1,79 @@
+name: Backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start date (YYYY-MM-DD)"
+        required: true
+        default: "2024-06-01"
+      end:
+        description: "End date (YYYY-MM-DD)"
+        required: true
+        default: "2025-06-01"
+      capital:
+        description: "Starting capital ($)"
+        required: false
+        default: "100000"
+      min_net:
+        description: "Min scorer net score for entry (default 60)"
+        required: false
+        default: "60"
+      tickers:
+        description: "Space-separated tickers to test (leave blank = full universe)"
+        required: false
+        default: ""
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download NLTK data
+        run: |
+          python -c "
+          import nltk
+          for pkg in ['punkt', 'punkt_tab', 'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng']:
+              try: nltk.download(pkg, quiet=True)
+              except: pass
+          "
+
+      - name: Create output directories
+        run: mkdir -p data logs backtest_output
+
+      - name: Run backtest
+        env:
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL:   https://paper-api.alpaca.markets
+        run: |
+          ARGS="--start ${{ github.event.inputs.start }} \
+                --end   ${{ github.event.inputs.end }}   \
+                --capital ${{ github.event.inputs.capital }} \
+                --min-net ${{ github.event.inputs.min_net }} \
+                --out backtest"
+
+          if [ -n "${{ github.event.inputs.tickers }}" ]; then
+            ARGS="$ARGS --tickers ${{ github.event.inputs.tickers }}"
+          fi
+
+          python backtest.py $ARGS 2>&1 | tee backtest_output/backtest_log.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backtest-${{ github.event.inputs.start }}-to-${{ github.event.inputs.end }}
+          path: backtest_output/
+          retention-days: 90
