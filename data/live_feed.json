@@ -1,10 +1,23 @@
 {
   "meta": {
-    "last_updated": "2026-06-03T13:37:35.663351+00:00",
+    "last_updated": "2026-06-04T16:26:13.651974+00:00",
     "last_session": "premarket",
-    "total_runs_today": 7
+    "total_runs_today": 1
   },
   "daily_history": {
+    "2026-06-04": {
+      "date": "2026-06-04",
+      "total_decisions": 0,
+      "buys": 0,
+      "holds": 0,
+      "shorts": 0,
+      "claude_confirmed": 0,
+      "claude_rejected": 0,
+      "claude_skipped": 0,
+      "sessions": [
+        "premarket"
+      ]
+    },
     "2026-06-03": {
       "date": "2026-06-03",
       "total_decisions": 48,
