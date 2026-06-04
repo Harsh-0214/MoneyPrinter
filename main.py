@@ -9,9 +9,14 @@ import logging
 import os
 import sys
 import time as _time
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+
+# Suppress FutureWarning from ta library's PSAR (Series.__setitem__ deprecation)
+# until the upstream library updates to pandas-compatible indexing.
+warnings.filterwarnings("ignore", category=FutureWarning, module="ta")
 
 import pandas_market_calendars as mcal
 from dotenv import load_dotenv
@@ -109,6 +114,15 @@ def _check_sector_cap(ticker: str, alpaca_client=None) -> Optional[str]:
     if alpaca_client:
         try:
             for p in get_positions(alpaca_client):
+                # Deeply underwater positions (-10% or worse) don't count toward
+                # the sector cap — they're not healthy positions worth protecting.
+                plpc = p.get("unrealized_plpc")
+                if plpc is not None and plpc < -0.10:
+                    logger.debug(
+                        f"[sector_cap] {p['symbol']} excluded from cap "
+                        f"(unrealized P&L: {plpc:.1%})"
+                    )
+                    continue
                 open_tickers.add(p["symbol"])
         except Exception:
             pass

@@ -852,16 +852,25 @@ def score_ticker(
         fresh_count = triggers.get("fresh_trigger_count", 0)
         trigger_names = triggers.get("fresh_trigger_names", [])
 
-        if fresh_count >= 1:
+        # Only bullish triggers should drive the bull-boost; bearish triggers in
+        # fresh_trigger_names (e.g. ema9_just_crossed_ema21_bearish) must not count.
+        _BEARISH_TRIGGER_KEYWORDS = ("bearish", "bear", "broke_s1", "crossed_70_down")
+        bullish_trigger_names = [n for n in trigger_names
+                                  if not any(kw in n for kw in _BEARISH_TRIGGER_KEYWORDS)]
+        bullish_fresh_count = len(bullish_trigger_names)
+
+        if bullish_fresh_count >= 1:
             net = round(net * 1.25)
             bull = round(bull * 1.25)
             for name in trigger_names:
                 signals_triggered.append(f"{name}_fresh")
-            logger.info(f"[{ticker}] FRESH TRIGGER x{fresh_count}: {trigger_names} → net boosted to {net}")
+            logger.info(
+                f"[{ticker}] FRESH TRIGGER x{bullish_fresh_count} bullish "
+                f"({fresh_count} total): {bullish_trigger_names} → net boosted to {net}"
+            )
 
             # Don't let fresh triggers override a strong hype/velocity signal
-            if total_conf_adj < -0.15 and fresh_count >= 1:
-                # Re-apply the 1.25x boost as 1.0x (cancel the boost, keep the triggers logged)
+            if total_conf_adj < -0.15:
                 net = round(net / 1.25)
                 bull = round(bull / 1.25)
                 logger.info(f"[{ticker}] Hype override: trigger boost cancelled due to velocity penalty {total_conf_adj:.2f}")
@@ -869,7 +878,11 @@ def score_ticker(
             net = round(net * 0.75)
             bull = round(bull * 0.75)
             signals_against.append("no_fresh_trigger")
-            logger.info(f"[{ticker}] NO fresh triggers → net discounted to {net}")
+            logger.info(
+                f"[{ticker}] NO fresh bullish triggers "
+                f"(had {fresh_count} total, {fresh_count - bullish_fresh_count} bearish-only) "
+                f"→ net discounted to {net}"
+            )
 
         # Recompute confidence after trigger adjustment
         confidence_raw = net / 100.0
