@@ -73,13 +73,15 @@ MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
 # Change 1: strategies with demonstrated negative edge in this regime
-BAD_STRATEGIES     = {"squeeze_breakout", "breakout"}
+BAD_STRATEGIES     = {"squeeze_breakout", "breakout", "mixed"}
 # Change 2: high-beta names that keep hitting -10% stops get half the risk budget
 HIGH_VOL_TICKERS   = {"SOFI", "TSLA", "MSTR", "ARM"}
 HIGH_VOL_RISK_PCT  = 0.01        # 1% instead of 2%
 # Change 3: after this many days with no new entry, drop threshold to catch recovery
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5      # 60 → 55
+# Change 4: require confirmed trend before entering trend_follow (ADX > threshold)
+ADX_TREND_MIN      = 20         # below this = sideways chop, not a real trend
 
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
@@ -161,6 +163,7 @@ def run_backtest(
     filter_bad_strategies: bool = True,
     apply_vol_cap: bool = True,
     reentry_relax: bool = True,
+    adx_filter: bool = True,
 ) -> dict:
     """
     Full day-by-day simulation. Returns results dict with trades + equity curve.
@@ -371,6 +374,13 @@ def run_backtest(
             # Change 1: skip strategies with demonstrated negative edge
             if filter_bad_strategies and strategy in BAD_STRATEGIES:
                 continue
+
+            # Change 4: require ADX confirmation before entering trend_follow
+            # — prevents entering sideways stocks that score well on pattern alone
+            if adx_filter and strategy == "trend_follow":
+                adx_val = ind.get("adx")
+                if adx_val is not None and adx_val < ADX_TREND_MIN:
+                    continue
 
             # Sector cap
             sec = _SECTOR_OF.get(ticker.upper())
@@ -606,10 +616,12 @@ def print_report(results: dict, stats: dict, args) -> None:
     filter_bad = not getattr(args, "no_strategy_filter", False)
     vol_cap    = not getattr(args, "no_vol_cap", False)
     relax      = not getattr(args, "no_reentry_relax", False)
+    adx_filt   = not getattr(args, "no_adx_filter", False)
     flags_str  = (
         f"strat_filter={'on' if filter_bad else 'off'}  "
         f"vol_cap={'on' if vol_cap else 'off'}  "
-        f"reentry_relax={'on' if relax else 'off'}"
+        f"reentry_relax={'on' if relax else 'off'}  "
+        f"adx_filter={'on' if adx_filt else 'off'}"
     )
     console.print(Panel(
         f"[bold]MoneyPrinter Backtest Report[/bold]\n"
@@ -794,11 +806,13 @@ def main():
                         help="Output file prefix for CSV exports")
     # Improvement toggles (all on by default)
     parser.add_argument("--no-strategy-filter", action="store_true",
-                        help="Disable squeeze_breakout/breakout strategy filter")
+                        help="Disable squeeze_breakout/breakout/mixed strategy filter")
     parser.add_argument("--no-vol-cap", action="store_true",
                         help="Disable reduced position sizing for high-vol tickers")
     parser.add_argument("--no-reentry-relax", action="store_true",
                         help="Disable net-score relaxation after silence period")
+    parser.add_argument("--no-adx-filter", action="store_true",
+                        help="Disable ADX > 20 confirmation gate for trend_follow entries")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start)
@@ -818,6 +832,7 @@ def main():
     filter_bad = not args.no_strategy_filter
     vol_cap    = not args.no_vol_cap
     relax      = not args.no_reentry_relax
+    adx_filt   = not args.no_adx_filter
 
     console.print(f"\n[bold cyan]MoneyPrinter Backtester[/bold cyan]")
     console.print(f"Period:  {start} → {end}  ({(end-start).days} calendar days)")
@@ -827,7 +842,8 @@ def main():
     console.print(f"Improvements: "
                   f"strategy_filter={'[green]ON[/green]' if filter_bad else '[red]OFF[/red]'}  "
                   f"vol_cap={'[green]ON[/green]' if vol_cap else '[red]OFF[/red]'}  "
-                  f"reentry_relax={'[green]ON[/green]' if relax else '[red]OFF[/red]'}\n")
+                  f"reentry_relax={'[green]ON[/green]' if relax else '[red]OFF[/red]'}  "
+                  f"adx_filter={'[green]ON[/green]' if adx_filt else '[red]OFF[/red]'}\n")
 
     results = run_backtest(
         tickers=tickers,
@@ -838,6 +854,7 @@ def main():
         filter_bad_strategies=filter_bad,
         apply_vol_cap=vol_cap,
         reentry_relax=relax,
+        adx_filter=adx_filt,
     )
 
     if not results:
