@@ -67,7 +67,7 @@ MIN_NET_SCORE      = 75          # raised from 60 — tighter quality bar
 MAX_OPEN_POSITIONS = 5
 MAX_POSITION_PCT   = 0.10        # 10% of portfolio per trade
 RISK_PCT           = 0.02        # 2% portfolio risk per trade
-ATR_STOP_MULT      = 1.5         # stop = entry - atr * mult
+ATR_STOP_MULT_MAP  = {"scalp": 1.5, "swing": 2.0, "mixed": 2.0}  # per-horizon stop distance
 MAX_PER_SECTOR     = 2
 MAX_HOLD_DAYS      = {
     "scalp":            2,
@@ -238,11 +238,13 @@ def precompute_all_indicators(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def size_position(portfolio_value: float, confidence: float,
-                  atr: float, price: float, risk_pct: float = RISK_PCT) -> int:
+                  atr: float, price: float, risk_pct: float = RISK_PCT,
+                  time_horizon: str = "swing") -> int:
     if price <= 0 or atr <= 0:
         return 0
+    stop_mult   = ATR_STOP_MULT_MAP.get(time_horizon, 2.0)
     dollar_risk = portfolio_value * risk_pct * confidence
-    shares      = floor(dollar_risk / (atr * ATR_STOP_MULT))
+    shares      = floor(dollar_risk / (atr * stop_mult))
     max_shares  = floor(portfolio_value * MAX_POSITION_PCT / price)
     return max(0, min(shares, max_shares))
 
@@ -583,7 +585,8 @@ def run_backtest(
             take_profit = score.get("take_profit") or 0
             confidence = score.get("confidence", 0.65)
             net        = score.get("net_score", 0)
-            strategy   = score.get("strategy", "swing")
+            strategy     = score.get("strategy", "swing")
+            time_horizon = score.get("time_horizon", "swing")
 
             if entry_ref <= 0 or atr <= 0:
                 continue
@@ -607,15 +610,18 @@ def run_backtest(
                 else RISK_PCT
             )
 
-            # Position sizing
+            # Position sizing — value each open position at its own last close (mark-to-market)
+            mark_to_market = cash + sum(
+                p["shares"] * (_last_close(t, today) or p["entry_price"])
+                for t, p in positions.items()
+            )
             shares = size_position(
-                portfolio_value=cash + sum(
-                    p["shares"] * entry_price for p in positions.values()
-                ),
+                portfolio_value=mark_to_market,
                 confidence=confidence,
                 atr=atr,
                 price=entry_price,
                 risk_pct=ticker_risk_pct,
+                time_horizon=time_horizon,
             )
             if shares < 1:
                 continue
@@ -627,9 +633,10 @@ def run_backtest(
             if shares < 1:
                 continue
 
-            # Recompute stop/target relative to actual entry price
+            # Recompute stop/target relative to actual entry price using same multiplier as sizing
+            _stop_mult = ATR_STOP_MULT_MAP.get(time_horizon, 2.0)
             if stop_loss <= 0 or stop_loss >= entry_price:
-                stop_loss = round(entry_price - atr * ATR_STOP_MULT, 2)
+                stop_loss = round(entry_price - atr * _stop_mult, 2)
             if take_profit <= 0 or take_profit <= entry_price:
                 rr = 2.5
                 risk = entry_price - stop_loss
