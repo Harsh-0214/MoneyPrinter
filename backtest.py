@@ -71,6 +71,16 @@ MAX_PER_SECTOR     = 2
 MAX_HOLD_DAYS      = {"scalp": 2, "swing": 7, "mixed": 5}
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
 
+# ── Improvement flags (all on by default) ─────────────────────────────────────
+# Change 1: strategies with demonstrated negative edge in this regime
+BAD_STRATEGIES     = {"squeeze_breakout", "breakout"}
+# Change 2: high-beta names that keep hitting -10% stops get half the risk budget
+HIGH_VOL_TICKERS   = {"SOFI", "TSLA", "MSTR", "ARM"}
+HIGH_VOL_RISK_PCT  = 0.01        # 1% instead of 2%
+# Change 3: after this many days with no new entry, drop threshold to catch recovery
+REENTRY_SILENCE_DAYS   = 7
+REENTRY_NET_REDUCTION  = 5      # 60 → 55
+
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
 for _sec, _tks in SECTOR_GROUPS.items():
@@ -129,10 +139,10 @@ def compute_ind_for_day(ticker: str, df: pd.DataFrame, as_of: date) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def size_position(portfolio_value: float, confidence: float,
-                  atr: float, price: float) -> int:
+                  atr: float, price: float, risk_pct: float = RISK_PCT) -> int:
     if price <= 0 or atr <= 0:
         return 0
-    dollar_risk = portfolio_value * RISK_PCT * confidence
+    dollar_risk = portfolio_value * risk_pct * confidence
     shares      = floor(dollar_risk / (atr * ATR_STOP_MULT))
     max_shares  = floor(portfolio_value * MAX_POSITION_PCT / price)
     return max(0, min(shares, max_shares))
@@ -148,6 +158,9 @@ def run_backtest(
     end:     date,
     starting_capital: float = STARTING_CAPITAL,
     min_net: int = MIN_NET_SCORE,
+    filter_bad_strategies: bool = True,
+    apply_vol_cap: bool = True,
+    reentry_relax: bool = True,
 ) -> dict:
     """
     Full day-by-day simulation. Returns results dict with trades + equity curve.
@@ -168,6 +181,7 @@ def run_backtest(
     all_trades: list[dict]     = []
     equity_curve: list[dict]   = []
     prev_ind_map: dict[str, dict] = {}  # for entry trigger comparison
+    last_entry_day: date | None  = None  # tracks last day an entry was made
 
     # Macro approximation: SPY above EMA50 = bull, else caution
     spy_bars = bars_map.get("SPY")
@@ -293,6 +307,15 @@ def run_backtest(
         if len(positions) >= MAX_OPEN_POSITIONS:
             continue   # already full
 
+        # Re-entry relaxation: after REENTRY_SILENCE_DAYS with no new entry,
+        # lower the threshold by REENTRY_NET_REDUCTION to avoid missing recoveries
+        silence_days = (today - last_entry_day).days if last_entry_day else 0
+        effective_min_net = (
+            min_net - REENTRY_NET_REDUCTION
+            if reentry_relax and silence_days >= REENTRY_SILENCE_DAYS
+            else min_net
+        )
+
         sector_counts: dict[str, int] = {}
         for held in positions:
             sec = _SECTOR_OF.get(held.upper())
@@ -333,16 +356,21 @@ def run_backtest(
             action     = score.get("action", "hold")
             net        = score.get("net_score", 0)
             confidence = score.get("confidence", 0.0)
+            strategy   = score.get("strategy", "")
 
             # Apply same gates as live bot (no Claude)
             if action != "buy":
                 continue
-            if net < min_net:
+            if net < effective_min_net:
                 continue
             if confidence < MIN_CONFIDENCE:
                 continue
             if macro["bearish_market"]:
                 continue   # suppress buys in downtrend
+
+            # Change 1: skip strategies with demonstrated negative edge
+            if filter_bad_strategies and strategy in BAD_STRATEGIES:
+                continue
 
             # Sector cap
             sec = _SECTOR_OF.get(ticker.upper())
@@ -387,6 +415,13 @@ def run_backtest(
             if entry_price <= 0:
                 continue
 
+            # Change 2: halve risk budget for high-volatility names
+            ticker_risk_pct = (
+                HIGH_VOL_RISK_PCT
+                if apply_vol_cap and ticker.upper() in HIGH_VOL_TICKERS
+                else RISK_PCT
+            )
+
             # Position sizing
             shares = size_position(
                 portfolio_value=cash + sum(
@@ -395,6 +430,7 @@ def run_backtest(
                 confidence=confidence,
                 atr=atr,
                 price=entry_price,
+                risk_pct=ticker_risk_pct,
             )
             if shares < 1:
                 continue
@@ -432,6 +468,7 @@ def run_backtest(
                 "confidence":  confidence,
                 "signals":     score.get("signals_triggered", []),
             }
+            last_entry_day = next_day  # reset silence counter
 
     # ── Close any remaining open positions at end date ────────────────────────
     final_day = trading_days[-1] if trading_days else end
@@ -566,11 +603,20 @@ def print_report(results: dict, stats: dict, args) -> None:
     ret_color = "green" if ret >= 0 else "red"
 
     console.print()
+    filter_bad = not getattr(args, "no_strategy_filter", False)
+    vol_cap    = not getattr(args, "no_vol_cap", False)
+    relax      = not getattr(args, "no_reentry_relax", False)
+    flags_str  = (
+        f"strat_filter={'on' if filter_bad else 'off'}  "
+        f"vol_cap={'on' if vol_cap else 'off'}  "
+        f"reentry_relax={'on' if relax else 'off'}"
+    )
     console.print(Panel(
         f"[bold]MoneyPrinter Backtest Report[/bold]\n"
         f"{args.start}  →  {args.end}\n"
         f"Universe: {len(args.tickers or ALL_TICKERS)} tickers  |  "
-        f"Min net score: {args.min_net}",
+        f"Min net score: {args.min_net}\n"
+        f"{flags_str}",
         style="bold cyan",
         expand=False,
     ))
@@ -746,6 +792,13 @@ def main():
                         help="Specific tickers to test (default: full universe)")
     parser.add_argument("--out",     default="backtest_results",
                         help="Output file prefix for CSV exports")
+    # Improvement toggles (all on by default)
+    parser.add_argument("--no-strategy-filter", action="store_true",
+                        help="Disable squeeze_breakout/breakout strategy filter")
+    parser.add_argument("--no-vol-cap", action="store_true",
+                        help="Disable reduced position sizing for high-vol tickers")
+    parser.add_argument("--no-reentry-relax", action="store_true",
+                        help="Disable net-score relaxation after silence period")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start)
@@ -762,11 +815,19 @@ def main():
     if "SPY" not in tickers:
         tickers = ["SPY"] + tickers
 
+    filter_bad = not args.no_strategy_filter
+    vol_cap    = not args.no_vol_cap
+    relax      = not args.no_reentry_relax
+
     console.print(f"\n[bold cyan]MoneyPrinter Backtester[/bold cyan]")
     console.print(f"Period:  {start} → {end}  ({(end-start).days} calendar days)")
     console.print(f"Capital: ${args.capital:,.0f}")
     console.print(f"Tickers: {len(tickers)} (including SPY for regime)")
-    console.print(f"Min net: {args.min_net}\n")
+    console.print(f"Min net: {args.min_net}")
+    console.print(f"Improvements: "
+                  f"strategy_filter={'[green]ON[/green]' if filter_bad else '[red]OFF[/red]'}  "
+                  f"vol_cap={'[green]ON[/green]' if vol_cap else '[red]OFF[/red]'}  "
+                  f"reentry_relax={'[green]ON[/green]' if relax else '[red]OFF[/red]'}\n")
 
     results = run_backtest(
         tickers=tickers,
@@ -774,6 +835,9 @@ def main():
         end=end,
         starting_capital=args.capital,
         min_net=args.min_net,
+        filter_bad_strategies=filter_bad,
+        apply_vol_cap=vol_cap,
+        reentry_relax=relax,
     )
 
     if not results:
