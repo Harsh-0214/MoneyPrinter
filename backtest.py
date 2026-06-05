@@ -83,13 +83,22 @@ MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
 # with tightened classifier conditions in bot/strategies.py
 BAD_STRATEGIES     = {"mixed"}
 # Change 2: high-beta names that keep hitting -10% stops get half the risk budget
-HIGH_VOL_TICKERS   = {"SOFI", "TSLA", "MSTR", "ARM"}
+HIGH_VOL_TICKERS   = {
+    "SOFI", "TSLA", "MSTR", "ARM",
+    "MRNA", "AFRM", "AMC", "PLUG", "GME", "RIVN", "LCID", "COIN", "SMCI",
+}
 HIGH_VOL_RISK_PCT  = 0.01        # 1% instead of 2%
 # Change 3: after this many days with no new entry, drop threshold to catch recovery
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5      # 60 → 55
 # Change 4: require confirmed trend before entering trend_follow (ADX > threshold)
 ADX_TREND_MIN      = 25         # raised from 20 — stronger trend confirmation required
+# Trailing stop (Change 6)
+TRAILING_ACTIVATE_PCT  = 0.05   # activate once a position is up 5% from entry
+TRAILING_TRAIL_PCT     = 0.03   # trail 3% below the highest price seen
+# Stale-trade breakeven (Change 7)
+STALE_EXIT_DAYS        = 3      # after this many hold days with no progress …
+STALE_LOSS_THRESHOLD   = -0.01  # … and unrealised return below -1%, move stop to breakeven
 # Change 5: mean reversion only valid in ranging markets
 MEAN_REV_MAX_ADX   = 22         # above this = trending, mean reversion is wrong regime
 # Change 6: breakout entry quality minimums (beyond classifier conditions)
@@ -185,6 +194,9 @@ def _precompute_ticker(args: tuple) -> tuple[str, dict]:
         if not ind.get("error"):
             triggers = compute_entry_triggers(ind, prev_ind)
             ind["entry_triggers"] = triggers
+            # Compute velocity returns from the same historical slice — no live network call
+            from bot.scorer import get_velocity_returns as _gvr
+            ind.update(_gvr(ticker, sliced))
             prev_ind = {k: v for k, v in ind.items() if k != "entry_triggers"}
 
         cache[d] = ind
@@ -390,6 +402,17 @@ def run_backtest(
             exit_price  = None
             exit_reason = None
 
+            # ── Trailing stop: update highest seen, activate once up 5% ──────
+            highest = max(pos.get("highest_price_seen", entry), day_high)
+            pos["highest_price_seen"] = highest
+            trail_price = pos.get("trailing_stop_price")
+            gain_pct = (highest - entry) / entry if entry > 0 else 0.0
+            if gain_pct >= TRAILING_ACTIVATE_PCT:
+                new_trail = round(highest * (1.0 - TRAILING_TRAIL_PCT), 2)
+                if trail_price is None or new_trail > trail_price:
+                    trail_price = new_trail
+                    pos["trailing_stop_price"] = trail_price
+
             # Stop hit — worst case: gap down through stop uses day open
             if day_low <= stop:
                 exit_price  = max(min(stop, day_open), day_low)  # realistic fill
@@ -398,10 +421,23 @@ def run_backtest(
             elif target and day_high >= target:
                 exit_price  = min(target, day_high)
                 exit_reason = "target"
+            # Trailing stop triggered (runs before time-exit to protect winners that reverse)
+            elif trail_price is not None and day_low <= trail_price:
+                exit_price  = trail_price
+                exit_reason = "trailing_stop"
             # Time exit
             elif age_days >= max_hold:
                 exit_price  = day_close
                 exit_reason = "time_exit"
+
+            # ── Stale breakeven: no exit yet, dead trade — move stop to entry ─
+            if exit_price is None:
+                unrealised_pct = (day_close - entry) / entry if entry > 0 else 0.0
+                if (age_days >= STALE_EXIT_DAYS
+                        and unrealised_pct < STALE_LOSS_THRESHOLD
+                        and pos["stop_loss"] < entry):
+                    pos["stop_loss"] = entry
+                    stop = entry   # keep local var in sync for this iteration
 
             if exit_price is not None:
                 pnl_dollar = (exit_price - entry) * shares

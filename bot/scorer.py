@@ -158,6 +158,7 @@ MIN_CONFIDENCE_SHORT   = 0.70  # shorts are riskier
 # High-volatility tickers that need extra stop room (4x ATR instead of strategy default)
 HIGH_VOLATILITY_TICKERS = {
     "NVDA", "TSLA", "COIN", "MSTR", "SMCI", "PLTR", "AMD", "SOFI", "LI", "MDB",
+    "MRNA", "AFRM", "AMC", "PLUG", "GME", "RIVN", "LCID", "ARM",
 }
 
 
@@ -711,7 +712,17 @@ def score_ticker(
     # ──────────────────────────────────────────────────────────────
     # VELOCITY RETURNS + HYPE DETECTION
     # ──────────────────────────────────────────────────────────────
-    vel = _fetch_velocity(ticker)
+    # If the backtest pre-computed returns from the historical slice, use them directly
+    # and skip the live network fetch (eliminates forward-looking bias in replay).
+    if indicators.get("return_1d") is not None:
+        vel = {
+            "return_1d": indicators.get("return_1d"),
+            "return_5d": indicators.get("return_5d"),
+            "return_1m": indicators.get("return_1m"),
+            "return_3m": indicators.get("return_3m"),
+        }
+    else:
+        vel = _fetch_velocity(ticker)
     r1d = vel.get("return_1d") or 0.0
     r5d = vel.get("return_5d") or 0.0
     r1m = vel.get("return_1m") or 0.0
