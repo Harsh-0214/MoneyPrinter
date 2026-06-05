@@ -69,12 +69,19 @@ MAX_POSITION_PCT   = 0.10        # 10% of portfolio per trade
 RISK_PCT           = 0.02        # 2% portfolio risk per trade
 ATR_STOP_MULT      = 1.5         # stop = entry - atr * mult
 MAX_PER_SECTOR     = 2
-MAX_HOLD_DAYS      = {"scalp": 2, "swing": 7, "mixed": 5}
+MAX_HOLD_DAYS      = {
+    "scalp":            2,
+    "swing":            7,
+    "mixed":            5,
+    "breakout":         4,   # exit fast if breakout doesn't follow through
+    "squeeze_breakout": 4,   # exit fast if expansion stalls
+}
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
-# Change 1: strategies with demonstrated negative edge in this regime
-BAD_STRATEGIES     = {"squeeze_breakout", "breakout", "mixed"}
+# Change 1: mixed has no coherent edge; squeeze_breakout/breakout re-enabled
+# with tightened classifier conditions in bot/strategies.py
+BAD_STRATEGIES     = {"mixed"}
 # Change 2: high-beta names that keep hitting -10% stops get half the risk budget
 HIGH_VOL_TICKERS   = {"SOFI", "TSLA", "MSTR", "ARM"}
 HIGH_VOL_RISK_PCT  = 0.01        # 1% instead of 2%
