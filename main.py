@@ -816,6 +816,8 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 qty=shares,
                 limit_price=limit_price,
                 dry_run=DRY_RUN,
+                stop_loss=sig.get("stop_loss"),
+                take_profit=sig.get("take_profit"),
             )
 
             fill_status = "dry_run" if DRY_RUN else "open"
@@ -1034,7 +1036,7 @@ def session_continuous(alpaca_client, data_client) -> None:
     from zoneinfo import ZoneInfo
     from bot.portfolio import (check_stops, check_targets, check_time_exits,
                                get_open_positions, close_position_and_log,
-                               calculate_partial_exit)
+                               calculate_partial_exit, reconcile_with_alpaca)
     from bot.discovery import scan_rising_movers
 
     SCAN_INTERVAL = 10          # minutes between scans
@@ -1125,6 +1127,16 @@ def session_continuous(alpaca_client, data_client) -> None:
             _check_earnings_proximity(_got_earnings())
         except Exception as _earn_err:
             logger.warning(f"[main] earnings proximity check error: {_earn_err}")
+
+        # ── Reconcile DB against live Alpaca positions ────────────────────
+        try:
+            reconciled = reconcile_with_alpaca(alpaca_client)
+            for pos in reconciled:
+                console.print(
+                    f"[dim yellow]RECONCILED: {pos['ticker']} was closed externally on Alpaca — DB updated[/dim yellow]"
+                )
+        except Exception as _rec_err:
+            logger.warning(f"[main] reconciliation error: {_rec_err}")
 
         # ── Exit checks on all open positions ─────────────────────────────
         stopped  = check_stops(alpaca_client)
