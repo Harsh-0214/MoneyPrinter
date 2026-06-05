@@ -460,7 +460,23 @@ def run_full_scan(session: str, macro_context: dict,
             score["_position"] = live_positions[ticker]
         signals_all.append(score)
 
-    # ── Claude second-opinion pass on every ticker ─────────────────────────
+    # ── Net-score pre-filter: only send qualifying signals to Claude ──────────
+    # Held positions always pass (needed for exit/add evaluation).
+    # New entries must meet MIN_NET_SCORE (75) — aligns live bot with backtest.
+    MIN_NET_SCORE = 75
+    held_tickers  = set(live_positions.keys())
+    signals_all   = [
+        s for s in signals_all
+        if s.get("ticker") in held_tickers
+        or abs(s.get("net_score", 0)) >= MIN_NET_SCORE
+    ]
+    if signals_all:
+        console.print(
+            f"[dim]Net-score filter: {len(signals_all)} tickers sent to Claude "
+            f"(threshold ±{MIN_NET_SCORE})[/dim]"
+        )
+
+    # ── Claude second-opinion pass on qualifying tickers ──────────────────
     from bot.ai_filter import run_ai_filter_batch
     pairs = [(s, s.get("_indicators", {})) for s in signals_all]
     signals_all = run_ai_filter_batch(pairs)
