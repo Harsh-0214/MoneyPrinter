@@ -887,8 +887,6 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 logger.warning(f"[execute] caution cap check failed: {_cap_err}")
 
         # ── Max concurrent trend_follow cap ───────────────────────────────
-        # Prevents 4-5 trend_follow positions stopping out simultaneously
-        # in a single market reversal (amplifies drawdown).
         if action == "buy" and strategy == "trend_follow":
             try:
                 from bot.logger import get_open_trades as _got_tf
@@ -899,19 +897,109 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 if tf_open >= 2:
                     log_rejection(
-                        session=session,
-                        ticker=ticker,
-                        net_score=sig.get("net_score", 0),
-                        confidence=confidence,
-                        action=action,
-                        rejection_reason="trend_follow_cap",
+                        session=session, ticker=ticker,
+                        net_score=sig.get("net_score", 0), confidence=confidence,
+                        action=action, rejection_reason="trend_follow_cap",
                         bull_score=sig.get("bull_score", 0),
-                        bear_score=sig.get("bear_score", 0),
-                        strategy=strategy,
+                        bear_score=sig.get("bear_score", 0), strategy=strategy,
                     )
                     continue
             except Exception as _tf_err:
                 logger.warning(f"[execute] trend_follow cap check failed: {_tf_err}")
+
+        # ── Max concurrent squeeze_breakout cap ───────────────────────────
+        if action == "buy" and strategy == "squeeze_breakout":
+            try:
+                from bot.logger import get_open_trades as _got_sq
+                sq_open = sum(
+                    1 for t in _got_sq()
+                    if t.get("strategy") == "squeeze_breakout"
+                    and t.get("status") in ("open", "dry_run")
+                )
+                if sq_open >= 2:
+                    log_rejection(
+                        session=session, ticker=ticker,
+                        net_score=sig.get("net_score", 0), confidence=confidence,
+                        action=action, rejection_reason="squeeze_cap",
+                        bull_score=sig.get("bull_score", 0),
+                        bear_score=sig.get("bear_score", 0), strategy=strategy,
+                    )
+                    continue
+            except Exception as _sq_err:
+                logger.warning(f"[execute] squeeze cap check failed: {_sq_err}")
+
+        # ── Max concurrent mean_reversion cap ─────────────────────────────
+        if action == "buy" and strategy == "mean_reversion":
+            try:
+                from bot.logger import get_open_trades as _got_mr
+                mr_open = sum(
+                    1 for t in _got_mr()
+                    if t.get("strategy") == "mean_reversion"
+                    and t.get("status") in ("open", "dry_run")
+                )
+                if mr_open >= 2:
+                    log_rejection(
+                        session=session, ticker=ticker,
+                        net_score=sig.get("net_score", 0), confidence=confidence,
+                        action=action, rejection_reason="mean_rev_cap",
+                        bull_score=sig.get("bull_score", 0),
+                        bear_score=sig.get("bear_score", 0), strategy=strategy,
+                    )
+                    continue
+            except Exception as _mr_err:
+                logger.warning(f"[execute] mean_rev cap check failed: {_mr_err}")
+
+        # ── Squeeze breakout momentum guard ───────────────────────────────
+        # Mirrors backtest guard: require positive MACD + price in upper BB half.
+        if action == "buy" and strategy == "squeeze_breakout":
+            _ind     = sig.get("_indicators", {})
+            _mh      = _ind.get("macd_hist") or 0
+            _bb_pb   = _ind.get("bb_pctb")
+            _vol     = _ind.get("volume_ratio") or 0
+            _dip     = _ind.get("adx_di_plus") or 0
+            _dim     = _ind.get("adx_di_minus") or 0
+            _sq_fail = None
+            if _mh <= 0:
+                _sq_fail = f"macd_hist={_mh:.3f}"
+            elif _vol < 2.0:
+                _sq_fail = f"vol_ratio={_vol:.2f} < 2.0"
+            elif _bb_pb is not None and _bb_pb < 0.5:
+                _sq_fail = f"bb_pctb={_bb_pb:.2f} lower half"
+            elif _dip > 0 and _dim > 0 and _dip < _dim:
+                _sq_fail = f"DI+ < DI-"
+            if _sq_fail:
+                log_rejection(
+                    session=session, ticker=ticker,
+                    net_score=sig.get("net_score", 0), confidence=confidence,
+                    action=action, rejection_reason="squeeze_momentum",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                logger.info(f"[execute] {ticker} squeeze_breakout momentum guard: {_sq_fail}")
+                continue
+
+        # ── Mean reversion quality guard ──────────────────────────────────
+        # Require both RSI and BB extreme; ADX < 18 (truly ranging).
+        if action == "buy" and strategy == "mean_reversion":
+            _ind    = sig.get("_indicators", {})
+            _rsi    = _ind.get("rsi") or 50
+            _bb_pb  = _ind.get("bb_pctb")
+            _adx    = _ind.get("adx") or 0
+            _rsi_ex = _rsi < 30 or _rsi > 70
+            _bb_ex  = _bb_pb is not None and (_bb_pb < 0.10 or _bb_pb > 0.90)
+            if not (_rsi_ex and _bb_ex) or _adx >= 18:
+                log_rejection(
+                    session=session, ticker=ticker,
+                    net_score=sig.get("net_score", 0), confidence=confidence,
+                    action=action, rejection_reason="mean_rev_quality",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                logger.info(
+                    f"[execute] {ticker} mean_rev quality guard: "
+                    f"rsi={_rsi:.1f} bb_pctb={_bb_pb} adx={_adx:.1f}"
+                )
+                continue
 
         # ── Gap-chase guard: skip if stock already ran > 3% past prior close ──
         if action == "buy":

@@ -150,15 +150,23 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     ema_aligned     = "ema_full_bull_alignment" in sigs or "ema_partial_bull_alignment" in sigs
     trend_follow_ok = ema_aligned and in_uptrend and adx > 22 and macd_hist > 0
 
-    # ── Mean reversion: extreme RSI/BB + ranging market (ADX<22) + not in downtrend
-    bb_extreme  = bb_pctb is not None and (bb_pctb < 0.15 or bb_pctb > 0.85)
-    rsi_extreme = rsi < 38 or rsi > 68
-    mean_rev_ok = (rsi_extreme or bb_extreme) and not ema_full_bull and adx < 22 and not in_downtrend
+    # ── Mean reversion: BOTH RSI and BB must be extreme + ADX < 18 (truly ranging)
+    # Requiring both filters out borderline pullbacks; ADX<18 ensures a genuinely
+    # range-bound tape where reversion is likely rather than a trending continuation.
+    bb_extreme  = bb_pctb is not None and (bb_pctb < 0.10 or bb_pctb > 0.90)
+    rsi_extreme = rsi < 30 or rsi > 70
+    mean_rev_ok = (rsi_extreme and bb_extreme) and not ema_full_bull and adx < 18 and not in_downtrend
 
     # ── Squeeze breakout: BB compression releasing UPWARD — requires confirmed uptrend
-    # Only count bullish KC break; bearish KC break means expansion is going down, not up.
-    # in_uptrend (not just "not in_downtrend") ensures broad market context is supportive.
-    squeeze_ok = squeeze and kc_bull and in_uptrend and vol_ratio >= 1.5
+    # Added: MACD histogram must be positive (momentum already turning up before entry)
+    # and volume ratio >= 2.0 (institutional participation, not just retail noise).
+    # Without positive MACD, the KC touch is often a fakeout that reverses same day.
+    dip = float(ind.get("adx_di_plus") or 0)
+    dim = float(ind.get("adx_di_minus") or 0)
+    squeeze_ok = (squeeze and kc_bull and in_uptrend
+                  and vol_ratio >= 2.0
+                  and macd_hist > 0
+                  and (dip == 0 or dim == 0 or dip > dim))
 
     # ── Classification (first match wins) ─────────────────────────────────────
     if squeeze_ok:

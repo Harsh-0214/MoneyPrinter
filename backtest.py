@@ -106,13 +106,15 @@ PARTIAL_TIGHT_PCT      = 0.08   # intraday high threshold to activate tight trai
 # Stale-trade breakeven
 STALE_EXIT_DAYS        = 3
 STALE_LOSS_THRESHOLD   = -0.01
-# Mean reversion regime gate
-MEAN_REV_MAX_ADX       = 22
+# Mean reversion regime gate — tightened to 18: must be genuinely ranging
+MEAN_REV_MAX_ADX       = 18
 # Breakout entry quality minimums
 BREAKOUT_MIN_VOL       = 2.0
 BREAKOUT_MIN_ADX       = 25
 # Concentration cap for momentum strategies
-MAX_TREND_FOLLOW_POSITIONS = 2  # max concurrent open trend_follow trades
+MAX_TREND_FOLLOW_POSITIONS  = 2  # max concurrent open trend_follow trades
+MAX_SQUEEZE_POSITIONS       = 2  # max concurrent open squeeze_breakout trades
+MAX_MEAN_REV_POSITIONS      = 2  # max concurrent open mean_reversion trades
 
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
@@ -663,18 +665,19 @@ def run_backtest(
                     continue
 
             # ── Mean reversion guard ──────────────────────────────────────────
-            # Mean reversion only works in range-bound markets.
-            # Skip if: stock is in a downtrend (price < ema50 AND ema200), or
-            # ADX says the market is actively trending (not ranging).
+            # Require genuinely extreme readings (both RSI and BB) in a truly
+            # ranging tape (ADX < 18). Single-signal oversold is insufficient
+            # in a declining market — stocks keep going lower.
             if strategy == "mean_reversion":
                 _cp    = ind.get("current_price") or 0
                 _e50   = ind.get("ema50")   or 0
                 _e200  = ind.get("ema200")  or 0
                 _adx   = ind.get("adx")     or 0
+                _rsi   = ind.get("rsi")     or 50
+                _bb_pb = ind.get("bb_pctb")
                 if _cp > 0 and _e50 > 0 and _e200 > 0 and _cp < _e50 and _cp < _e200:
                     logger.debug(
-                        f"[backtest] {ticker} mean_rev skip {today}: "
-                        f"downtrend price={_cp:.2f} < ema50={_e50:.2f} & ema200={_e200:.2f}"
+                        f"[backtest] {ticker} mean_rev skip {today}: downtrend"
                     )
                     continue
                 if _adx > MEAN_REV_MAX_ADX:
@@ -682,6 +685,47 @@ def run_backtest(
                         f"[backtest] {ticker} mean_rev skip {today}: "
                         f"trending adx={_adx:.1f} > {MEAN_REV_MAX_ADX}"
                     )
+                    continue
+                # Both must be extreme — either one alone is too easy to satisfy
+                _rsi_extreme = _rsi < 30 or _rsi > 70
+                _bb_extreme  = _bb_pb is not None and (_bb_pb < 0.10 or _bb_pb > 0.90)
+                if not (_rsi_extreme and _bb_extreme):
+                    logger.debug(
+                        f"[backtest] {ticker} mean_rev skip {today}: "
+                        f"not extreme enough rsi={_rsi:.1f} bb_pctb={_bb_pb}"
+                    )
+                    continue
+                # Concentration cap
+                _mr_open = sum(1 for p in positions.values() if p.get("strategy") == "mean_reversion")
+                if _mr_open >= MAX_MEAN_REV_POSITIONS:
+                    continue
+
+            # ── Squeeze breakout guard ────────────────────────────────────────
+            # The classifier already requires kc_breakout_bull + in_uptrend. Here
+            # we add momentum confirmation: MACD must be positive (not just neutral),
+            # volume >= 2x, price in upper half of BB (not a lower-band fakeout),
+            # and DI+ > DI- (directional pressure is bullish).
+            if strategy == "squeeze_breakout":
+                _macd   = ind.get("macd_hist") or 0
+                _vol    = ind.get("volume_ratio") or 0
+                _bb_pb  = ind.get("bb_pctb")
+                _dip    = ind.get("adx_di_plus") or 0
+                _dim    = ind.get("adx_di_minus") or 0
+                _sq_skip = None
+                if _macd <= 0:
+                    _sq_skip = f"macd_hist={_macd:.3f} not positive"
+                elif _vol < 2.0:
+                    _sq_skip = f"vol_ratio={_vol:.2f} < 2.0"
+                elif _bb_pb is not None and _bb_pb < 0.5:
+                    _sq_skip = f"bb_pctb={_bb_pb:.2f} lower half — expansion going down"
+                elif _dip > 0 and _dim > 0 and _dip < _dim:
+                    _sq_skip = f"DI+={_dip:.1f} < DI-={_dim:.1f} bearish pressure"
+                if _sq_skip:
+                    logger.debug(f"[backtest] {ticker} squeeze_breakout skip {today}: {_sq_skip}")
+                    continue
+                # Concentration cap
+                _sq_open = sum(1 for p in positions.values() if p.get("strategy") == "squeeze_breakout")
+                if _sq_open >= MAX_SQUEEZE_POSITIONS:
                     continue
 
             # ── Breakout guard ────────────────────────────────────────────────
