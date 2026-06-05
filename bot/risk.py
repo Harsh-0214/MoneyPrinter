@@ -65,7 +65,7 @@ def calculate_position(
     Compute the number of shares to buy/short.
 
     Base risk: 2% of portfolio per trade, scaled by confidence + VIX + volatility.
-    Hard cap: 10% of portfolio in any single position.
+    Hard cap: 20% of portfolio in any single position.
     """
     if is_kill_switch_active():
         logger.warning("[risk] Kill switch active — position size = 0")
@@ -80,8 +80,8 @@ def calculate_position(
     dollar_risk = portfolio_value * 0.02 * confidence * vix_multiplier * vol_adj
     shares = floor(dollar_risk / (atr * 1.5))
 
-    # Cap at 10% of portfolio
-    max_val    = portfolio_value * 0.10
+    # Cap at 20% of portfolio
+    max_val    = portfolio_value * 0.20
     max_shares = floor(max_val / price)
     shares     = min(shares, max_shares)
     shares     = max(0, shares)
