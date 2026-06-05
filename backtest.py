@@ -65,11 +65,14 @@ DEFAULT_END        = "2025-06-01"
 STARTING_CAPITAL   = 100_000.0
 MIN_NET_SCORE      = 75          # raised from 60 — tighter quality bar
 MAX_OPEN_POSITIONS        = 5
-MAX_POSITION_PCT          = 0.20   # 20% cap for normal tickers
-MAX_POSITION_PCT_HIGH_VOL = 0.10   # 10% cap for gap-prone / high-vol tickers
+MAX_POSITION_PCT          = 0.12   # 12% cap for normal tickers
+MAX_POSITION_PCT_HIGH_VOL = 0.08   # 8% cap for gap-prone / high-vol tickers
 RISK_PCT                  = 0.02   # 2% portfolio risk per trade
 ATR_STOP_MULT_MAP  = {"scalp": 1.5, "swing": 2.0, "mixed": 2.0}  # per-horizon stop distance
 MAX_PER_SECTOR     = 2
+# Time exits: profitable trades get extended hold — cut losers, let winners run
+TIME_EXIT_PROFIT_THRESHOLD = 0.03  # if unrealised >= 3%, extend hold
+TIME_EXIT_EXTEND_DAYS      = 5     # extra calendar days before hard exit
 MAX_HOLD_DAYS      = {
     "scalp":            2,
     "swing":            7,
@@ -310,6 +313,30 @@ def run_backtest(
     # ── Pre-compute all indicators (parallel, replaces per-day per-ticker calls) ─
     ind_cache = precompute_all_indicators(tickers, bars_map, trading_days)
 
+    # ── Pre-fetch historical earnings dates for earnings-exit guard ───────────
+    # For each ticker, build a set of dates on which earnings were released so
+    # we can exit held positions the day BEFORE earnings rather than holding
+    # through a binary gap event.
+    console.print("[cyan]Pre-fetching earnings dates…[/cyan]")
+    import yfinance as _yf
+    _earnings_map: dict[str, set] = {}
+    for _t in tickers:
+        if _t == "SPY":
+            continue
+        try:
+            _ed = _yf.Ticker(_t).earnings_dates
+            if _ed is not None and not _ed.empty:
+                _dates: set[date] = set()
+                for _idx in _ed.index:
+                    _d = _idx.date() if hasattr(_idx, "date") else _idx
+                    # Keep a wider window (±3 days of period) to catch release timing variance
+                    if (start - timedelta(days=3)) <= _d <= (end + timedelta(days=3)):
+                        _dates.add(_d)
+                _earnings_map[_t] = _dates
+        except Exception:
+            _earnings_map[_t] = set()
+    console.print(f"[green]Earnings dates loaded for {len(_earnings_map)} tickers[/green]\n")
+
     # ── State ─────────────────────────────────────────────────────────────────
     cash      = starting_capital
     positions: dict[str, dict] = {}  # ticker -> position record
@@ -488,18 +515,34 @@ def run_backtest(
             # (Intra-bar order of high vs low is unknowable from daily bars.)
             trail_price = pos.get("trailing_stop_price")
 
-            if day_low <= stop:
+            # Earnings exit: if earnings are tomorrow, exit at today's close.
+            # Holding a swing position through a binary event is a coin-flip, not a trade.
+            _earn_dates = _earnings_map.get(ticker, set())
+            _tomorrow   = today + timedelta(days=1)
+            if any((ed - today).days in (0, 1) for ed in _earn_dates):
+                exit_price  = day_close
+                exit_reason = "earnings_exit"
+
+            if exit_price is None and day_low <= stop:
                 exit_price  = max(min(stop, day_open), day_low)   # gap-through: fill at open
                 exit_reason = "stop"
-            elif target and day_high >= target:
+            if exit_price is None and target and day_high >= target:
                 exit_price  = min(target, day_high)
                 exit_reason = "target"
-            elif trail_price is not None and day_low <= trail_price:
+            if exit_price is None and trail_price is not None and day_low <= trail_price:
                 exit_price  = trail_price
                 exit_reason = "trailing_stop"
-            elif age_days >= max_hold:
-                exit_price  = day_close
-                exit_reason = "time_exit"
+            if exit_price is None and age_days >= max_hold:
+                unrealised_pct = (day_close - entry) / entry if entry > 0 else 0.0
+                if unrealised_pct >= TIME_EXIT_PROFIT_THRESHOLD:
+                    # Trade is profitable — don't cut it on the clock.
+                    # Give it TIME_EXIT_EXTEND_DAYS more days; trailing stop is the exit.
+                    if age_days >= max_hold + TIME_EXIT_EXTEND_DAYS:
+                        exit_price  = day_close
+                        exit_reason = "time_exit_extended"
+                else:
+                    exit_price  = day_close
+                    exit_reason = "time_exit"
 
             # ── Stale exit: dead trade not moving ─────────────────────────────
             if exit_price is None:

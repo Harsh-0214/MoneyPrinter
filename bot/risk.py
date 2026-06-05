@@ -65,7 +65,7 @@ def calculate_position(
     Compute the number of shares to buy/short.
 
     Base risk: 2% of portfolio per trade, scaled by confidence + VIX + volatility.
-    Hard cap: 20% of portfolio in any single position.
+    Hard cap: 12% of portfolio (8% for high-vol / gap-prone tickers).
     """
     if is_kill_switch_active():
         logger.warning("[risk] Kill switch active — position size = 0")
@@ -74,11 +74,12 @@ def calculate_position(
     if price <= 0 or atr <= 0:
         return {"shares": 0, "dollar_risk": 0, "reason": "invalid_price_or_atr"}
 
-    # High-vol tickers: halve risk budget AND cap at 10% (not 20%)
-    # This protects against gap moves on stocks like AVGO that have low normal ATR
-    # but occasional 15-20% overnight gaps (earnings misses, guidance cuts, macro shocks).
+    # High-vol tickers: halve risk budget AND cap at 8% (not 12%)
+    # Worst-case gap math: 8% × 17% gap = 1.4% portfolio loss (acceptable)
+    #                      12% × 17% gap = 2.0% portfolio loss (acceptable)
+    #                      20% × 17% gap = 3.4% portfolio loss (too much)
     vol_adj = 0.60 if high_vol_flag else 1.0
-    pos_cap = 0.10 if high_vol_flag else 0.20
+    pos_cap = 0.08 if high_vol_flag else 0.12
 
     dollar_risk = portfolio_value * 0.02 * confidence * vix_multiplier * vol_adj
     shares = floor(dollar_risk / (atr * 1.5))
