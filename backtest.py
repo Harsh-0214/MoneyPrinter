@@ -104,8 +104,9 @@ ADX_TREND_MIN          = 28   # raised from 25 — consistent with classifier
 TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
 TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
 TRAIL_TIGHT_PCT        = 0.025  # tighten to 2.5% once +8% intraday hit
-BREAKEVEN_TRIGGER_PCT  = 0.03   # move stop to entry at +3%
-PARTIAL_TIGHT_PCT      = 0.08   # intraday high threshold to activate tight trail
+BREAKEVEN_TRIGGER_PCT  = 0.03   # arm breakeven when CLOSE reaches +3%
+PARTIAL_TIGHT_PCT      = 0.08   # arm tight trail when CLOSE reaches +8%
+BREAKEVEN_BUFFER       = 0.002  # stop at entry*(1-buffer) not exactly entry
 # Stale-trade breakeven
 STALE_EXIT_DAYS        = 3
 STALE_LOSS_THRESHOLD   = -0.01
@@ -478,71 +479,74 @@ def run_backtest(
             exit_price  = None
             exit_reason = None
 
-            # ── Trailing stop + breakeven + partial-profit management ────────
-            highest = max(pos.get("highest_price_seen", entry), day_high)
-            pos["highest_price_seen"] = highest
+            # ── Exit checks: use stops armed by PRIOR bars only ───────────────
+            # Breakeven and trailing-stop updates happen at END of this block so
+            # today's high cannot raise the stop before today's low is checked.
+            # (Intra-bar order of high vs low is unknowable from daily bars.)
             trail_price = pos.get("trailing_stop_price")
-            gain_pct = (highest - entry) / entry if entry > 0 else 0.0
 
-            # Breakeven: lock in "can't lose" at +3%, before trail activates
-            if gain_pct >= BREAKEVEN_TRIGGER_PCT and pos["stop_loss"] < entry:
-                pos["stop_loss"] = entry
-                stop = entry
-
-            # Tight trail: +8% intraday triggers 2.5% trail instead of 5%
-            intraday_pct = (day_high - entry) / entry if entry > 0 else 0.0
-            if not pos.get("tight_trail_activated") and intraday_pct >= PARTIAL_TIGHT_PCT:
-                pos["tight_trail_activated"] = True
-
-            trail_pct = TRAIL_TIGHT_PCT if pos.get("tight_trail_activated") else TRAIL_GIVEBACK_PCT
-
-            if gain_pct >= TRAIL_ACTIVATE_PCT:
-                pct_trail = round(highest * (1.0 - trail_pct), 2)
-                # Structure trail: stop just below the 3-day swing low
-                _sd_t = sorted_dates_by_ticker.get(ticker, [])
-                _t_i  = _bisect.bisect_right(_sd_t, today) - 1
-                struct_trail = pct_trail   # default: fall back to pct trail
-                if _t_i >= 2:
-                    _recent = _sd_t[max(0, _t_i - 2) : _t_i + 1]
-                    _r_lows = [ohlcv_by_date[ticker][d]["L"] for d in _recent
-                               if d in ohlcv_by_date.get(ticker, {})]
-                    if len(_r_lows) >= 2:
-                        struct_trail = round(min(_r_lows) * 0.995, 2)
-                new_trail = max(pct_trail, struct_trail)   # higher = tighter
-                if trail_price is None or new_trail > trail_price:
-                    trail_price = new_trail
-                    pos["trailing_stop_price"] = trail_price
-
-            # Stop hit — worst case: gap down through stop uses day open
             if day_low <= stop:
-                exit_price  = max(min(stop, day_open), day_low)  # realistic fill
+                exit_price  = max(min(stop, day_open), day_low)   # gap-through: fill at open
                 exit_reason = "stop"
-            # Target hit
             elif target and day_high >= target:
                 exit_price  = min(target, day_high)
                 exit_reason = "target"
-            # Trailing stop triggered (runs before time-exit to protect winners that reverse)
             elif trail_price is not None and day_low <= trail_price:
                 exit_price  = trail_price
                 exit_reason = "trailing_stop"
-            # Time exit
             elif age_days >= max_hold:
                 exit_price  = day_close
                 exit_reason = "time_exit"
 
-            # ── Stale exit: dead trade that hasn't moved ──────────────────────
+            # ── Stale exit: dead trade not moving ─────────────────────────────
             if exit_price is None:
                 unrealised_pct = (day_close - entry) / entry if entry > 0 else 0.0
                 if age_days >= STALE_EXIT_DAYS and unrealised_pct < STALE_LOSS_THRESHOLD:
-                    if pos["stop_loss"] < entry:
-                        pos["stop_loss"] = entry
-                        stop = entry
-                    # If price is already below the breakeven stop, force-close now.
-                    # Waiting for an upward rally to entry that may never come just
-                    # bleeds time and ties up capital.
+                    if pos["stop_loss"] < entry * (1 - BREAKEVEN_BUFFER):
+                        stale_stop = round(entry * (1 - BREAKEVEN_BUFFER), 2)
+                        pos["stop_loss"] = stale_stop
+                        stop = stale_stop
                     if day_close < stop:
                         exit_price  = day_close
                         exit_reason = "stale_exit"
+
+            # ── UPDATE stops for NEXT bar — armed off today's CLOSE ───────────
+            # Only runs when the trade remains open this bar.
+            # Using close (not high) prevents intraday wicks from tightening the
+            # stop and triggering a stop on the same candle's low (look-ahead).
+            if exit_price is None:
+                highest = max(pos.get("highest_price_seen", entry), day_high)
+                pos["highest_price_seen"] = highest
+                gain_pct   = (highest   - entry) / entry if entry > 0 else 0.0
+                close_gain = (day_close - entry) / entry if entry > 0 else 0.0
+
+                # Breakeven off CLOSE — buffer prevents trivial noise from hitting stop
+                if (close_gain >= BREAKEVEN_TRIGGER_PCT
+                        and pos["stop_loss"] < entry * (1 - BREAKEVEN_BUFFER)):
+                    pos["stop_loss"] = round(entry * (1 - BREAKEVEN_BUFFER), 2)
+
+                # Tight trail armed off CLOSE >= +8% (not intraday wick)
+                if not pos.get("tight_trail_activated") and close_gain >= PARTIAL_TIGHT_PCT:
+                    pos["tight_trail_activated"] = True
+
+                trail_pct = TRAIL_TIGHT_PCT if pos.get("tight_trail_activated") else TRAIL_GIVEBACK_PCT
+
+                # Trailing stop: activates once highest-seen >= +6%
+                if gain_pct >= TRAIL_ACTIVATE_PCT:
+                    pct_trail = round(highest * (1.0 - trail_pct), 2)
+                    _sd_t = sorted_dates_by_ticker.get(ticker, [])
+                    _t_i  = _bisect.bisect_right(_sd_t, today) - 1
+                    struct_trail = pct_trail
+                    if _t_i >= 2:
+                        _recent = _sd_t[max(0, _t_i - 2) : _t_i + 1]
+                        _r_lows = [ohlcv_by_date[ticker][d]["L"] for d in _recent
+                                   if d in ohlcv_by_date.get(ticker, {})]
+                        if len(_r_lows) >= 2:
+                            struct_trail = round(min(_r_lows) * 0.995, 2)
+                    new_trail = max(pct_trail, struct_trail)
+                    cur_trail = pos.get("trailing_stop_price")
+                    if cur_trail is None or new_trail > cur_trail:
+                        pos["trailing_stop_price"] = new_trail
 
             if exit_price is not None:
                 pnl_dollar = (exit_price - entry) * shares
