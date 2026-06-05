@@ -287,6 +287,8 @@ def get_macro_context() -> dict:
         "spy_ema50": None,
         "spy_ema200": None,
         "spy_price": None,
+        "spy_5d_return": None,
+        "spy_stressed": False,   # True when SPY drops >3% over 5 days (fast stress gate)
     }
 
     # VIX
@@ -317,6 +319,16 @@ def get_macro_context() -> dict:
             else:
                 macro["spy_regime"]      = "bear"
                 macro["bearish_market"]  = True
+
+        # SPY 5-day return — fast stress gate catches sharp drops before EMAs react
+        r5d = spy_ind.get("return_5d")
+        if r5d is not None:
+            macro["spy_5d_return"] = round(float(r5d), 4)
+            macro["spy_stressed"]  = float(r5d) < -0.03   # >3% drop in 5 days
+            if macro["spy_stressed"]:
+                logger.warning(
+                    f"[macro] SPY stress detected: 5d return={r5d:.2%} — new longs paused"
+                )
     except Exception as e:
         logger.warning(f"SPY regime check failed: {e}")
 
@@ -324,6 +336,8 @@ def get_macro_context() -> dict:
     logger.info(
         f"[macro] VIX={macro['vix']:.1f} regime={macro['spy_regime']} "
         f"bearish_market={macro['bearish_market']} "
+        f"spy_stressed={macro['spy_stressed']} "
+        f"spy_5d={macro.get('spy_5d_return', 0) or 0:.1%} "
         f"size_mult={macro['vix_multiplier']:.2f}"
     )
     return macro
@@ -786,6 +800,76 @@ def execute_signals(signals: list, alpaca_client, data_client,
         quote       = get_latest_quote(data_client, ticker)
         alpaca_side = "buy" if action == "buy" else "sell"
         limit_price = compute_limit_price(alpaca_side, quote, entry_price)
+
+        # ── SPY rapid-selloff stress gate ─────────────────────────────────
+        # Blocks new longs when SPY has dropped >3% in 5 days. Fires faster
+        # than the EMA50/200 regime cross (which lags by weeks) and catches
+        # the window where regime still reads "bull" but the market is crashing.
+        if action == "buy" and macro_context.get("spy_stressed"):
+            log_rejection(
+                session=session,
+                ticker=ticker,
+                net_score=sig.get("net_score", 0),
+                confidence=confidence,
+                action=action,
+                rejection_reason="spy_stressed",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0),
+                strategy=strategy,
+            )
+            continue
+
+        # ── Max concurrent trend_follow cap ───────────────────────────────
+        # Prevents 4-5 trend_follow positions stopping out simultaneously
+        # in a single market reversal (amplifies drawdown).
+        if action == "buy" and strategy == "trend_follow":
+            try:
+                from bot.logger import get_open_trades as _got_tf
+                tf_open = sum(
+                    1 for t in _got_tf()
+                    if t.get("strategy") == "trend_follow"
+                    and t.get("status") in ("open", "dry_run")
+                )
+                if tf_open >= 2:
+                    log_rejection(
+                        session=session,
+                        ticker=ticker,
+                        net_score=sig.get("net_score", 0),
+                        confidence=confidence,
+                        action=action,
+                        rejection_reason="trend_follow_cap",
+                        bull_score=sig.get("bull_score", 0),
+                        bear_score=sig.get("bear_score", 0),
+                        strategy=strategy,
+                    )
+                    continue
+            except Exception as _tf_err:
+                logger.warning(f"[execute] trend_follow cap check failed: {_tf_err}")
+
+        # ── Gap-down guard for momentum strategies ─────────────────────────
+        # If the stock has already dropped >1 ATR from yesterday's close by
+        # the time we're executing, the uptrend thesis is broken — skip entry.
+        if action == "buy" and strategy in ("trend_follow", "breakout", "squeeze_breakout"):
+            r1d = sig.get("return_1d")
+            if r1d is not None and r1d < 0 and entry_price > 0:
+                prev_close = entry_price / (1 + r1d)
+                if (prev_close - entry_price) > atr:
+                    log_rejection(
+                        session=session,
+                        ticker=ticker,
+                        net_score=sig.get("net_score", 0),
+                        confidence=confidence,
+                        action=action,
+                        rejection_reason="gap_down",
+                        bull_score=sig.get("bull_score", 0),
+                        bear_score=sig.get("bear_score", 0),
+                        strategy=strategy,
+                    )
+                    logger.info(
+                        f"[execute] {ticker} gap-down guard: price={entry_price:.2f} "
+                        f"prev_close={prev_close:.2f} drop={prev_close-entry_price:.2f} atr={atr:.2f}"
+                    )
+                    continue
 
         # ── Stale signal latency guard ─────────────────────────────────────
         signal_age = _time.time() - sig.get("scored_at", _time.time())
