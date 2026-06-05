@@ -79,7 +79,10 @@ MAX_HOLD_DAYS      = {
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
-BAD_STRATEGIES         = {"mixed"}
+# squeeze_breakout disabled: 0% win rate even after strict momentum filtering.
+# In a declining market, KC breakouts are bull traps. These setups must not
+# bleed into trend_follow via reclassification — disable at strategy level.
+BAD_STRATEGIES         = {"mixed", "squeeze_breakout"}
 # High-volatility detection — data-driven, no hardcoded ticker list (Change 9)
 HIGH_VOL_ATR_PCT       = 0.05   # atr/price >= 5%: whippy daily range
 HIGH_VOL_PRICE_MAX     = 5.00   # price < $5: gap/slip risk
@@ -106,8 +109,8 @@ PARTIAL_TIGHT_PCT      = 0.08   # intraday high threshold to activate tight trai
 # Stale-trade breakeven
 STALE_EXIT_DAYS        = 3
 STALE_LOSS_THRESHOLD   = -0.01
-# Mean reversion regime gate — tightened to 18: must be genuinely ranging
-MEAN_REV_MAX_ADX       = 18
+# Mean reversion regime gate
+MEAN_REV_MAX_ADX       = 20
 # Breakout entry quality minimums
 BREAKOUT_MIN_VOL       = 2.0
 BREAKOUT_MIN_ADX       = 25
@@ -663,6 +666,16 @@ def run_backtest(
                 r5d = ind.get("return_5d")
                 if r5d is not None and r5d <= 0:
                     continue
+                # Reclassification guard: if the setup has both squeeze + KC signals,
+                # it was a squeeze_breakout candidate that fell through because
+                # squeeze_breakout is disabled. Don't let it pollute trend_follow.
+                _sigs = set(score.get("signals_triggered", []))
+                if "bb_squeeze_detected" in _sigs and "kc_breakout_bull" in _sigs:
+                    logger.debug(
+                        f"[backtest] {ticker} trend_follow skip {today}: "
+                        f"squeeze+KC signals — reclassification guard"
+                    )
+                    continue
 
             # ── Mean reversion guard ──────────────────────────────────────────
             # Require genuinely extreme readings (both RSI and BB) in a truly
@@ -688,7 +701,7 @@ def run_backtest(
                     continue
                 # Both must be extreme — either one alone is too easy to satisfy
                 _rsi_extreme = _rsi < 30 or _rsi > 70
-                _bb_extreme  = _bb_pb is not None and (_bb_pb < 0.10 or _bb_pb > 0.90)
+                _bb_extreme  = _bb_pb is not None and (_bb_pb < 0.15 or _bb_pb > 0.85)
                 if not (_rsi_extreme and _bb_extreme):
                     logger.debug(
                         f"[backtest] {ticker} mean_rev skip {today}: "
@@ -700,33 +713,8 @@ def run_backtest(
                 if _mr_open >= MAX_MEAN_REV_POSITIONS:
                     continue
 
-            # ── Squeeze breakout guard ────────────────────────────────────────
-            # The classifier already requires kc_breakout_bull + in_uptrend. Here
-            # we add momentum confirmation: MACD must be positive (not just neutral),
-            # volume >= 2x, price in upper half of BB (not a lower-band fakeout),
-            # and DI+ > DI- (directional pressure is bullish).
-            if strategy == "squeeze_breakout":
-                _macd   = ind.get("macd_hist") or 0
-                _vol    = ind.get("volume_ratio") or 0
-                _bb_pb  = ind.get("bb_pctb")
-                _dip    = ind.get("adx_di_plus") or 0
-                _dim    = ind.get("adx_di_minus") or 0
-                _sq_skip = None
-                if _macd <= 0:
-                    _sq_skip = f"macd_hist={_macd:.3f} not positive"
-                elif _vol < 2.0:
-                    _sq_skip = f"vol_ratio={_vol:.2f} < 2.0"
-                elif _bb_pb is not None and _bb_pb < 0.5:
-                    _sq_skip = f"bb_pctb={_bb_pb:.2f} lower half — expansion going down"
-                elif _dip > 0 and _dim > 0 and _dip < _dim:
-                    _sq_skip = f"DI+={_dip:.1f} < DI-={_dim:.1f} bearish pressure"
-                if _sq_skip:
-                    logger.debug(f"[backtest] {ticker} squeeze_breakout skip {today}: {_sq_skip}")
-                    continue
-                # Concentration cap
-                _sq_open = sum(1 for p in positions.values() if p.get("strategy") == "squeeze_breakout")
-                if _sq_open >= MAX_SQUEEZE_POSITIONS:
-                    continue
+            # squeeze_breakout is in BAD_STRATEGIES — no guard needed here.
+
 
             # ── Breakout guard ────────────────────────────────────────────────
             # On top of the classifier's conditions, require strong volume,
