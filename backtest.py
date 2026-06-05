@@ -825,6 +825,7 @@ def run_backtest(
                 "signals":     score.get("signals_triggered", []),
             }
             last_entry_day = next_day  # reset silence counter
+            new_entries_today += 1
 
     # ── Close any remaining open positions at end date ────────────────────────
     final_day = trading_days[-1] if trading_days else end

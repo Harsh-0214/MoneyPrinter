@@ -281,14 +281,15 @@ def get_macro_context() -> dict:
 
     macro = {
         "vix": 20.0,
-        "spy_regime": "bull",
+        "spy_regime": "confirmed_uptrend",
         "bearish_market": False,
         "vix_multiplier": 1.0,
         "spy_ema50": None,
         "spy_ema200": None,
         "spy_price": None,
         "spy_5d_return": None,
-        "spy_stressed": False,   # True when SPY drops >3% over 5 days (fast stress gate)
+        "spy_stressed": False,
+        "regime_mult": 1.0,   # 1.0=full, 0.5=caution, 0.0=no new longs
     }
 
     # VIX
@@ -310,24 +311,30 @@ def get_macro_context() -> dict:
         macro["spy_price"]  = price
 
         if price and ema50 and ema200:
-            if price > ema50 and price > ema200:
-                macro["spy_regime"]      = "bull"
+            above_50        = price >= ema50
+            ema50_above_200 = ema50  >= ema200
+            if above_50 and ema50_above_200:
+                macro["spy_regime"]      = "confirmed_uptrend"
                 macro["bearish_market"]  = False
-            elif price < ema50 and price > ema200:
+                macro["regime_mult"]     = 1.0
+            elif above_50 or ema50_above_200:   # XOR
                 macro["spy_regime"]      = "caution"
-                macro["bearish_market"]  = True   # below EMA50 = bearish_market
+                macro["bearish_market"]  = False   # caution: trade at half risk, not blocked
+                macro["regime_mult"]     = 0.5
             else:
-                macro["spy_regime"]      = "bear"
+                macro["spy_regime"]      = "downtrend"
                 macro["bearish_market"]  = True
+                macro["regime_mult"]     = 0.0
 
-        # SPY 5-day return — fast stress gate catches sharp drops before EMAs react
+        # SPY 5-day shock gate — overrides regime_mult to 0.0
         r5d = spy_ind.get("return_5d")
         if r5d is not None:
             macro["spy_5d_return"] = round(float(r5d), 4)
-            macro["spy_stressed"]  = float(r5d) < -0.03   # >3% drop in 5 days
+            macro["spy_stressed"]  = float(r5d) <= -0.04   # >4% drop in 5 days
             if macro["spy_stressed"]:
+                macro["regime_mult"] = 0.0
                 logger.warning(
-                    f"[macro] SPY stress detected: 5d return={r5d:.2%} — new longs paused"
+                    f"[macro] SPY shock: 5d return={r5d:.2%} — regime_mult forced to 0.0"
                 )
     except Exception as e:
         logger.warning(f"SPY regime check failed: {e}")
@@ -338,6 +345,7 @@ def get_macro_context() -> dict:
         f"bearish_market={macro['bearish_market']} "
         f"spy_stressed={macro['spy_stressed']} "
         f"spy_5d={macro.get('spy_5d_return', 0) or 0:.1%} "
+        f"regime_mult={macro.get('regime_mult', 1.0):.1f} "
         f"size_mult={macro['vix_multiplier']:.2f}"
     )
     return macro
@@ -361,7 +369,11 @@ def run_full_scan(session: str, macro_context: dict,
     bearish_market  = macro_context.get("bearish_market", False)
 
     if bearish_market:
-        console.print("[bold yellow]Bearish market (SPY below EMA50) — BUY signals suppressed[/bold yellow]")
+        console.print("[bold red]Downtrend regime (SPY below EMA50+EMA200) — BUY signals suppressed[/bold red]")
+    elif macro_context.get("spy_stressed"):
+        console.print("[bold yellow]SPY shock (5d drop >4%) — BUY signals will be blocked at execution[/bold yellow]")
+    elif macro_context.get("spy_regime") == "caution":
+        console.print("[bold yellow]Caution regime — half risk sizing, max 1 new entry today[/bold yellow]")
 
     # ── Fetch live Alpaca positions once ──────────────────────────────────────
     live_positions: dict = {}   # {ticker: position_dict}
@@ -767,7 +779,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
             confidence=confidence,
             atr=atr,
             price=entry_price,
-            vix_multiplier=macro_context.get("vix_multiplier", 1.0),
+            vix_multiplier=macro_context.get("vix_multiplier", 1.0) * macro_context.get("regime_mult", 1.0),
             high_vol_flag=high_vol,
         )
 
@@ -801,23 +813,44 @@ def execute_signals(signals: list, alpaca_client, data_client,
         alpaca_side = "buy" if action == "buy" else "sell"
         limit_price = compute_limit_price(alpaca_side, quote, entry_price)
 
-        # ── SPY rapid-selloff stress gate ─────────────────────────────────
-        # Blocks new longs when SPY has dropped >3% in 5 days. Fires faster
-        # than the EMA50/200 regime cross (which lags by weeks) and catches
-        # the window where regime still reads "bull" but the market is crashing.
-        if action == "buy" and macro_context.get("spy_stressed"):
+        # ── Regime gate: block / throttle new buys based on SPY regime ────
+        regime_mult = macro_context.get("regime_mult", 1.0)
+        if action == "buy" and regime_mult == 0.0:
             log_rejection(
                 session=session,
                 ticker=ticker,
                 net_score=sig.get("net_score", 0),
                 confidence=confidence,
                 action=action,
-                rejection_reason="spy_stressed",
+                rejection_reason="regime_blocked",
                 bull_score=sig.get("bull_score", 0),
                 bear_score=sig.get("bear_score", 0),
                 strategy=strategy,
             )
             continue
+
+        # ── Caution per-day entry cap (max 1 new long per day) ────────────
+        if action == "buy" and macro_context.get("spy_regime") == "caution":
+            try:
+                from bot.logger import get_trades_today as _gtt
+                _today_buys = sum(1 for t in _gtt()
+                                  if t.get("action") == "buy"
+                                  and t.get("status") in ("open", "dry_run", "filled"))
+                if _today_buys >= 1:
+                    log_rejection(
+                        session=session,
+                        ticker=ticker,
+                        net_score=sig.get("net_score", 0),
+                        confidence=confidence,
+                        action=action,
+                        rejection_reason="caution_daily_cap",
+                        bull_score=sig.get("bull_score", 0),
+                        bear_score=sig.get("bear_score", 0),
+                        strategy=strategy,
+                    )
+                    continue
+            except Exception as _cap_err:
+                logger.warning(f"[execute] caution cap check failed: {_cap_err}")
 
         # ── Max concurrent trend_follow cap ───────────────────────────────
         # Prevents 4-5 trend_follow positions stopping out simultaneously
@@ -846,9 +879,27 @@ def execute_signals(signals: list, alpaca_client, data_client,
             except Exception as _tf_err:
                 logger.warning(f"[execute] trend_follow cap check failed: {_tf_err}")
 
+        # ── Gap-chase guard: skip if stock already ran > 3% past prior close ──
+        if action == "buy":
+            r1d = sig.get("return_1d")
+            if r1d is not None and r1d > 0.03 and entry_price > 0:
+                log_rejection(
+                    session=session,
+                    ticker=ticker,
+                    net_score=sig.get("net_score", 0),
+                    confidence=confidence,
+                    action=action,
+                    rejection_reason="gap_chase",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0),
+                    strategy=strategy,
+                )
+                logger.info(
+                    f"[execute] {ticker} gap-chase guard: return_1d={r1d:.2%} > 3%"
+                )
+                continue
+
         # ── Gap-down guard for momentum strategies ─────────────────────────
-        # If the stock has already dropped >1 ATR from yesterday's close by
-        # the time we're executing, the uptrend thesis is broken — skip entry.
         if action == "buy" and strategy in ("trend_follow", "breakout", "squeeze_breakout"):
             r1d = sig.get("return_1d")
             if r1d is not None and r1d < 0 and entry_price > 0:
@@ -1245,7 +1296,7 @@ def session_continuous(alpaca_client, data_client) -> None:
 
         # ── Trailing stop checks ───────────────────────────────────────────
         from bot.risk import update_trailing_stop
-        from bot.logger import update_trade_trailing
+        from bot.logger import update_trade_trailing, update_trade_stop as _upd_sl
         for pos in get_open_positions(alpaca_client):
             current_price = pos.get("current_price") or pos.get("entry_price")
             if not current_price:
@@ -1256,6 +1307,12 @@ def session_continuous(alpaca_client, data_client) -> None:
                     pos["id"],
                     updated["highest_price_seen"],
                     updated.get("trailing_stop_price") or 0,
+                )
+            if updated.get("breakeven_set") and updated.get("new_stop_loss") and pos.get("id"):
+                _upd_sl(pos["id"], updated["new_stop_loss"])
+                console.print(
+                    f"[cyan]BREAKEVEN: {pos['ticker']} stop moved to entry "
+                    f"${updated['new_stop_loss']:.2f}[/cyan]"
                 )
             if updated.get("trailing_stop_triggered"):
                 close_position_and_log(alpaca_client, pos, current_price, "continuous",
