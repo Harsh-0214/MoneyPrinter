@@ -18,10 +18,10 @@ STRATEGY_CONFIGS = {
         "tp_rr": 2.0,
     },
     "breakout": {
-        "description": "Price breaks R1 or 52-week high with volume surge — 1-3 day momentum",
+        "description": "Price breaks R1/52wk high + ADX>20 + MACD confirm + volume surge >1.8x — 1-4 day momentum",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.5,
-        "tp_rr": 3.0,
+        "sl_atr_mult": 1.2,   # tight: breakout entry should be precise; cut fast if it fails
+        "tp_rr": 3.5,          # when they work, breakouts run further than trend trades
     },
     "breakdown": {
         "description": "Price breaks S1 with volume — 1-3 day momentum",
@@ -30,10 +30,10 @@ STRATEGY_CONFIGS = {
         "tp_rr": 2.5,
     },
     "squeeze_breakout": {
-        "description": "BB squeeze resolved + KC breakout — 2-4 day expansion play",
+        "description": "BB squeeze + KC breakout + ADX>20 + vol>1.5x + MACD confirm — 2-4 day expansion play",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.0,
-        "tp_rr": 2.5,
+        "sl_atr_mult": 1.5,   # was 2.0 — tighter stop, real squeeze expansions move fast
+        "tp_rr": 3.0,          # was 2.5 — squeeze breakouts that work run further
     },
     "news_momentum": {
         "description": "Catalyst-driven move with trend confirmation — same-day scalp",
@@ -125,13 +125,16 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     news_sig   = "news_positive" in sigs or "news_very_positive" in sigs or \
                  "news_negative" in sigs or "news_very_negative" in sigs
 
-    # Breakout: within 2% above R1 or 52wk high AND volume > 1.3x
+    # Breakout: within 2% above R1 or 52wk high with STRONG volume (>1.8x) + ADX + MACD confirm.
+    # Raising volume threshold from 1.3x→1.8x eliminates low-conviction "near resistance" noise.
     cp   = float(score.get("entry_price") or 0)
     R1   = float(ind.get("R1") or 0)
     w52h = float(ind.get("wk52_high") or 0)
-    at_r1_break   = R1   > 0 and cp > R1   and cp <= R1   * 1.02 and vol_ratio > 1.3
-    at_52wk_break = w52h > 0 and cp >= w52h * 0.99 and vol_ratio > 1.3
+    at_r1_break   = R1   > 0 and cp > R1   and cp <= R1   * 1.02 and vol_ratio > 1.8
+    at_52wk_break = w52h > 0 and cp >= w52h * 0.99 and vol_ratio > 1.8
     r1_break = at_r1_break or at_52wk_break or "broke_above_r1_with_volume" in sigs or "breaking_52wk_high" in sigs
+    # Breakout must also have ADX trend + MACD momentum — prevents false breakouts in chop
+    breakout_confirmed = r1_break and adx > 20 and macd_hist > 0
 
     # Trend follow: EMA9>EMA21>EMA50, ADX>18, MACD hist positive
     ema9_gt_ema21_gt_ema50 = (
@@ -144,10 +147,10 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     rsi_extreme = rsi < 38 or rsi > 68
     mean_rev_ok = (rsi_extreme or bb_extreme) and not ema_full_bull
 
-    # Classify
-    if squeeze and kc_break:
+    # Classify — squeeze_breakout now requires real momentum, not just pattern detection
+    if squeeze and kc_break and adx > 20 and macd_hist > 0 and vol_ratio > 1.5:
         return "squeeze_breakout"
-    if r1_break:
+    if breakout_confirmed:
         return "breakout"
     if s1_break:
         return "breakdown"
