@@ -63,7 +63,7 @@ ALL_TICKERS = list(dict.fromkeys(STATIC_TICKERS + UNIVERSE))  # deduped, order p
 DEFAULT_START      = "2024-06-01"
 DEFAULT_END        = "2025-06-01"
 STARTING_CAPITAL   = 100_000.0
-MIN_NET_SCORE      = 60          # no Claude: use scorer threshold directly
+MIN_NET_SCORE      = 75          # raised from 60 — tighter quality bar
 MAX_OPEN_POSITIONS = 5
 MAX_POSITION_PCT   = 0.10        # 10% of portfolio per trade
 RISK_PCT           = 0.02        # 2% portfolio risk per trade
@@ -89,7 +89,12 @@ HIGH_VOL_RISK_PCT  = 0.01        # 1% instead of 2%
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5      # 60 → 55
 # Change 4: require confirmed trend before entering trend_follow (ADX > threshold)
-ADX_TREND_MIN      = 20         # below this = sideways chop, not a real trend
+ADX_TREND_MIN      = 25         # raised from 20 — stronger trend confirmation required
+# Change 5: mean reversion only valid in ranging markets
+MEAN_REV_MAX_ADX   = 22         # above this = trending, mean reversion is wrong regime
+# Change 6: breakout entry quality minimums (beyond classifier conditions)
+BREAKOUT_MIN_VOL   = 2.0        # volume ratio must be at least 2x average
+BREAKOUT_MIN_ADX   = 25         # trend must exist behind the break
 
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
@@ -482,15 +487,80 @@ def run_backtest(
             if macro["bearish_market"]:
                 continue   # suppress buys in downtrend
 
-            # Change 1: skip strategies with demonstrated negative edge
+            # Skip strategies with no coherent edge
             if filter_bad_strategies and strategy in BAD_STRATEGIES:
                 continue
 
-            # Change 4: require ADX confirmation before entering trend_follow
-            # — prevents entering sideways stocks that score well on pattern alone
+            # ADX confirmation for trend_follow — no trending into chop
             if adx_filter and strategy == "trend_follow":
                 adx_val = ind.get("adx")
                 if adx_val is not None and adx_val < ADX_TREND_MIN:
+                    continue
+
+            # ── Mean reversion guard ──────────────────────────────────────────
+            # Mean reversion only works in range-bound markets.
+            # Skip if: stock is in a downtrend (price < ema50 AND ema200), or
+            # ADX says the market is actively trending (not ranging).
+            if strategy == "mean_reversion":
+                _cp    = ind.get("current_price") or 0
+                _e50   = ind.get("ema50")   or 0
+                _e200  = ind.get("ema200")  or 0
+                _adx   = ind.get("adx")     or 0
+                if _cp > 0 and _e50 > 0 and _e200 > 0 and _cp < _e50 and _cp < _e200:
+                    logger.debug(
+                        f"[backtest] {ticker} mean_rev skip {today}: "
+                        f"downtrend price={_cp:.2f} < ema50={_e50:.2f} & ema200={_e200:.2f}"
+                    )
+                    continue
+                if _adx > MEAN_REV_MAX_ADX:
+                    logger.debug(
+                        f"[backtest] {ticker} mean_rev skip {today}: "
+                        f"trending adx={_adx:.1f} > {MEAN_REV_MAX_ADX}"
+                    )
+                    continue
+
+            # ── Breakout guard ────────────────────────────────────────────────
+            # On top of the classifier's conditions, require strong volume,
+            # strong trend momentum, uptrend context, and prior consolidation.
+            if strategy == "breakout":
+                _vol   = ind.get("volume_ratio") or 0
+                _adx   = ind.get("adx")          or 0
+                _cp    = ind.get("current_price") or 0
+                _e50   = ind.get("ema50")         or 0
+                _e200  = ind.get("ema200")        or 0
+
+                _skip_reason = None
+                if _vol < BREAKOUT_MIN_VOL:
+                    _skip_reason = f"vol_ratio={_vol:.2f} < {BREAKOUT_MIN_VOL}"
+                elif _adx < BREAKOUT_MIN_ADX:
+                    _skip_reason = f"adx={_adx:.1f} < {BREAKOUT_MIN_ADX}"
+                elif _e50 > 0 and _cp < _e50:
+                    _skip_reason = f"price={_cp:.2f} < ema50={_e50:.2f}"
+                elif _e200 > 0 and _cp < _e200:
+                    _skip_reason = f"price={_cp:.2f} < ema200={_e200:.2f}"
+                else:
+                    # 15-day consolidation check: range must be < 15% to confirm
+                    # the stock was coiling before the break, not already extended.
+                    # Uses preloaded OHLCV — fails open if data unavailable.
+                    try:
+                        _sd = sorted_dates_by_ticker.get(ticker, [])
+                        _dm = ohlcv_by_date.get(ticker, {})
+                        _today_i = _bisect.bisect_right(_sd, today) - 1
+                        if _today_i >= 15:
+                            _prior = _sd[_today_i - 15 : _today_i]
+                            _highs = [_dm[d]["H"] for d in _prior if d in _dm]
+                            _lows  = [_dm[d]["L"] for d in _prior if d in _dm]
+                            if len(_highs) >= 10 and min(_lows) > 0:
+                                _range = (max(_highs) - min(_lows)) / min(_lows)
+                                if _range >= 0.15:
+                                    _skip_reason = f"no_consolidation range={_range:.1%} >= 15%"
+                    except Exception:
+                        pass  # fail open — don't block on data errors
+
+                if _skip_reason:
+                    logger.debug(
+                        f"[backtest] {ticker} breakout skip {today}: {_skip_reason}"
+                    )
                     continue
 
             # Sector cap
