@@ -438,14 +438,19 @@ def run_backtest(
                 exit_price  = day_close
                 exit_reason = "time_exit"
 
-            # ── Stale breakeven: no exit yet, dead trade — move stop to entry ─
+            # ── Stale exit: dead trade that hasn't moved ──────────────────────
             if exit_price is None:
                 unrealised_pct = (day_close - entry) / entry if entry > 0 else 0.0
-                if (age_days >= STALE_EXIT_DAYS
-                        and unrealised_pct < STALE_LOSS_THRESHOLD
-                        and pos["stop_loss"] < entry):
-                    pos["stop_loss"] = entry
-                    stop = entry   # keep local var in sync for this iteration
+                if age_days >= STALE_EXIT_DAYS and unrealised_pct < STALE_LOSS_THRESHOLD:
+                    if pos["stop_loss"] < entry:
+                        pos["stop_loss"] = entry
+                        stop = entry
+                    # If price is already below the breakeven stop, force-close now.
+                    # Waiting for an upward rally to entry that may never come just
+                    # bleeds time and ties up capital.
+                    if day_close < stop:
+                        exit_price  = day_close
+                        exit_reason = "stale_exit"
 
             if exit_price is not None:
                 pnl_dollar = (exit_price - entry) * shares
@@ -553,10 +558,14 @@ def run_backtest(
             if filter_bad_strategies and strategy in BAD_STRATEGIES:
                 continue
 
-            # ADX confirmation for trend_follow — no trending into chop
+            # trend_follow guards
             if adx_filter and strategy == "trend_follow":
                 adx_val = ind.get("adx")
                 if adx_val is not None and adx_val < ADX_TREND_MIN:
+                    continue
+                # 5-day return must be positive — stock must be actively moving, not coasting
+                r5d = ind.get("return_5d")
+                if r5d is not None and r5d <= 0:
                     continue
 
             # ── Mean reversion guard ──────────────────────────────────────────

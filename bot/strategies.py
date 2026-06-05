@@ -144,9 +144,11 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     # Require uptrend context + 2x volume + ADX ≥ 25 — consistent with backtest guards
     breakout_confirmed = r1_break and in_uptrend and vol_ratio >= 2.0 and adx >= 25
 
-    # ── Trend follow: EMA alignment + ADX>22 + MACD positive (raised from 18)
+    # ── Trend follow: EMA alignment + in_uptrend + ADX>22 + MACD positive
+    # in_uptrend (price > ema50 AND ema200) is required — alignment signals alone
+    # can fire during a correction where the short EMAs have already curled down.
     ema_aligned     = "ema_full_bull_alignment" in sigs or "ema_partial_bull_alignment" in sigs
-    trend_follow_ok = ema_aligned and adx > 22 and macd_hist > 0
+    trend_follow_ok = ema_aligned and in_uptrend and adx > 22 and macd_hist > 0
 
     # ── Mean reversion: extreme RSI/BB + ranging market (ADX<22) + not in downtrend
     bb_extreme  = bb_pctb is not None and (bb_pctb < 0.15 or bb_pctb > 0.85)
@@ -170,6 +172,4 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
         return "mean_reversion"
     if news_sig and (ema_full or ema_part or vol_conf):
         return "news_momentum"
-    if ema_full or ema_part:
-        return "trend_follow"    # EMA aligned but missing some conditions — still trend
-    return "mixed"
+    return "mixed"   # EMA aligned but without uptrend+ADX+MACD+vol = no coherent edge
