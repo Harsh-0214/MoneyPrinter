@@ -124,7 +124,7 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     vol_ratio = float(ind.get("volume_ratio") or 0)
 
     squeeze  = "bb_squeeze_detected"          in sigs
-    kc_break = "kc_breakout_bull"             in sigs or "kc_breakdown_bear" in sigs
+    kc_bull  = "kc_breakout_bull"             in sigs   # bullish direction only — bearish break ≠ long entry
     s1_break = "broke_below_s1_with_volume"   in sigs
     ema_full = "ema_full_bull_alignment"       in sigs or "ema_full_bear_alignment" in sigs
     ema_part = "ema_partial_bull_alignment"    in sigs or "ema_partial_bear_alignment" in sigs
@@ -155,9 +155,10 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     rsi_extreme = rsi < 38 or rsi > 68
     mean_rev_ok = (rsi_extreme or bb_extreme) and not ema_full_bull and adx < 22 and not in_downtrend
 
-    # ── Squeeze breakout: pattern + not in downtrend + volume ≥ 1.5x
-    # ADX/MACD removed — squeeze compression itself implies low ADX before the break
-    squeeze_ok = squeeze and kc_break and not in_downtrend and vol_ratio >= 1.5
+    # ── Squeeze breakout: BB compression releasing UPWARD — requires confirmed uptrend
+    # Only count bullish KC break; bearish KC break means expansion is going down, not up.
+    # in_uptrend (not just "not in_downtrend") ensures broad market context is supportive.
+    squeeze_ok = squeeze and kc_bull and in_uptrend and vol_ratio >= 1.5
 
     # ── Classification (first match wins) ─────────────────────────────────────
     if squeeze_ok:

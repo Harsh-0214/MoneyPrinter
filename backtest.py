@@ -645,6 +645,13 @@ def run_backtest(
             if filter_bad_strategies and strategy in BAD_STRATEGIES:
                 continue
 
+            # ── Strategy-regime alignment ─────────────────────────────────────
+            # squeeze_breakout and mean_reversion are range/momentum plays that
+            # only work when the broad market is clearly trending up. In caution
+            # or correction regimes they produce a high rate of false signals.
+            if strategy in ("squeeze_breakout", "mean_reversion") and regime != "confirmed_uptrend":
+                continue
+
             # trend_follow guards
             if adx_filter and strategy == "trend_follow":
                 adx_val = ind.get("adx")
