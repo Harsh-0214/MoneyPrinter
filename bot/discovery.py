@@ -107,7 +107,6 @@ def run_discovery(static_tickers: list[str]) -> list[str]:
                 continue
             price      = snap["price"]
             prev_close = snap["prev_close"]
-            last_vol   = snap["last_volume"]
 
             if not price or price < 10:
                 continue
@@ -116,13 +115,21 @@ def run_discovery(static_tickers: list[str]) -> list[str]:
             if daily is None or len(daily) < 10:
                 continue
 
-            avg_vol   = float(daily["Volume"].iloc[-63:].mean()) if len(daily) >= 63 else float(daily["Volume"].mean())
-            wk52_high = float(daily["High"].iloc[-252:].max())   if len(daily) >= 252 else float(daily["High"].max())
+            # Use daily bars for volume ratio — snapshot daily_bar.volume is today's
+            # partial intraday volume (≈0 at 8:30 AM premarket), which would make
+            # every stock fail the vol_ratio filter.
+            yesterday_vol = float(daily["Volume"].iloc[-1])
+            prior_avg_vol = (
+                float(daily["Volume"].iloc[-64:-1].mean()) if len(daily) >= 64
+                else float(daily["Volume"].iloc[:-1].mean() if len(daily) > 1
+                           else daily["Volume"].mean())
+            )
+            wk52_high = float(daily["High"].iloc[-252:].max()) if len(daily) >= 252 else float(daily["High"].max())
 
-            if not avg_vol or avg_vol < 2_000_000:
+            if not prior_avg_vol or prior_avg_vol < 2_000_000:
                 continue
 
-            vol_ratio  = (last_vol / avg_vol) if last_vol and avg_vol else 0
+            vol_ratio  = (yesterday_vol / prior_avg_vol) if prior_avg_vol else 0
             pct_change = abs((price - prev_close) / prev_close * 100) if prev_close else 0
             near_52wk  = bool(wk52_high and price >= wk52_high * 0.97)
 
@@ -337,7 +344,6 @@ def scan_rising_movers(static_tickers: list[str], top_n: int = 5) -> list[str]:
                 continue
             price      = snap["price"]
             prev_close = snap["prev_close"]
-            last_vol   = snap["last_volume"]
 
             if not price or price < 5:
                 continue
@@ -346,11 +352,18 @@ def scan_rising_movers(static_tickers: list[str], top_n: int = 5) -> list[str]:
             if daily is None or len(daily) < 10:
                 continue
 
-            avg_vol   = float(daily["Volume"].iloc[-63:].mean()) if len(daily) >= 63 else float(daily["Volume"].mean())
-            wk52_high = float(daily["High"].iloc[-252:].max())   if len(daily) >= 252 else float(daily["High"].max())
+            # Use daily bars for vol_ratio (same reason as run_discovery: snapshot
+            # daily_bar.volume is partial intraday and unreliable early in session)
+            yesterday_vol = float(daily["Volume"].iloc[-1])
+            prior_avg_vol = (
+                float(daily["Volume"].iloc[-64:-1].mean()) if len(daily) >= 64
+                else float(daily["Volume"].iloc[:-1].mean() if len(daily) > 1
+                           else daily["Volume"].mean())
+            )
+            wk52_high = float(daily["High"].iloc[-252:].max()) if len(daily) >= 252 else float(daily["High"].max())
 
             pct_change = ((price - prev_close) / prev_close * 100) if prev_close else 0
-            vol_ratio  = (last_vol / avg_vol) if last_vol and avg_vol else 0
+            vol_ratio  = (yesterday_vol / prior_avg_vol) if prior_avg_vol else 0
             near_52wk  = bool(wk52_high and price >= wk52_high * 0.99)
 
             if vol_ratio >= 1.3 and (pct_change >= 1.5 or near_52wk):
