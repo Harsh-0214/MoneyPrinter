@@ -85,15 +85,24 @@ HIGH_VOL_ATR_PCT       = 0.05   # atr/price >= 5%: whippy daily range
 HIGH_VOL_PRICE_MAX     = 5.00   # price < $5: gap/slip risk
 HIGH_VOL_UNIV_PCTILE   = 80    # top-20% by universe atr_pct that day
 HIGH_VOL_RISK_PCT      = 0.01   # 1% risk budget for flagged names (vs 2% normal)
-# Market-regime gate (Change 10)
-CAUTION_RISK_PCT       = 0.005  # 0.5% risk when SPY below EMA50 but EMA50 above EMA200
+# Market-regime tiered risk multiplier — scales NEW long entries only
+REGIME_RISK_MULT = {
+    "confirmed_uptrend": 1.0,   # SPY >= EMA50 AND EMA50 >= EMA200 → full risk
+    "caution":           0.5,   # one condition met (XOR) → half risk, 1 entry/day
+    "downtrend":         0.0,   # both conditions fail → no new longs
+}
+SPY_SHOCK_THRESHOLD  = -0.04   # 5-day SPY return <= -4% overrides regime → 0.0
+CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
 # Re-entry relaxation
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
 ADX_TREND_MIN          = 25
-# Trailing stop
-TRAILING_ACTIVATE_PCT  = 0.05
-TRAILING_TRAIL_PCT     = 0.03
+# Trailing stop — structure-based, activates later so winners can run
+TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
+TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
+TRAIL_TIGHT_PCT        = 0.025  # tighten to 2.5% once +8% intraday hit
+BREAKEVEN_TRIGGER_PCT  = 0.03   # move stop to entry at +3%
+PARTIAL_TIGHT_PCT      = 0.08   # intraday high threshold to activate tight trail
 # Stale-trade breakeven
 STALE_EXIT_DAYS        = 3
 STALE_LOSS_THRESHOLD   = -0.01
@@ -102,10 +111,8 @@ MEAN_REV_MAX_ADX       = 22
 # Breakout entry quality minimums
 BREAKOUT_MIN_VOL       = 2.0
 BREAKOUT_MIN_ADX       = 25
-# SPY stress gate: rapid-selloff early warning (faster than EMA50/200 regime)
-SPY_STRESS_5D_THRESHOLD    = -0.03  # SPY 5-day return < -3% → pause all new longs
 # Concentration cap for momentum strategies
-MAX_TREND_FOLLOW_POSITIONS =  2     # max concurrent open trend_follow trades
+MAX_TREND_FOLLOW_POSITIONS = 2  # max concurrent open trend_follow trades
 
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
@@ -318,39 +325,40 @@ def run_backtest(
     def _spy_regime(as_of: date) -> str:
         """
         Three-state SPY regime:
-          bull             — SPY >= EMA50 (normal, full risk)
-          caution          — SPY < EMA50, EMA50 >= EMA200 (pullback; allow at 0.5% risk)
-          confirmed_downtrend — SPY < EMA50 AND EMA50 < EMA200 (structural bear; block new longs)
+          confirmed_uptrend — SPY >= EMA50 AND EMA50 >= EMA200 → risk_mult 1.0
+          caution           — one but not both (XOR)           → risk_mult 0.5
+          downtrend         — SPY < EMA50 AND EMA50 < EMA200   → risk_mult 0.0
         """
         if not _spy_dates:
-            return "bull"
+            return "confirmed_uptrend"
         try:
             cut = _bisect.bisect_right(_spy_dates, as_of)
             if cut < 200:
-                return "bull"   # not enough history for EMA200 — assume bull
+                return "confirmed_uptrend"
             price  = float(_spy_close.iloc[cut - 1])
             ema50  = float(_spy_ema50.iloc[cut - 1])
             ema200 = float(_spy_ema200.iloc[cut - 1])
-            if price >= ema50:
-                return "bull"
-            elif ema50 >= ema200:
-                return "caution"          # short-term pullback, long-term trend intact
+            above_50        = price >= ema50
+            ema50_above_200 = ema50  >= ema200
+            if above_50 and ema50_above_200:
+                return "confirmed_uptrend"
+            elif above_50 or ema50_above_200:   # XOR
+                return "caution"
             else:
-                return "confirmed_downtrend"   # death cross / structural bear
+                return "downtrend"
         except Exception:
-            return "bull"
+            return "confirmed_uptrend"
 
     def _spy_stressed(as_of: date) -> bool:
-        """True when SPY has dropped >3% over the last 5 trading days.
-        Fires faster than the EMA50/200 regime cross (which can lag by weeks)
-        and pauses ALL new long entries during rapid selloffs."""
+        """True when SPY has dropped >4% over 5 days (shock override).
+        Overrides regime_mult to 0.0 regardless of EMA state."""
         if _spy_ret5d is None or not _spy_dates:
             return False
         try:
             cut = _bisect.bisect_right(_spy_dates, as_of)
             if cut < 10:
                 return False
-            return float(_spy_ret5d.iloc[cut - 1]) < SPY_STRESS_5D_THRESHOLD
+            return float(_spy_ret5d.iloc[cut - 1]) <= SPY_SHOCK_THRESHOLD
         except Exception:
             return False
 
@@ -398,12 +406,16 @@ def run_backtest(
 
         equity_curve.append({"date": today, "equity": round(mkt_value, 2)})
 
-        regime = _spy_regime(today)
+        regime      = _spy_regime(today)
+        regime_mult = REGIME_RISK_MULT.get(regime, 1.0)
+        if _spy_stressed(today):
+            regime_mult = 0.0
         macro  = {
-            "vix": 18.0,           # static approximation — VIX not available in backtest
+            "vix": 18.0,
             "spy_regime": regime,
-            "bearish_market": regime == "confirmed_downtrend",
+            "bearish_market": regime == "downtrend",
             "vix_multiplier": 1.0,
+            "regime_mult": regime_mult,
         }
 
         # ── 1. Check exits on all open positions ──────────────────────────────
@@ -429,13 +441,37 @@ def run_backtest(
             exit_price  = None
             exit_reason = None
 
-            # ── Trailing stop: update highest seen, activate once up 5% ──────
+            # ── Trailing stop + breakeven + partial-profit management ────────
             highest = max(pos.get("highest_price_seen", entry), day_high)
             pos["highest_price_seen"] = highest
             trail_price = pos.get("trailing_stop_price")
             gain_pct = (highest - entry) / entry if entry > 0 else 0.0
-            if gain_pct >= TRAILING_ACTIVATE_PCT:
-                new_trail = round(highest * (1.0 - TRAILING_TRAIL_PCT), 2)
+
+            # Breakeven: lock in "can't lose" at +3%, before trail activates
+            if gain_pct >= BREAKEVEN_TRIGGER_PCT and pos["stop_loss"] < entry:
+                pos["stop_loss"] = entry
+                stop = entry
+
+            # Tight trail: +8% intraday triggers 2.5% trail instead of 5%
+            intraday_pct = (day_high - entry) / entry if entry > 0 else 0.0
+            if not pos.get("tight_trail_activated") and intraday_pct >= PARTIAL_TIGHT_PCT:
+                pos["tight_trail_activated"] = True
+
+            trail_pct = TRAIL_TIGHT_PCT if pos.get("tight_trail_activated") else TRAIL_GIVEBACK_PCT
+
+            if gain_pct >= TRAIL_ACTIVATE_PCT:
+                pct_trail = round(highest * (1.0 - trail_pct), 2)
+                # Structure trail: stop just below the 3-day swing low
+                _sd_t = sorted_dates_by_ticker.get(ticker, [])
+                _t_i  = _bisect.bisect_right(_sd_t, today) - 1
+                struct_trail = pct_trail   # default: fall back to pct trail
+                if _t_i >= 2:
+                    _recent = _sd_t[max(0, _t_i - 2) : _t_i + 1]
+                    _r_lows = [ohlcv_by_date[ticker][d]["L"] for d in _recent
+                               if d in ohlcv_by_date.get(ticker, {})]
+                    if len(_r_lows) >= 2:
+                        struct_trail = round(min(_r_lows) * 0.995, 2)
+                new_trail = max(pct_trail, struct_trail)   # higher = tighter
                 if trail_price is None or new_trail > trail_price:
                     trail_price = new_trail
                     pos["trailing_stop_price"] = trail_price
@@ -536,6 +572,7 @@ def run_backtest(
             if len(_atr_pcts) >= 10 else float("inf")
         )
 
+        new_entries_today = 0   # per-day counter for regime-aware entry cap
         new_signals: list[dict] = []
 
         for ticker in tickers:
@@ -568,14 +605,9 @@ def run_backtest(
                 continue
             if confidence < MIN_CONFIDENCE:
                 continue
-            # Block all new longs during confirmed downtrend (EMA50 < EMA200 on SPY)
-            if regime == "confirmed_downtrend":
+            # Regime gate: 0.0 = no new longs (downtrend or shock)
+            if regime_mult == 0.0:
                 continue
-            # Rapid-selloff gate: SPY down >3% over 5 days catches sharp drops
-            # before the slow EMA50/200 cross fires (which can lag by 2-3 weeks)
-            if _spy_stressed(today):
-                continue
-            # Caution (SPY below EMA50 but EMA50 above EMA200): allowed at reduced risk — handled in sizing
 
             # Skip strategies with no coherent edge
             if filter_bad_strategies and strategy in BAD_STRATEGIES:
@@ -695,11 +727,18 @@ def run_backtest(
             if entry_price <= 0:
                 continue
 
+            signal_day_close = ohlcv_by_date.get(ticker, {}).get(today, {}).get("C") or 0
+
+            # ── Gap-chase guard: skip if stock already ran > 3% past signal close ──
+            if signal_day_close > 0 and entry_price > signal_day_close * 1.03:
+                logger.debug(
+                    f"[backtest] {ticker} {next_day} gap-chase skip: "
+                    f"open={entry_price:.2f} signal_close={signal_day_close:.2f}"
+                )
+                continue
+
             # ── Gap-down guard for momentum strategies ────────────────────────
-            # If the stock opens > 1 ATR below the prior close the entry thesis
-            # (uptrend continuation) is already broken — skip rather than chase.
             if strategy in ("trend_follow", "breakout", "squeeze_breakout"):
-                signal_day_close = ohlcv_by_date.get(ticker, {}).get(today, {}).get("C") or 0
                 if signal_day_close > 0 and (signal_day_close - entry_price) > atr:
                     logger.debug(
                         f"[backtest] {ticker} {next_day} gap-down skip: "
@@ -729,11 +768,11 @@ def run_backtest(
                     f"[backtest] {ticker} {today} high-vol: {'; '.join(_hv_reasons)}"
                 )
 
-            ticker_risk_pct = HIGH_VOL_RISK_PCT if is_high_vol else RISK_PCT
+            ticker_risk_pct = (HIGH_VOL_RISK_PCT if is_high_vol else RISK_PCT) * regime_mult
 
-            # ── Caution regime: cap risk to 0.5% (Change 10) ─────────────────
-            if regime == "caution":
-                ticker_risk_pct = min(ticker_risk_pct, CAUTION_RISK_PCT)
+            # Per-day entry cap in caution (only 1 new long allowed per day)
+            if regime == "caution" and new_entries_today >= CAUTION_MAX_ENTRIES:
+                continue
 
             # Position sizing — value each open position at its own last close (mark-to-market)
             mark_to_market = cash + sum(
