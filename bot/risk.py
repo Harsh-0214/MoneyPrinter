@@ -74,14 +74,16 @@ def calculate_position(
     if price <= 0 or atr <= 0:
         return {"shares": 0, "dollar_risk": 0, "reason": "invalid_price_or_atr"}
 
-    # High ATR: reduce by 40%
+    # High-vol tickers: halve risk budget AND cap at 10% (not 20%)
+    # This protects against gap moves on stocks like AVGO that have low normal ATR
+    # but occasional 15-20% overnight gaps (earnings misses, guidance cuts, macro shocks).
     vol_adj = 0.60 if high_vol_flag else 1.0
+    pos_cap = 0.10 if high_vol_flag else 0.20
 
     dollar_risk = portfolio_value * 0.02 * confidence * vix_multiplier * vol_adj
     shares = floor(dollar_risk / (atr * 1.5))
 
-    # Cap at 20% of portfolio
-    max_val    = portfolio_value * 0.20
+    max_val    = portfolio_value * pos_cap
     max_shares = floor(max_val / price)
     shares     = min(shares, max_shares)
     shares     = max(0, shares)

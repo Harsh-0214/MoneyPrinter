@@ -159,6 +159,7 @@ MIN_CONFIDENCE_SHORT   = 0.70  # shorts are riskier
 HIGH_VOLATILITY_TICKERS = {
     "NVDA", "TSLA", "COIN", "MSTR", "SMCI", "PLTR", "AMD", "SOFI", "LI", "MDB",
     "MRNA", "AFRM", "AMC", "PLUG", "GME", "RIVN", "LCID", "ARM",
+    "AVGO", "PANW", "CRM", "SNOW", "NET", "DDOG", "CRWD", "ZS", "TEAM",
 }
 
 
@@ -470,9 +471,12 @@ def score_ticker(
     c_vol_struct[0] = vs_bull
     c_vol_struct[1] = vs_bear
 
-    # ATR note
+    # ATR note — flag by ATR% threshold OR known gap-prone tickers
     atr_pct = _v(ind.get("atr_pct"), default=None)
-    high_vol_flag = atr_pct is not None and atr_pct > 4
+    high_vol_flag = (
+        (atr_pct is not None and atr_pct > 4)
+        or ticker.upper() in HIGH_VOLATILITY_TICKERS
+    )
     if high_vol_flag:
         signals_against.append("high_atr_volatility")
         reasoning_parts.append(f"ATR% {atr_pct:.2f}% — high volatility, position size reduced 40%")

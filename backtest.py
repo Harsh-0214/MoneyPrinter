@@ -64,9 +64,10 @@ DEFAULT_START      = "2024-06-01"
 DEFAULT_END        = "2025-06-01"
 STARTING_CAPITAL   = 100_000.0
 MIN_NET_SCORE      = 75          # raised from 60 — tighter quality bar
-MAX_OPEN_POSITIONS = 5
-MAX_POSITION_PCT   = 0.20        # 20% of portfolio per trade
-RISK_PCT           = 0.02        # 2% portfolio risk per trade
+MAX_OPEN_POSITIONS        = 5
+MAX_POSITION_PCT          = 0.20   # 20% cap for normal tickers
+MAX_POSITION_PCT_HIGH_VOL = 0.10   # 10% cap for gap-prone / high-vol tickers
+RISK_PCT                  = 0.02   # 2% portfolio risk per trade
 ATR_STOP_MULT_MAP  = {"scalp": 1.5, "swing": 2.0, "mixed": 2.0}  # per-horizon stop distance
 MAX_PER_SECTOR     = 2
 MAX_HOLD_DAYS      = {
@@ -266,13 +267,15 @@ def precompute_all_indicators(
 
 def size_position(portfolio_value: float, confidence: float,
                   atr: float, price: float, risk_pct: float = RISK_PCT,
-                  time_horizon: str = "swing") -> int:
+                  time_horizon: str = "swing",
+                  is_high_vol: bool = False) -> int:
     if price <= 0 or atr <= 0:
         return 0
     stop_mult   = ATR_STOP_MULT_MAP.get(time_horizon, 2.0)
     dollar_risk = portfolio_value * risk_pct * confidence
     shares      = floor(dollar_risk / (atr * stop_mult))
-    max_shares  = floor(portfolio_value * MAX_POSITION_PCT / price)
+    pct_cap     = MAX_POSITION_PCT_HIGH_VOL if is_high_vol else MAX_POSITION_PCT
+    max_shares  = floor(portfolio_value * pct_cap / price)
     return max(0, min(shares, max_shares))
 
 
@@ -830,7 +833,9 @@ def run_backtest(
                 if tf_open >= MAX_TREND_FOLLOW_POSITIONS:
                     continue
 
-            # ── Dynamic high-vol classification (Change 9) ────────────────────
+            # ── Dynamic high-vol classification ───────────────────────────────
+            # Three sources: ATR%, price floor, universe percentile, and scorer
+            # flag (which covers known gap-prone tickers like AVGO via HIGH_VOLATILITY_TICKERS).
             atr_pct = atr / entry_price if entry_price > 0 else 0.0
             _hv_reasons: list[str] = []
             if apply_vol_cap:
@@ -840,6 +845,8 @@ def run_backtest(
                     _hv_reasons.append(f"price={entry_price:.2f}<{HIGH_VOL_PRICE_MAX:.2f}")
                 if atr_pct >= _high_vol_univ_threshold:
                     _hv_reasons.append(f"top20%_vol(thresh={_high_vol_univ_threshold:.1%})")
+                if score.get("high_vol_flag"):
+                    _hv_reasons.append("scorer:high_vol_ticker")
             is_high_vol = bool(_hv_reasons)
             if is_high_vol:
                 logger.info(
@@ -864,13 +871,15 @@ def run_backtest(
                 price=entry_price,
                 risk_pct=ticker_risk_pct,
                 time_horizon=time_horizon,
+                is_high_vol=is_high_vol,
             )
             if shares < 1:
                 continue
 
+            pos_cap = MAX_POSITION_PCT_HIGH_VOL if is_high_vol else MAX_POSITION_PCT
             cost = shares * entry_price
             if cost > cash:
-                shares = floor(cash * MAX_POSITION_PCT / entry_price)
+                shares = floor(cash * pos_cap / entry_price)
                 cost   = shares * entry_price
             if shares < 1:
                 continue
