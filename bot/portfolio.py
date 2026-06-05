@@ -19,6 +19,56 @@ logger = logging.getLogger(__name__)
 
 
 
+def reconcile_with_alpaca(alpaca_client) -> list[dict]:
+    """
+    Cross-reference DB open trades against live Alpaca positions.
+    Any trade that is "open" in the DB but has no matching position on Alpaca
+    was closed externally (bracket order filled, manual close, etc.) and is
+    marked closed in the DB with status="closed_externally".
+
+    Returns the list of trades that were reconciled (so the caller can log them).
+    """
+    db_positions = get_open_trades()
+    if not db_positions:
+        return []
+
+    try:
+        from bot.trader import get_positions
+        live = {p["symbol"]: p for p in get_positions(alpaca_client)}
+    except Exception as e:
+        logger.warning(f"[portfolio] reconcile: could not fetch live positions: {e}")
+        return []
+
+    reconciled = []
+    for pos in db_positions:
+        ticker = pos["ticker"]
+        if ticker not in live:
+            # Position no longer on Alpaca — mark it closed in the DB
+            entry      = float(pos.get("entry_price") or 0)
+            qty        = int(pos.get("quantity") or 1)
+            action     = pos.get("action", "buy")
+            # Use last known price if available, else fall back to entry
+            exit_price = entry  # conservative fallback; no live price available
+            pnl_dollar = 0.0
+            pnl_pct    = 0.0
+
+            update_trade_exit(
+                trade_id=pos["id"],
+                exit_price=exit_price,
+                status="closed_externally",
+                pnl_dollar=pnl_dollar,
+                pnl_pct=pnl_pct,
+            )
+            record_trade_pnl(pnl_dollar)
+            logger.info(
+                f"[portfolio] reconcile: {ticker} no longer on Alpaca — "
+                f"marked closed_externally (entry={entry})"
+            )
+            reconciled.append(pos)
+
+    return reconciled
+
+
 def get_open_positions(alpaca_client=None) -> list[dict]:
     """
     Return open positions from the trades DB, enriched with current price
