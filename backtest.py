@@ -102,6 +102,10 @@ MEAN_REV_MAX_ADX       = 22
 # Breakout entry quality minimums
 BREAKOUT_MIN_VOL       = 2.0
 BREAKOUT_MIN_ADX       = 25
+# SPY stress gate: rapid-selloff early warning (faster than EMA50/200 regime)
+SPY_STRESS_5D_THRESHOLD    = -0.03  # SPY 5-day return < -3% → pause all new longs
+# Concentration cap for momentum strategies
+MAX_TREND_FOLLOW_POSITIONS =  2     # max concurrent open trend_follow trades
 
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
@@ -309,6 +313,7 @@ def run_backtest(
     _spy_close  = spy_bars["Close"] if spy_bars is not None else None
     _spy_ema50  = spy_bars["Close"].ewm(span=50,  adjust=False).mean() if spy_bars is not None else None
     _spy_ema200 = spy_bars["Close"].ewm(span=200, adjust=False).mean() if spy_bars is not None else None
+    _spy_ret5d  = spy_bars["Close"].pct_change(5) if spy_bars is not None else None
 
     def _spy_regime(as_of: date) -> str:
         """
@@ -334,6 +339,20 @@ def run_backtest(
                 return "confirmed_downtrend"   # death cross / structural bear
         except Exception:
             return "bull"
+
+    def _spy_stressed(as_of: date) -> bool:
+        """True when SPY has dropped >3% over the last 5 trading days.
+        Fires faster than the EMA50/200 regime cross (which can lag by weeks)
+        and pauses ALL new long entries during rapid selloffs."""
+        if _spy_ret5d is None or not _spy_dates:
+            return False
+        try:
+            cut = _bisect.bisect_right(_spy_dates, as_of)
+            if cut < 10:
+                return False
+            return float(_spy_ret5d.iloc[cut - 1]) < SPY_STRESS_5D_THRESHOLD
+        except Exception:
+            return False
 
     # Pre-build date-keyed OHLCV lookup for all tickers — replaces all per-day
     # lambda-mask operations (O(n) each) with O(1) dict lookups.
@@ -552,6 +571,10 @@ def run_backtest(
             # Block all new longs during confirmed downtrend (EMA50 < EMA200 on SPY)
             if regime == "confirmed_downtrend":
                 continue
+            # Rapid-selloff gate: SPY down >3% over 5 days catches sharp drops
+            # before the slow EMA50/200 cross fires (which can lag by 2-3 weeks)
+            if _spy_stressed(today):
+                continue
             # Caution (SPY below EMA50 but EMA50 above EMA200): allowed at reduced risk — handled in sizing
 
             # Skip strategies with no coherent edge
@@ -671,6 +694,24 @@ def run_backtest(
             entry_price = next_ohlcv["O"]
             if entry_price <= 0:
                 continue
+
+            # ── Gap-down guard for momentum strategies ────────────────────────
+            # If the stock opens > 1 ATR below the prior close the entry thesis
+            # (uptrend continuation) is already broken — skip rather than chase.
+            if strategy in ("trend_follow", "breakout", "squeeze_breakout"):
+                signal_day_close = ohlcv_by_date.get(ticker, {}).get(today, {}).get("C") or 0
+                if signal_day_close > 0 and (signal_day_close - entry_price) > atr:
+                    logger.debug(
+                        f"[backtest] {ticker} {next_day} gap-down skip: "
+                        f"open={entry_price:.2f} prev_close={signal_day_close:.2f} atr={atr:.2f}"
+                    )
+                    continue
+
+            # ── Max concurrent trend_follow cap ───────────────────────────────
+            if strategy == "trend_follow":
+                tf_open = sum(1 for p in positions.values() if p.get("strategy") == "trend_follow")
+                if tf_open >= MAX_TREND_FOLLOW_POSITIONS:
+                    continue
 
             # ── Dynamic high-vol classification (Change 9) ────────────────────
             atr_pct = atr / entry_price if entry_price > 0 else 0.0
