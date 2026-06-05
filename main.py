@@ -946,8 +946,10 @@ def session_premarket() -> None:
     snapshots = fetch_snapshots_batch(all_tickers)
     news_map  = get_news_batch(all_tickers, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
 
-    gap_ups_with_news = []   # (ticker, gap_pct, polarity)
-    gap_ups_plain     = []   # (ticker, gap_pct)
+    gap_ups_with_news = []   # (ticker, gap_pct, polarity) — has news catalyst
+    gap_ups_large     = []   # (ticker, gap_pct) — gap >= 3.5% even without news
+    gap_ups_plain     = []   # (ticker, gap_pct) — gap 2-3.5%, no news
+    gap_downs         = []   # (ticker, gap_pct) — notable gap-downs to avoid
 
     for ticker in all_tickers:
         snap = snapshots.get(ticker, {})
@@ -963,20 +965,32 @@ def session_premarket() -> None:
         hcnt = news.get("headline_count") or 0
 
         if gap > 2.0:
-            if pol > 0.1 and hcnt >= 2:
+            if pol > 0.1 and hcnt >= 1:          # 1 headline (was 2) is enough
                 gap_ups_with_news.append((ticker, gap, pol))
                 logger.info(f"[premarket] GAP+NEWS: {ticker} +{gap:.1f}% polarity={pol:.2f}")
+            elif gap >= 3.5:                       # large gap is self-confirming
+                gap_ups_large.append((ticker, gap))
+                logger.info(f"[premarket] LARGE GAP: {ticker} +{gap:.1f}% (no news confirmation)")
             else:
                 gap_ups_plain.append((ticker, gap))
                 logger.info(f"[premarket] GAP UP: {ticker} +{gap:.1f}%")
+        elif gap < -2.0:
+            gap_downs.append((ticker, gap))
+            logger.info(f"[premarket] GAP DOWN: {ticker} {gap:.1f}%")
 
-    # Promote gap+news stocks into discovered_tickers so 9:30 picks them up
-    if gap_ups_with_news:
+    # Promote gap catalysts into discovered_tickers so 9:30 continuous picks them up.
+    # Priority order: gap+news first, then large plain gaps (>= 3.5%). Cap at 8 total.
+    to_promote = (
+        [(t, g, p, "premarket_gap_news")  for t, g, p in sorted(gap_ups_with_news, key=lambda x: x[1], reverse=True)] +
+        [(t, g, 0.0, "premarket_large_gap") for t, g   in sorted(gap_ups_large,     key=lambda x: x[1], reverse=True)]
+    )[:8]
+
+    if to_promote:
         discovered_data = _load_discovered()
         existing = set(discovered_data.get("tickers", []))
         meta     = discovered_data.get("meta", {})
 
-        for ticker, gap, pol in sorted(gap_ups_with_news, key=lambda x: x[1], reverse=True)[:5]:
+        for ticker, gap, pol, source in to_promote:
             if ticker not in existing:
                 existing.add(ticker)
                 meta[ticker] = {
@@ -984,14 +998,16 @@ def session_premarket() -> None:
                     "gap_pct":       round(gap, 2),
                     "news_polarity": round(pol, 2),
                     "gap_catalyst":  True,
-                    "source":        "premarket_gap_news",
+                    "source":        source,
                 }
-                logger.info(f"[premarket] Promoted gap-catalyst: {ticker} +{gap:.1f}%")
+                logger.info(f"[premarket] Promoted ({source}): {ticker} +{gap:.1f}%")
 
         _save_discovered({"tickers": list(existing), "meta": meta})
 
-    console.print(f"[cyan]Gap Up + News ({len(gap_ups_with_news)}): {[(t, round(g,1)) for t,g,_ in gap_ups_with_news]}[/cyan]")
-    console.print(f"[dim]Gap Up plain  ({len(gap_ups_plain)}): {[(t, round(g,1)) for t,g in gap_ups_plain]}[/dim]")
+    console.print(f"[cyan]Gap Up + News  ({len(gap_ups_with_news)}): {[(t, round(g,1)) for t,g,_ in gap_ups_with_news]}[/cyan]")
+    console.print(f"[cyan]Gap Up Large   ({len(gap_ups_large)}): {[(t, round(g,1)) for t,g in gap_ups_large]}[/cyan]")
+    console.print(f"[dim]Gap Up plain   ({len(gap_ups_plain)}): {[(t, round(g,1)) for t,g in gap_ups_plain]}[/dim]")
+    console.print(f"[dim]Gap Down       ({len(gap_downs)}): {[(t, round(g,1)) for t,g in gap_downs]}[/dim]")
     console.print(f"[bold green]Pre-open scored decisions written to live feed.[/bold green]")
 
     from bot.logger import log_scan
