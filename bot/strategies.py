@@ -145,13 +145,12 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     # Require uptrend context + 2x volume + ADX ≥ 25 — consistent with backtest guards
     breakout_confirmed = r1_break and in_uptrend and vol_ratio >= 2.0 and adx >= 25
 
-    # ── Trend follow: strict momentum — ADX>28, MACD positive AND accelerating
-    # ADX raised from 22: only participate in genuinely strong trends.
-    # MACD accelerating (hist > prev1) means momentum is building, not fading.
+    # ── Trend follow: ADX>22 (smooth uptrends run 18-26; MACD acceleration is
+    # the real quality gate — positive AND rising histogram = momentum building).
     # in_uptrend is required — alignment signals alone fire during corrections.
     ema_aligned     = "ema_full_bull_alignment" in sigs or "ema_partial_bull_alignment" in sigs
     trend_follow_ok = (ema_aligned and in_uptrend
-                       and adx > 28
+                       and adx > 22
                        and macd_hist > 0
                        and macd_hist > macd_hist_p1)
 

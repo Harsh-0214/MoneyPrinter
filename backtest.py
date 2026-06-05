@@ -99,7 +99,7 @@ CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
 # Re-entry relaxation
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
-ADX_TREND_MIN          = 28   # raised from 25 — consistent with classifier
+ADX_TREND_MIN          = 22   # smooth bull trends run ADX 18-26; MACD accel is the real quality gate
 # Trailing stop — structure-based, activates later so winners can run
 TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
 TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
