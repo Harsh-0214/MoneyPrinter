@@ -900,17 +900,39 @@ def execute_signals(signals: list, alpaca_client, data_client,
             )
             continue
 
-        # ── Trend_follow reclassification guard ───────────────────────────
-        # If a setup has both bb_squeeze + kc_breakout_bull signals it is a
-        # squeeze candidate that fell through classification — not a clean
-        # trend-follow. Block it to prevent contamination of trend_follow stats.
+        # ── Trend_follow quality + reclassification guards ────────────────
         if action == "buy" and strategy == "trend_follow":
+            _ind_tf = sig.get("_indicators", {})
+            # Block squeeze reclassification
             _sigs_live = set(sig.get("signals_triggered", []))
             if "bb_squeeze_detected" in _sigs_live and "kc_breakout_bull" in _sigs_live:
                 log_rejection(
                     session=session, ticker=ticker,
                     net_score=sig.get("net_score", 0), confidence=confidence,
                     action=action, rejection_reason="squeeze_reclassification",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                continue
+            # 1-month return must be positive (medium-term trend confirmed)
+            _r1m = _ind_tf.get("return_1m")
+            if _r1m is not None and _r1m <= 0:
+                log_rejection(
+                    session=session, ticker=ticker,
+                    net_score=sig.get("net_score", 0), confidence=confidence,
+                    action=action, rejection_reason="trend_follow_1m",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                continue
+            # MACD must be accelerating (momentum building, not topping out)
+            _mh   = float(_ind_tf.get("macd_hist") or 0)
+            _mh_p = float(_ind_tf.get("macd_hist_prev1") or 0)
+            if _mh <= _mh_p:
+                log_rejection(
+                    session=session, ticker=ticker,
+                    net_score=sig.get("net_score", 0), confidence=confidence,
+                    action=action, rejection_reason="trend_follow_macd",
                     bull_score=sig.get("bull_score", 0),
                     bear_score=sig.get("bear_score", 0), strategy=strategy,
                 )
@@ -959,17 +981,19 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 logger.warning(f"[execute] mean_rev cap check failed: {_mr_err}")
 
         # ── Mean reversion quality guard ──────────────────────────────────
-        # Require both RSI < 30 (genuinely oversold) AND bb_pctb < 0.15 (BB extreme).
-        # ADX < 20 confirms ranging, not trending. Single-signal oversold is
-        # insufficient — stocks stay oversold longer than expected in declining markets.
+        # RSI<30 + bb_pctb<0.15 + MACD improving + ADX<20.
+        # MACD improving (hist > prev1) confirms the reversal has started —
+        # filters buying into ongoing collapses where oversold keeps getting worse.
         if action == "buy" and strategy == "mean_reversion":
             _ind    = sig.get("_indicators", {})
             _rsi    = _ind.get("rsi") or 50
             _bb_pb  = _ind.get("bb_pctb")
             _adx    = _ind.get("adx") or 0
+            _mh     = float(_ind.get("macd_hist") or 0)
+            _mh_p   = float(_ind.get("macd_hist_prev1") or 0)
             _rsi_ex = _rsi < 30 or _rsi > 70
             _bb_ex  = _bb_pb is not None and (_bb_pb < 0.15 or _bb_pb > 0.85)
-            if not (_rsi_ex and _bb_ex) or _adx >= 20:
+            if not (_rsi_ex and _bb_ex) or _adx >= 20 or _mh <= _mh_p:
                 log_rejection(
                     session=session, ticker=ticker,
                     net_score=sig.get("net_score", 0), confidence=confidence,
@@ -979,7 +1003,8 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 logger.info(
                     f"[execute] {ticker} mean_rev quality guard: "
-                    f"rsi={_rsi:.1f} bb_pctb={_bb_pb} adx={_adx:.1f}"
+                    f"rsi={_rsi:.1f} bb_pctb={_bb_pb} adx={_adx:.1f} "
+                    f"macd={_mh:.3f} vs prev={_mh_p:.3f}"
                 )
                 continue
 

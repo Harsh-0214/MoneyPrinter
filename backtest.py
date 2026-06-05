@@ -99,7 +99,7 @@ CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
 # Re-entry relaxation
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
-ADX_TREND_MIN          = 25
+ADX_TREND_MIN          = 28   # raised from 25 — consistent with classifier
 # Trailing stop — structure-based, activates later so winners can run
 TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
 TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
@@ -112,7 +112,7 @@ STALE_LOSS_THRESHOLD   = -0.01
 # Mean reversion regime gate
 MEAN_REV_MAX_ADX       = 20
 # Breakout entry quality minimums
-BREAKOUT_MIN_VOL       = 2.0
+BREAKOUT_MIN_VOL       = 2.5   # raised: 2x wasn't selective enough
 BREAKOUT_MIN_ADX       = 25
 # Concentration cap for momentum strategies
 MAX_TREND_FOLLOW_POSITIONS  = 2  # max concurrent open trend_follow trades
@@ -662,25 +662,30 @@ def run_backtest(
                 adx_val = ind.get("adx")
                 if adx_val is not None and adx_val < ADX_TREND_MIN:
                     continue
-                # 5-day return must be positive — stock must be actively moving, not coasting
+                # 5-day AND 1-month return must be positive — medium-term trend confirmed
                 r5d = ind.get("return_5d")
                 if r5d is not None and r5d <= 0:
                     continue
-                # Reclassification guard: if the setup has both squeeze + KC signals,
-                # it was a squeeze_breakout candidate that fell through because
-                # squeeze_breakout is disabled. Don't let it pollute trend_follow.
+                r1m = ind.get("return_1m")
+                if r1m is not None and r1m <= 0:
+                    logger.debug(f"[backtest] {ticker} trend_follow skip {today}: return_1m={r1m:.2%} <= 0")
+                    continue
+                # MACD must be accelerating (momentum building, not fading)
+                _mh   = ind.get("macd_hist") or 0
+                _mh_p = ind.get("macd_hist_prev1") or 0
+                if _mh <= _mh_p:
+                    logger.debug(f"[backtest] {ticker} trend_follow skip {today}: MACD not accelerating ({_mh:.3f} <= {_mh_p:.3f})")
+                    continue
+                # Reclassification guard: squeeze+KC signals → not a clean trend trade
                 _sigs = set(score.get("signals_triggered", []))
                 if "bb_squeeze_detected" in _sigs and "kc_breakout_bull" in _sigs:
-                    logger.debug(
-                        f"[backtest] {ticker} trend_follow skip {today}: "
-                        f"squeeze+KC signals — reclassification guard"
-                    )
+                    logger.debug(f"[backtest] {ticker} trend_follow skip {today}: squeeze reclassification guard")
                     continue
 
             # ── Mean reversion guard ──────────────────────────────────────────
-            # Require genuinely extreme readings (both RSI and BB) in a truly
-            # ranging tape (ADX < 18). Single-signal oversold is insufficient
-            # in a declining market — stocks keep going lower.
+            # RSI<30 + BB extreme + MACD improving = reversal forming (not free-fall).
+            # MACD improving filters buying into ongoing collapses — single oversold
+            # readings are insufficient in trending-down markets.
             if strategy == "mean_reversion":
                 _cp    = ind.get("current_price") or 0
                 _e50   = ind.get("ema50")   or 0
@@ -688,27 +693,22 @@ def run_backtest(
                 _adx   = ind.get("adx")     or 0
                 _rsi   = ind.get("rsi")     or 50
                 _bb_pb = ind.get("bb_pctb")
+                _mh    = ind.get("macd_hist") or 0
+                _mh_p  = ind.get("macd_hist_prev1") or 0
                 if _cp > 0 and _e50 > 0 and _e200 > 0 and _cp < _e50 and _cp < _e200:
-                    logger.debug(
-                        f"[backtest] {ticker} mean_rev skip {today}: downtrend"
-                    )
+                    logger.debug(f"[backtest] {ticker} mean_rev skip {today}: downtrend")
                     continue
                 if _adx > MEAN_REV_MAX_ADX:
-                    logger.debug(
-                        f"[backtest] {ticker} mean_rev skip {today}: "
-                        f"trending adx={_adx:.1f} > {MEAN_REV_MAX_ADX}"
-                    )
+                    logger.debug(f"[backtest] {ticker} mean_rev skip {today}: trending adx={_adx:.1f}")
                     continue
-                # Both must be extreme — either one alone is too easy to satisfy
                 _rsi_extreme = _rsi < 30 or _rsi > 70
                 _bb_extreme  = _bb_pb is not None and (_bb_pb < 0.15 or _bb_pb > 0.85)
                 if not (_rsi_extreme and _bb_extreme):
-                    logger.debug(
-                        f"[backtest] {ticker} mean_rev skip {today}: "
-                        f"not extreme enough rsi={_rsi:.1f} bb_pctb={_bb_pb}"
-                    )
+                    logger.debug(f"[backtest] {ticker} mean_rev skip {today}: not extreme rsi={_rsi:.1f} bb={_bb_pb}")
                     continue
-                # Concentration cap
+                if _mh <= _mh_p:
+                    logger.debug(f"[backtest] {ticker} mean_rev skip {today}: MACD not improving ({_mh:.3f} <= {_mh_p:.3f})")
+                    continue
                 _mr_open = sum(1 for p in positions.values() if p.get("strategy") == "mean_reversion")
                 if _mr_open >= MAX_MEAN_REV_POSITIONS:
                     continue
@@ -726,9 +726,12 @@ def run_backtest(
                 _e50   = ind.get("ema50")         or 0
                 _e200  = ind.get("ema200")        or 0
 
+                _macd_brk = ind.get("macd_hist") or 0
                 _skip_reason = None
                 if _vol < BREAKOUT_MIN_VOL:
                     _skip_reason = f"vol_ratio={_vol:.2f} < {BREAKOUT_MIN_VOL}"
+                elif _macd_brk <= 0:
+                    _skip_reason = f"macd_hist={_macd_brk:.3f} not positive — breakout lacks momentum"
                 elif _adx < BREAKOUT_MIN_ADX:
                     _skip_reason = f"adx={_adx:.1f} < {BREAKOUT_MIN_ADX}"
                 elif _e50 > 0 and _cp < _e50:

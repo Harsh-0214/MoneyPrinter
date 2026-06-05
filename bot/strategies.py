@@ -117,11 +117,12 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     in_uptrend   = ema50 > 0 and ema200 > 0 and price > 0 and price > ema50 and price > ema200
 
     ema_full_bull = score.get("ema_full_bull", False)
-    adx       = float(ind.get("adx") or 0)
-    rsi       = float(ind.get("rsi") or 50)
-    bb_pctb   = ind.get("bb_pctb")          # may be None
-    macd_hist = float(ind.get("macd_hist") or 0)
-    vol_ratio = float(ind.get("volume_ratio") or 0)
+    adx           = float(ind.get("adx") or 0)
+    rsi           = float(ind.get("rsi") or 50)
+    bb_pctb       = ind.get("bb_pctb")          # may be None
+    macd_hist     = float(ind.get("macd_hist") or 0)
+    macd_hist_p1  = float(ind.get("macd_hist_prev1") or 0)
+    vol_ratio     = float(ind.get("volume_ratio") or 0)
 
     squeeze  = "bb_squeeze_detected"          in sigs
     kc_bull  = "kc_breakout_bull"             in sigs   # bullish direction only — bearish break ≠ long entry
@@ -144,18 +145,24 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     # Require uptrend context + 2x volume + ADX ≥ 25 — consistent with backtest guards
     breakout_confirmed = r1_break and in_uptrend and vol_ratio >= 2.0 and adx >= 25
 
-    # ── Trend follow: EMA alignment + in_uptrend + ADX>22 + MACD positive
-    # in_uptrend (price > ema50 AND ema200) is required — alignment signals alone
-    # can fire during a correction where the short EMAs have already curled down.
+    # ── Trend follow: strict momentum — ADX>28, MACD positive AND accelerating
+    # ADX raised from 22: only participate in genuinely strong trends.
+    # MACD accelerating (hist > prev1) means momentum is building, not fading.
+    # in_uptrend is required — alignment signals alone fire during corrections.
     ema_aligned     = "ema_full_bull_alignment" in sigs or "ema_partial_bull_alignment" in sigs
-    trend_follow_ok = ema_aligned and in_uptrend and adx > 22 and macd_hist > 0
+    trend_follow_ok = (ema_aligned and in_uptrend
+                       and adx > 28
+                       and macd_hist > 0
+                       and macd_hist > macd_hist_p1)
 
-    # ── Mean reversion: both RSI AND BB extreme, ADX < 20 (ranging only)
-    # Requiring both reduces false entries during trending moves. RSI < 30 / > 70
-    # filters borderline pullbacks; bb_pctb < 0.15 confirms the band extreme.
-    bb_extreme  = bb_pctb is not None and (bb_pctb < 0.15 or bb_pctb > 0.85)
-    rsi_extreme = rsi < 30 or rsi > 70
-    mean_rev_ok = (rsi_extreme and bb_extreme) and not ema_full_bull and adx < 20 and not in_downtrend
+    # ── Mean reversion: both RSI AND BB extreme + MACD improving
+    # MACD improving (hist rising toward zero) confirms the bottom is forming —
+    # filters out entries into ongoing free-falls that keep going lower.
+    bb_extreme    = bb_pctb is not None and (bb_pctb < 0.15 or bb_pctb > 0.85)
+    rsi_extreme   = rsi < 30 or rsi > 70
+    macd_turning  = macd_hist > macd_hist_p1   # histogram moving in right direction
+    mean_rev_ok   = (rsi_extreme and bb_extreme and macd_turning
+                     and not ema_full_bull and adx < 20 and not in_downtrend)
 
     # ── Squeeze breakout: BB compression releasing UPWARD — requires confirmed uptrend
     # Kept broad so squeeze setups are labeled correctly (not reclassified as
