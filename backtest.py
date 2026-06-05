@@ -79,31 +79,29 @@ MAX_HOLD_DAYS      = {
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
-# Change 1: mixed has no coherent edge; squeeze_breakout/breakout re-enabled
-# with tightened classifier conditions in bot/strategies.py
-BAD_STRATEGIES     = {"mixed"}
-# Change 2: high-beta names that keep hitting -10% stops get half the risk budget
-HIGH_VOL_TICKERS   = {
-    "SOFI", "TSLA", "MSTR", "ARM",
-    "MRNA", "AFRM", "AMC", "PLUG", "GME", "RIVN", "LCID", "COIN", "SMCI",
-}
-HIGH_VOL_RISK_PCT  = 0.01        # 1% instead of 2%
-# Change 3: after this many days with no new entry, drop threshold to catch recovery
+BAD_STRATEGIES         = {"mixed"}
+# High-volatility detection — data-driven, no hardcoded ticker list (Change 9)
+HIGH_VOL_ATR_PCT       = 0.05   # atr/price >= 5%: whippy daily range
+HIGH_VOL_PRICE_MAX     = 5.00   # price < $5: gap/slip risk
+HIGH_VOL_UNIV_PCTILE   = 80    # top-20% by universe atr_pct that day
+HIGH_VOL_RISK_PCT      = 0.01   # 1% risk budget for flagged names (vs 2% normal)
+# Market-regime gate (Change 10)
+CAUTION_RISK_PCT       = 0.005  # 0.5% risk when SPY below EMA50 but EMA50 above EMA200
+# Re-entry relaxation
 REENTRY_SILENCE_DAYS   = 7
-REENTRY_NET_REDUCTION  = 5      # 60 → 55
-# Change 4: require confirmed trend before entering trend_follow (ADX > threshold)
-ADX_TREND_MIN      = 25         # raised from 20 — stronger trend confirmation required
-# Trailing stop (Change 6)
-TRAILING_ACTIVATE_PCT  = 0.05   # activate once a position is up 5% from entry
-TRAILING_TRAIL_PCT     = 0.03   # trail 3% below the highest price seen
-# Stale-trade breakeven (Change 7)
-STALE_EXIT_DAYS        = 3      # after this many hold days with no progress …
-STALE_LOSS_THRESHOLD   = -0.01  # … and unrealised return below -1%, move stop to breakeven
-# Change 5: mean reversion only valid in ranging markets
-MEAN_REV_MAX_ADX   = 22         # above this = trending, mean reversion is wrong regime
-# Change 6: breakout entry quality minimums (beyond classifier conditions)
-BREAKOUT_MIN_VOL   = 2.0        # volume ratio must be at least 2x average
-BREAKOUT_MIN_ADX   = 25         # trend must exist behind the break
+REENTRY_NET_REDUCTION  = 5
+ADX_TREND_MIN          = 25
+# Trailing stop
+TRAILING_ACTIVATE_PCT  = 0.05
+TRAILING_TRAIL_PCT     = 0.03
+# Stale-trade breakeven
+STALE_EXIT_DAYS        = 3
+STALE_LOSS_THRESHOLD   = -0.01
+# Mean reversion regime gate
+MEAN_REV_MAX_ADX       = 22
+# Breakout entry quality minimums
+BREAKOUT_MIN_VOL       = 2.0
+BREAKOUT_MIN_ADX       = 25
 
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
@@ -308,22 +306,32 @@ def run_backtest(
         [(ts.date() if hasattr(ts, "date") else ts) for ts in spy_bars.index]
         if spy_bars is not None else []
     )
-    _spy_ema50 = (
-        spy_bars["Close"].ewm(span=50, adjust=False).mean()
-        if spy_bars is not None else None
-    )
-    _spy_close = spy_bars["Close"] if spy_bars is not None else None
+    _spy_close  = spy_bars["Close"] if spy_bars is not None else None
+    _spy_ema50  = spy_bars["Close"].ewm(span=50,  adjust=False).mean() if spy_bars is not None else None
+    _spy_ema200 = spy_bars["Close"].ewm(span=200, adjust=False).mean() if spy_bars is not None else None
 
     def _spy_regime(as_of: date) -> str:
+        """
+        Three-state SPY regime:
+          bull             — SPY >= EMA50 (normal, full risk)
+          caution          — SPY < EMA50, EMA50 >= EMA200 (pullback; allow at 0.5% risk)
+          confirmed_downtrend — SPY < EMA50 AND EMA50 < EMA200 (structural bear; block new longs)
+        """
         if not _spy_dates:
             return "bull"
         try:
             cut = _bisect.bisect_right(_spy_dates, as_of)
-            if cut < 50:
+            if cut < 200:
+                return "bull"   # not enough history for EMA200 — assume bull
+            price  = float(_spy_close.iloc[cut - 1])
+            ema50  = float(_spy_ema50.iloc[cut - 1])
+            ema200 = float(_spy_ema200.iloc[cut - 1])
+            if price >= ema50:
                 return "bull"
-            price = float(_spy_close.iloc[cut - 1])
-            ema50 = float(_spy_ema50.iloc[cut - 1])
-            return "bull" if price >= ema50 else "caution"
+            elif ema50 >= ema200:
+                return "caution"          # short-term pullback, long-term trend intact
+            else:
+                return "confirmed_downtrend"   # death cross / structural bear
         except Exception:
             return "bull"
 
@@ -375,7 +383,7 @@ def run_backtest(
         macro  = {
             "vix": 18.0,           # static approximation — VIX not available in backtest
             "spy_regime": regime,
-            "bearish_market": regime != "bull",
+            "bearish_market": regime == "confirmed_downtrend",
             "vix_multiplier": 1.0,
         }
 
@@ -468,10 +476,6 @@ def run_backtest(
             del positions[t]
 
         # ── 2. Generate signals using today's close ───────────────────────────
-        if regime == "caution" and day_idx % 5 != 0:
-            # In caution regime, still scan but suppress buys (done in scorer filter below)
-            pass
-
         if len(positions) >= MAX_OPEN_POSITIONS:
             continue   # already full
 
@@ -489,6 +493,24 @@ def run_backtest(
             sec = _SECTOR_OF.get(held.upper())
             if sec:
                 sector_counts[sec] = sector_counts.get(sec, 0) + 1
+
+        # ── Universe ATR/price 80th-percentile for dynamic high-vol detection ────
+        # Computed once per day; used in sizing to flag whippy names.
+        _atr_pcts: list[float] = []
+        for _t in tickers:
+            if _t == "SPY":
+                continue
+            _i = ind_cache.get(_t, {}).get(today)
+            if _i and not _i.get("error"):
+                _a = float(_i.get("atr") or 0)
+                _c = float(_i.get("current_price") or 0)
+                if _a > 0 and _c > 0:
+                    _atr_pcts.append(_a / _c)
+        _atr_pcts.sort()
+        _high_vol_univ_threshold = (
+            _atr_pcts[int(len(_atr_pcts) * HIGH_VOL_UNIV_PCTILE / 100)]
+            if len(_atr_pcts) >= 10 else float("inf")
+        )
 
         new_signals: list[dict] = []
 
@@ -522,8 +544,10 @@ def run_backtest(
                 continue
             if confidence < MIN_CONFIDENCE:
                 continue
-            if macro["bearish_market"]:
-                continue   # suppress buys in downtrend
+            # Block all new longs during confirmed downtrend (EMA50 < EMA200 on SPY)
+            if regime == "confirmed_downtrend":
+                continue
+            # Caution (SPY below EMA50 but EMA50 above EMA200): allowed at reduced risk — handled in sizing
 
             # Skip strategies with no coherent edge
             if filter_bad_strategies and strategy in BAD_STRATEGIES:
@@ -639,12 +663,27 @@ def run_backtest(
             if entry_price <= 0:
                 continue
 
-            # Change 2: halve risk budget for high-volatility names
-            ticker_risk_pct = (
-                HIGH_VOL_RISK_PCT
-                if apply_vol_cap and ticker.upper() in HIGH_VOL_TICKERS
-                else RISK_PCT
-            )
+            # ── Dynamic high-vol classification (Change 9) ────────────────────
+            atr_pct = atr / entry_price if entry_price > 0 else 0.0
+            _hv_reasons: list[str] = []
+            if apply_vol_cap:
+                if atr_pct >= HIGH_VOL_ATR_PCT:
+                    _hv_reasons.append(f"atr_pct={atr_pct:.1%}>={HIGH_VOL_ATR_PCT:.0%}")
+                if entry_price < HIGH_VOL_PRICE_MAX:
+                    _hv_reasons.append(f"price={entry_price:.2f}<{HIGH_VOL_PRICE_MAX:.2f}")
+                if atr_pct >= _high_vol_univ_threshold:
+                    _hv_reasons.append(f"top20%_vol(thresh={_high_vol_univ_threshold:.1%})")
+            is_high_vol = bool(_hv_reasons)
+            if is_high_vol:
+                logger.info(
+                    f"[backtest] {ticker} {today} high-vol: {'; '.join(_hv_reasons)}"
+                )
+
+            ticker_risk_pct = HIGH_VOL_RISK_PCT if is_high_vol else RISK_PCT
+
+            # ── Caution regime: cap risk to 0.5% (Change 10) ─────────────────
+            if regime == "caution":
+                ticker_risk_pct = min(ticker_risk_pct, CAUTION_RISK_PCT)
 
             # Position sizing — value each open position at its own last close (mark-to-market)
             mark_to_market = cash + sum(
