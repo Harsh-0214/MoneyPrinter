@@ -756,6 +756,8 @@ def main():
         sys.exit(1)
 
     tickers = args.tickers or ALL_TICKERS
+    # Flatten comma-separated entries (e.g. --tickers "AAPL,MSFT,NVDA" or copy-paste)
+    tickers = [t.strip() for raw in tickers for t in raw.split(",") if t.strip()]
     # Always include SPY for regime detection
     if "SPY" not in tickers:
         tickers = ["SPY"] + tickers
