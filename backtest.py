@@ -74,10 +74,16 @@ MAX_PER_SECTOR     = 2
 TIME_EXIT_PROFIT_THRESHOLD = 0.03  # if unrealised >= 3%, extend hold
 TIME_EXIT_EXTEND_DAYS      = 5     # extra calendar days before hard exit
 MAX_HOLD_DAYS      = {
+    # time_horizon keys (set by classify_strategy in time_horizon field)
     "scalp":            2,
     "swing":            7,
     "mixed":            5,
+    # strategy name keys (stored in position["strategy"])
+    "trend_follow":     10,  # trailing stop is primary exit — let trends run
+    "mean_reversion":   3,   # fast reversal; cut if stalls
+    "news_momentum":    2,   # event-driven, same-day to 1-day
     "breakout":         4,   # exit fast if breakout doesn't follow through
+    "breakdown":        5,   # short-side momentum
     "squeeze_breakout": 4,   # exit fast if expansion stalls
 }
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
@@ -296,10 +302,18 @@ def run_backtest(
     apply_vol_cap: bool = True,
     reentry_relax: bool = True,
     adx_filter: bool = True,
+    verbose: bool = False,
 ) -> dict:
     """
     Full day-by-day simulation. Returns results dict with trades + equity curve.
     """
+    if verbose:
+        logger.setLevel(logging.INFO)
+
+    def vprint(*args, **kwargs):
+        if verbose:
+            console.print(*args, **kwargs)
+
     bars_map     = load_all_bars(tickers, start, end)
     trading_days = get_trading_days(bars_map, start, end)
 
@@ -463,6 +477,7 @@ def run_backtest(
         return dm[sd[cut]]["C"]
 
     # ── Day loop ──────────────────────────────────────────────────────────────
+    _prev_regime: str = ""
     for day_idx, today in enumerate(trading_days):
 
         # Portfolio value = cash + mark-to-market open positions
@@ -478,6 +493,16 @@ def run_backtest(
         regime_mult = REGIME_RISK_MULT.get(regime, 1.0)
         if _spy_stressed(today):
             regime_mult = 0.0
+
+        if regime != _prev_regime:
+            _rc = {"confirmed_uptrend": "green", "caution": "yellow", "downtrend": "red"}.get(regime, "white")
+            vprint(
+                f"\n[bold {_rc}]REGIME → {regime.upper()}[/bold {_rc}] "
+                f"({today}) risk_mult={regime_mult:.1f} "
+                f"equity=${mkt_value:,.0f}"
+            )
+            _prev_regime = regime
+
         macro  = {
             "vix": 18.0,
             "spy_regime": regime,
@@ -502,8 +527,10 @@ def run_backtest(
             target = pos["take_profit"]
             entry  = pos["entry_price"]
             shares = pos["shares"]
-            horizon = pos.get("strategy", "swing")
-            max_hold = MAX_HOLD_DAYS.get(horizon, 5)
+            # Look up by strategy name first (trend_follow → 10), fall back to time_horizon
+            _strat   = pos.get("strategy", "")
+            _horizon = pos.get("time_horizon", "swing")
+            max_hold = MAX_HOLD_DAYS.get(_strat, MAX_HOLD_DAYS.get(_horizon, 7))
             age_days = (today - pos["entry_date"]).days
 
             exit_price  = None
@@ -522,9 +549,14 @@ def run_backtest(
             if any((ed - today).days in (0, 1) for ed in _earn_dates):
                 exit_price  = day_close
                 exit_reason = "earnings_exit"
+                vprint(
+                    f"  [magenta]EARNINGS EXIT[/magenta] {ticker} {today} | "
+                    f"earnings imminent | close={day_close:.2f} "
+                    f"unrealised={((day_close-entry)/entry)*100:+.1f}%"
+                )
 
             if exit_price is None and day_low <= stop:
-                exit_price  = max(min(stop, day_open), day_low)   # gap-through: fill at open
+                exit_price  = max(min(stop, day_open), day_low)
                 exit_reason = "stop"
             if exit_price is None and target and day_high >= target:
                 exit_price  = min(target, day_high)
@@ -534,15 +566,25 @@ def run_backtest(
                 exit_reason = "trailing_stop"
             if exit_price is None and age_days >= max_hold:
                 unrealised_pct = (day_close - entry) / entry if entry > 0 else 0.0
+                vprint(
+                    f"  [yellow]TIME EXIT CHECK[/yellow] {ticker} {today} | "
+                    f"age={age_days}d max={max_hold}d ({_strat}) | "
+                    f"unrealised={unrealised_pct:+.1%} threshold={TIME_EXIT_PROFIT_THRESHOLD:.0%} | "
+                    f"extend_to={max_hold+TIME_EXIT_EXTEND_DAYS}d"
+                )
                 if unrealised_pct >= TIME_EXIT_PROFIT_THRESHOLD:
                     # Trade is profitable — don't cut it on the clock.
                     # Give it TIME_EXIT_EXTEND_DAYS more days; trailing stop is the exit.
                     if age_days >= max_hold + TIME_EXIT_EXTEND_DAYS:
                         exit_price  = day_close
                         exit_reason = "time_exit_extended"
+                        vprint(f"    → [red]HARD EXIT[/red] age={age_days}d >= {max_hold+TIME_EXIT_EXTEND_DAYS}d limit")
+                    else:
+                        vprint(f"    → [green]HOLDING[/green] profitable, {max_hold+TIME_EXIT_EXTEND_DAYS-age_days}d before hard exit")
                 else:
                     exit_price  = day_close
                     exit_reason = "time_exit"
+                    vprint(f"    → [red]TIME EXIT[/red] unrealised={unrealised_pct:+.1%} below {TIME_EXIT_PROFIT_THRESHOLD:.0%}")
 
             # ── Stale exit: dead trade not moving ─────────────────────────────
             if exit_price is None:
@@ -598,6 +640,16 @@ def run_backtest(
                 pnl_dollar = (exit_price - entry) * shares
                 pnl_pct    = (exit_price - entry) / entry * 100
                 cash      += exit_price * shares
+                _ec = "green" if pnl_dollar >= 0 else "red"
+                vprint(
+                    f"  [bold {_ec}]EXIT[/bold {_ec}] {ticker} {today} | "
+                    f"{exit_reason} | {age_days}d | "
+                    f"${entry:.2f}→${exit_price:.2f} "
+                    f"[{_ec}]{pnl_pct:+.2f}% (${pnl_dollar:+,.0f})[/{_ec}] | "
+                    f"stop=${stop:.2f} "
+                    f"trail={'${:.2f}'.format(trail_price) if trail_price else 'none'} "
+                    f"high=${pos.get('highest_price_seen', entry):.2f}"
+                )
                 trade_rec  = {
                     "ticker":       ticker,
                     "entry_date":   pos["entry_date"].isoformat(),
@@ -691,13 +743,16 @@ def run_backtest(
             if net < effective_min_net:
                 continue
             if confidence < MIN_CONFIDENCE:
+                vprint(f"  [dim]skip {ticker} {strategy} net={net} | conf={confidence:.2f} < {MIN_CONFIDENCE:.2f}[/dim]")
                 continue
             # Regime gate: 0.0 = no new longs (downtrend or shock)
             if regime_mult == 0.0:
+                vprint(f"  [dim]skip {ticker} {strategy} net={net} | regime={regime} blocks all longs[/dim]")
                 continue
 
             # Skip strategies with no coherent edge
             if filter_bad_strategies and strategy in BAD_STRATEGIES:
+                vprint(f"  [dim]skip {ticker} | bad_strategy={strategy} net={net} conf={confidence:.2f}[/dim]")
                 continue
 
             # ── Strategy-regime alignment ─────────────────────────────────────
@@ -705,31 +760,37 @@ def run_backtest(
             # only work when the broad market is clearly trending up. In caution
             # or correction regimes they produce a high rate of false signals.
             if strategy in ("squeeze_breakout", "mean_reversion") and regime != "confirmed_uptrend":
+                vprint(f"  [dim]skip {ticker} | {strategy} blocked in {regime}[/dim]")
                 continue
 
             # trend_follow guards
             if adx_filter and strategy == "trend_follow":
                 adx_val = ind.get("adx")
                 if adx_val is not None and adx_val < ADX_TREND_MIN:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: ADX={adx_val:.1f} < {ADX_TREND_MIN}[/dim]")
                     continue
                 # 5-day AND 1-month return must be positive — medium-term trend confirmed
                 r5d = ind.get("return_5d")
                 if r5d is not None and r5d <= 0:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} <= 0[/dim]")
                     continue
                 r1m = ind.get("return_1m")
                 if r1m is not None and r1m <= 0:
                     logger.debug(f"[backtest] {ticker} trend_follow skip {today}: return_1m={r1m:.2%} <= 0")
+                    vprint(f"  [dim]skip {ticker} | trend_follow: return_1m={r1m:.2%} <= 0[/dim]")
                     continue
                 # MACD must be accelerating (momentum building, not fading)
                 _mh   = ind.get("macd_hist") or 0
                 _mh_p = ind.get("macd_hist_prev1") or 0
                 if _mh <= _mh_p:
                     logger.debug(f"[backtest] {ticker} trend_follow skip {today}: MACD not accelerating ({_mh:.3f} <= {_mh_p:.3f})")
+                    vprint(f"  [dim]skip {ticker} | trend_follow: MACD_hist {_mh:.3f} not > prev {_mh_p:.3f}[/dim]")
                     continue
                 # Reclassification guard: squeeze+KC signals → not a clean trend trade
                 _sigs = set(score.get("signals_triggered", []))
                 if "bb_squeeze_detected" in _sigs and "kc_breakout_bull" in _sigs:
                     logger.debug(f"[backtest] {ticker} trend_follow skip {today}: squeeze reclassification guard")
+                    vprint(f"  [dim]skip {ticker} | trend_follow: squeeze reclassification guard[/dim]")
                     continue
 
             # ── Mean reversion guard ──────────────────────────────────────────
@@ -943,19 +1004,40 @@ def run_backtest(
                 sector_counts[sec] = sector_counts.get(sec, 0) + 1
 
             positions[ticker] = {
-                "ticker":      ticker,
-                "entry_date":  next_day,
-                "entry_price": entry_price,
-                "shares":      shares,
-                "stop_loss":   stop_loss,
-                "take_profit": take_profit,
-                "strategy":    strategy,
-                "net_score":   net,
-                "confidence":  confidence,
-                "signals":     score.get("signals_triggered", []),
+                "ticker":       ticker,
+                "entry_date":   next_day,
+                "entry_price":  entry_price,
+                "shares":       shares,
+                "stop_loss":    stop_loss,
+                "take_profit":  take_profit,
+                "strategy":     strategy,
+                "time_horizon": time_horizon,
+                "net_score":    net,
+                "confidence":   confidence,
+                "signals":      score.get("signals_triggered", []),
             }
             last_entry_day = next_day  # reset silence counter
             new_entries_today += 1
+            _risk_pct_entry = (entry_price - stop_loss) / entry_price * 100 if entry_price > 0 else 0
+            _top_sigs = score.get("signals_triggered", [])[:6]
+            vprint(
+                f"\n  [bold green]ENTRY[/bold green] {ticker} signal={today}→exec={next_day} | "
+                f"[cyan]{strategy}[/cyan] conf={confidence:.2f} net={net} "
+                f"regime={regime}({regime_mult:.1f}x) hv={is_high_vol}"
+            )
+            vprint(
+                f"     {shares}sh @${entry_price:.2f} cost=${shares*entry_price:,.0f} | "
+                f"stop=${stop_loss:.2f}({_risk_pct_entry:.1f}%risk) target=${take_profit:.2f} "
+                f"max_hold={MAX_HOLD_DAYS.get(strategy, MAX_HOLD_DAYS.get(time_horizon, 7))}d"
+            )
+            vprint(
+                f"     ADX={ind.get('adx',0):.1f} RSI={ind.get('rsi',0):.1f} "
+                f"MACD={ind.get('macd_hist',0):.3f}↑{ind.get('macd_hist_prev1',0):.3f} "
+                f"vol={ind.get('volume_ratio',0):.1f}x "
+                f"bb%={ind.get('bb_pctb',0) or 0:.2f}"
+            )
+            if _top_sigs:
+                vprint(f"     [dim]signals: {', '.join(_top_sigs)}[/dim]")
 
     # ── Close any remaining open positions at end date ────────────────────────
     final_day = trading_days[-1] if trading_days else end
@@ -1282,6 +1364,8 @@ def main():
                         help="Disable net-score relaxation after silence period")
     parser.add_argument("--no-adx-filter", action="store_true",
                         help="Disable ADX > 20 confirmation gate for trend_follow entries")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Print detailed entry/exit/rejection reasoning per trade")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start)
@@ -1324,6 +1408,7 @@ def main():
         apply_vol_cap=vol_cap,
         reentry_relax=relax,
         adx_filter=adx_filt,
+        verbose=getattr(args, "verbose", False),
     )
 
     if not results:
