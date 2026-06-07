@@ -73,20 +73,19 @@ MAX_PER_SECTOR     = 2
 MAX_PER_SECTOR_ENERGY = 1       # energy stocks are oil-correlated — cap tighter
 # Time exits: profitable trades get extended hold — cut losers, let winners run
 TIME_EXIT_PROFIT_THRESHOLD = 0.03  # if unrealised >= 3%, extend hold
-TIME_EXIT_EXTEND_DAYS      = 5     # extra calendar days before hard exit
+TIME_EXIT_EXTEND_DAYS      = 14    # extra calendar days (technical check gets another 14 on top)
 MAX_HOLD_DAYS      = {
     # time_horizon keys (set by classify_strategy in time_horizon field)
-    "scalp":            2,
-    "swing":            7,
-    "mixed":            5,
+    "scalp":            3,
+    "swing":           21,
+    "mixed":           10,
     # strategy name keys (stored in position["strategy"])
-    "trend_follow":     5,   # extension code adds 5 more days for profitable trades (≥3%)
-                             # so effective max is 5+5=10d for winners, 5d for weak trades
-    "mean_reversion":   3,   # fast reversal; cut if stalls
-    "news_momentum":    2,   # event-driven, same-day to 1-day
-    "breakout":         4,   # exit fast if breakout doesn't follow through
-    "breakdown":        5,   # short-side momentum
-    "squeeze_breakout": 4,   # exit fast if expansion stalls
+    "trend_follow":    21,   # let trends run; trail stop exits winners
+    "mean_reversion":   5,   # reversal; cut if thesis doesn't play out
+    "news_momentum":    3,   # event-driven
+    "breakout":        14,   # breakouts need room to develop
+    "breakdown":       14,
+    "squeeze_breakout":10,
 }
 MIN_CONFIDENCE               = 0.65        # baseline gate (all strategies)
 TREND_FOLLOW_MIN_CONFIDENCE  = 0.75        # trend_follow needs higher conviction
@@ -571,25 +570,52 @@ def run_backtest(
                 exit_reason = "trailing_stop"
             if exit_price is None and age_days >= max_hold:
                 unrealised_pct = (day_close - entry) / entry if entry > 0 else 0.0
+
+                # Technical continuation check — if trend still intact, keep holding
+                _ind_t   = ind_cache.get(ticker, {}).get(today, {})
+                _adx_t   = float(_ind_t.get("adx") or 0)
+                _mh_t    = float(_ind_t.get("macd_hist") or 0)
+                _mh_p_t  = float(_ind_t.get("macd_hist_prev1") or 0)
+                _rsi_t   = float(_ind_t.get("rsi") or 50)
+                _e50_t   = float(_ind_t.get("ema50") or 0)
+                _e200_t  = float(_ind_t.get("ema200") or 0)
+                _trend_intact = (
+                    _adx_t > 20
+                    and _mh_t > 0
+                    and _mh_t >= _mh_p_t   # MACD still accelerating
+                    and _e50_t > 0 and day_close > _e50_t
+                    and _e200_t > 0 and day_close > _e200_t
+                    and _rsi_t < 80
+                )
+
                 vprint(
                     f"  [yellow]TIME EXIT CHECK[/yellow] {ticker} {today} | "
                     f"age={age_days}d max={max_hold}d ({_strat}) | "
-                    f"unrealised={unrealised_pct:+.1%} threshold={TIME_EXIT_PROFIT_THRESHOLD:.0%} | "
-                    f"extend_to={max_hold+TIME_EXIT_EXTEND_DAYS}d"
+                    f"unrealised={unrealised_pct:+.1%} trend_intact={_trend_intact} "
+                    f"adx={_adx_t:.0f} macd={_mh_t:.3f} rsi={_rsi_t:.0f}"
                 )
-                if unrealised_pct >= TIME_EXIT_PROFIT_THRESHOLD:
-                    # Trade is profitable — don't cut it on the clock.
-                    # Give it TIME_EXIT_EXTEND_DAYS more days; trailing stop is the exit.
+
+                hard_cap = max_hold + TIME_EXIT_EXTEND_DAYS * 2  # absolute ceiling
+                if unrealised_pct >= TIME_EXIT_PROFIT_THRESHOLD and _trend_intact:
+                    # Profitable + trend still good — let trailing stop do the work
+                    if age_days >= hard_cap:
+                        exit_price  = day_close
+                        exit_reason = "time_exit_hard_cap"
+                        vprint(f"    → [red]HARD CAP EXIT[/red] age={age_days}d >= {hard_cap}d")
+                    else:
+                        vprint(f"    → [green]HOLDING[/green] trend intact, hard cap at {hard_cap}d")
+                elif unrealised_pct >= TIME_EXIT_PROFIT_THRESHOLD:
+                    # Profitable but trend fading — limited extension
                     if age_days >= max_hold + TIME_EXIT_EXTEND_DAYS:
                         exit_price  = day_close
                         exit_reason = "time_exit_extended"
-                        vprint(f"    → [red]HARD EXIT[/red] age={age_days}d >= {max_hold+TIME_EXIT_EXTEND_DAYS}d limit")
+                        vprint(f"    → [red]EXTENDED EXIT[/red] trend gone, age={age_days}d")
                     else:
-                        vprint(f"    → [green]HOLDING[/green] profitable, {max_hold+TIME_EXIT_EXTEND_DAYS-age_days}d before hard exit")
+                        vprint(f"    → [yellow]SHORT HOLD[/yellow] profitable, trend fading, {max_hold+TIME_EXIT_EXTEND_DAYS-age_days}d left")
                 else:
                     exit_price  = day_close
                     exit_reason = "time_exit"
-                    vprint(f"    → [red]TIME EXIT[/red] unrealised={unrealised_pct:+.1%} below {TIME_EXIT_PROFIT_THRESHOLD:.0%}")
+                    vprint(f"    → [red]TIME EXIT[/red] unrealised={unrealised_pct:+.1%}")
 
             # ── Stale exit: dead trade not moving ─────────────────────────────
             if exit_price is None:
@@ -1069,14 +1095,10 @@ def run_backtest(
             if shares < 1:
                 continue
 
-            # Recompute stop/target relative to actual entry price using same multiplier as sizing
-            _stop_mult = ATR_STOP_MULT_MAP.get(time_horizon, 2.0)
-            if stop_loss <= 0 or stop_loss >= entry_price:
-                stop_loss = round(entry_price - atr * _stop_mult, 2)
-            if take_profit <= 0 or take_profit <= entry_price:
-                rr = 2.5
-                risk = entry_price - stop_loss
-                take_profit = round(entry_price + risk * rr, 2)
+            # Fixed 6% stop below actual entry price; target uses strategy R:R
+            _rr = score.get("risk_reward") or 2.5
+            stop_loss   = round(entry_price * 0.94, 2)
+            take_profit = round(entry_price * (1 + 0.06 * _rr), 2)
 
             cash -= cost
 
