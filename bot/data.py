@@ -153,14 +153,72 @@ def fetch_snapshots_batch(tickers: list[str]) -> dict[str, dict]:
         return {}
 
 
+def _fetch_daily_bars_yfinance(tickers: list[str], days: int = 365) -> dict[str, pd.DataFrame]:
+    """yfinance fallback for fetch_daily_bars_batch — used when Alpaca credentials are absent."""
+    try:
+        import yfinance as yf
+        from datetime import date as date_cls
+        end_dt   = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(days=days)
+        start_str = start_dt.strftime("%Y-%m-%d")
+        end_str   = end_dt.strftime("%Y-%m-%d")
+        batch_size = 50  # yfinance handles ~50 symbols comfortably per call
+        result: dict[str, pd.DataFrame] = {}
+        for i in range(0, len(tickers), batch_size):
+            chunk = tickers[i : i + batch_size]
+            try:
+                raw = yf.download(
+                    " ".join(chunk),
+                    start=start_str,
+                    end=end_str,
+                    auto_adjust=True,
+                    progress=False,
+                    threads=True,
+                )
+                if raw is None or raw.empty:
+                    continue
+                # Multi-ticker download returns MultiIndex columns
+                if isinstance(raw.columns, pd.MultiIndex):
+                    for tk in chunk:
+                        try:
+                            tk_upper = tk.upper()
+                            df = raw.xs(tk_upper, level=1, axis=1).copy() if tk_upper in raw.columns.get_level_values(1) else None
+                            if df is None or df.empty:
+                                continue
+                            df = df.rename(columns={"Open": "Open", "High": "High", "Low": "Low",
+                                                     "Close": "Close", "Volume": "Volume"})
+                            df.index = pd.to_datetime(df.index).tz_localize(None)
+                            result[tk] = df.dropna(subset=["Close"])
+                        except Exception:
+                            pass
+                else:
+                    # Single-ticker batch
+                    if len(chunk) == 1:
+                        df = raw.copy()
+                        df.index = pd.to_datetime(df.index).tz_localize(None)
+                        result[chunk[0]] = df.dropna(subset=["Close"])
+            except Exception as e:
+                logger.warning(f"[data] yfinance chunk {chunk[:3]}... failed: {e}")
+        logger.info(f"[data] yfinance fallback: fetched {len(result)}/{len(tickers)} tickers")
+        return result
+    except Exception as e:
+        logger.warning(f"[data] yfinance fallback failed: {e}")
+        return {}
+
+
 def fetch_daily_bars_batch(tickers: list[str], days: int = 365) -> dict[str, pd.DataFrame]:
     """
-    Fetch daily bars for multiple tickers in a single Alpaca API call.
+    Fetch daily bars for multiple tickers.
+    Tries Alpaca first; falls back to yfinance when credentials are absent.
     Returns dict of ticker -> DataFrame (Open/High/Low/Close/Volume, date-indexed).
     Missing/failed tickers are absent from the result.
     """
     if not tickers:
         return {}
+    # Check if Alpaca credentials are configured before attempting
+    if not (os.environ.get("ALPACA_API_KEY") and os.environ.get("ALPACA_SECRET_KEY")):
+        logger.info("[data] No Alpaca credentials — using yfinance fallback")
+        return _fetch_daily_bars_yfinance(tickers, days)
     try:
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
@@ -181,10 +239,13 @@ def fetch_daily_bars_batch(tickers: list[str], days: int = 365) -> dict[str, pd.
                 df = _bars_to_df(bar_list)
                 if df is not None:
                     result[ticker] = df
+        if not result:
+            logger.warning("[data] Alpaca returned no data — trying yfinance fallback")
+            return _fetch_daily_bars_yfinance(tickers, days)
         return result
     except Exception as e:
-        logger.warning(f"[data] batch daily bars failed: {e}")
-        return {}
+        logger.warning(f"[data] batch daily bars failed: {e} — trying yfinance fallback")
+        return _fetch_daily_bars_yfinance(tickers, days)
 
 
 def fetch_vix(days: int = 5) -> Optional[pd.DataFrame]:

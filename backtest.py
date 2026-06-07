@@ -65,10 +65,10 @@ DEFAULT_END        = "2025-12-31"
 STARTING_CAPITAL   = 100_000.0
 MIN_NET_SCORE      = 70          # lowered from 80 — capture more breakout setups
 MAX_OPEN_POSITIONS        = 5
-MAX_POSITION_PCT          = 0.12   # 12% cap for normal tickers
-MAX_POSITION_PCT_HIGH_VOL = 0.08   # 8% cap for gap-prone / high-vol tickers
+MAX_POSITION_PCT          = 0.18   # 18% cap — raised from 12% so risk-based sizing can reach ~1.5% realized risk
+MAX_POSITION_PCT_HIGH_VOL = 0.10   # 10% cap for gap-prone / high-vol tickers (was 8%)
 RISK_PCT                  = 0.02   # 2% portfolio risk per trade
-ATR_STOP_MULT_MAP  = {"scalp": 4.0, "swing": 5.0, "mixed": 5.0, "intraday": 2.4}  # per-horizon stop distance
+ATR_STOP_MULT_MAP  = {"scalp": 4.0, "swing": 5.0, "mixed": 5.0, "intraday": 2.4}  # per-horizon stop distance (legacy — used only when fix_sizing=False)
 MAX_PER_SECTOR     = 2
 MAX_PER_SECTOR_ENERGY = 1       # energy stocks are oil-correlated — cap tighter
 # Time exits: profitable trades get extended hold — cut losers, let winners run
@@ -105,7 +105,7 @@ HIGH_VOL_RISK_PCT      = 0.01   # 1% risk budget for flagged names (vs 2% normal
 REGIME_RISK_MULT = {
     "confirmed_uptrend": 1.0,   # SPY >= EMA50 AND EMA50 >= EMA200 → full risk
     "caution":           0.5,   # one condition met (XOR) → half risk, 1 entry/day
-    "downtrend":         0.0,   # both conditions fail → no new longs
+    "downtrend":         0.3,   # Change 4: half-size entries allowed (was 0.0); SPY shock still hard-zeros
 }
 SPY_SHOCK_THRESHOLD  = -0.04   # 5-day SPY return <= -4% overrides regime → 0.0
 CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
@@ -113,13 +113,20 @@ CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
 ADX_TREND_MIN          = 25   # strict but allows trending-market setups through
-# Trailing stop — structure-based, activates later so winners can run
-TRAIL_ACTIVATE_PCT     = 0.05   # start trailing at +5% (was 0.06)
-TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
-TRAIL_TIGHT_PCT        = 0.025  # tighten to 2.5% once +8% intraday hit
-BREAKEVEN_TRIGGER_PCT  = 0.025  # arm breakeven at +2.5% (was 0.015 — reduces noise whipsaw)
+# Trailing stop — structure-based, activates earlier, giveback tightened for Change 3
+TRAIL_ACTIVATE_PCT     = 0.05   # start trailing at +5%
+TRAIL_GIVEBACK_PCT     = 0.03   # Change 3: trail 3% below highest (was 5%) — captures more of the move
+TRAIL_TIGHT_PCT        = 0.025  # tighten to 2.5% once PARTIAL_TIGHT_PCT hit
+BREAKEVEN_TRIGGER_PCT  = 0.04   # Change 2: arm breakeven at +4% close (was 2.5%) — needs real cushion first
+BREAKEVEN_LOCK_PCT     = 0.005  # Change 2: lock in +0.5% (was -0.2% via BREAKEVEN_BUFFER — never lose on armed trade)
 PARTIAL_TIGHT_PCT      = 0.08   # arm tight trail when CLOSE reaches +8%
-BREAKEVEN_BUFFER       = 0.002  # stop at entry*(1-buffer) not exactly entry
+BREAKEVEN_BUFFER       = 0.002  # kept for --no-breakeven-fix fallback only
+# Midpoint ratchet — Change 3: fires earlier and locks more gain
+RATCHET_TRIGGER_PCT    = 0.30   # lock floor once highest crosses 30% of range (was 50%)
+RATCHET_LOCK_PCT       = 0.40   # lock this fraction of (target−entry) as stop floor (was 25%)
+# Partial profit-taking — Change 3
+PARTIAL_PROFIT_PCT      = 0.06  # take partial exit at +6% close gain
+PARTIAL_PROFIT_FRACTION = 1/3   # sell this fraction of shares at partial exit
 # Stale-trade breakeven
 STALE_EXIT_DAYS        = 3
 STALE_LOSS_THRESHOLD   = -0.01
@@ -305,11 +312,28 @@ def run_backtest(
     apply_vol_cap: bool = True,
     reentry_relax: bool = True,
     adx_filter: bool = True,
+    fix_sizing: bool = True,          # Change 1: size off actual stop distance
+    fix_breakeven: bool = True,       # Change 2: raise trigger to 4%, lock in +0.5% not -0.2%
+    fix_trail: bool = True,           # Change 3: tighten giveback 5%→3%, ratchet 50%→30%
+    enable_partial: bool = True,      # Change 3: sell 1/3 at +6%
+    fix_regime_deploy: bool = True,   # Change 4: downtrend→0.3 instead of 0.0
+    disable_trend_follow: bool = False, # Change 5: exclude trend_follow strategy
     verbose: bool = False,
 ) -> dict:
     """
     Full day-by-day simulation. Returns results dict with trades + equity curve.
     """
+    # ── Per-run effective constants (flags override module-level defaults) ────
+    from bot.strategies import STRATEGY_CONFIGS as _SCFG, ATR_STOP_FLOOR as _SL_FLOOR, ATR_STOP_CAP as _SL_CAP
+    _bad_strategies = set(BAD_STRATEGIES)
+    if disable_trend_follow:
+        _bad_strategies.add("trend_follow")
+    _breakeven_trigger = BREAKEVEN_TRIGGER_PCT if fix_breakeven else 0.025
+    _breakeven_lock    = BREAKEVEN_LOCK_PCT    if fix_breakeven else None  # None → old -0.2% buffer
+    _trail_giveback    = TRAIL_GIVEBACK_PCT    if fix_trail     else 0.05
+    _ratchet_trigger   = RATCHET_TRIGGER_PCT   if fix_trail     else 0.50
+    _ratchet_lock      = RATCHET_LOCK_PCT      if fix_trail     else 0.25
+
     if verbose:
         logger.setLevel(logging.INFO)
 
@@ -491,12 +515,14 @@ def run_backtest(
             if cp is not None:
                 mkt_value += pos["shares"] * cp
 
-        equity_curve.append({"date": today, "equity": round(mkt_value, 2)})
+        equity_curve.append({"date": today, "equity": round(mkt_value, 2), "cash": round(cash, 2)})
 
         regime      = _spy_regime(today)
         regime_mult = REGIME_RISK_MULT.get(regime, 1.0)
+        if not fix_regime_deploy and regime == "downtrend":
+            regime_mult = 0.0  # revert to hard block when flag is off
         if _spy_stressed(today):
-            regime_mult = 0.0
+            regime_mult = 0.0  # SPY 5-day shock always hard-zeros regardless of fix_regime_deploy
 
         if regime != _prev_regime:
             _rc = {"confirmed_uptrend": "green", "caution": "yellow", "downtrend": "red"}.get(regime, "white")
@@ -539,6 +565,44 @@ def run_backtest(
 
             exit_price  = None
             exit_reason = None
+
+            # ── Partial profit: execute at today's open if flagged by prior bar ─
+            # Flag is set when prior-bar CLOSE hit PARTIAL_PROFIT_PCT.
+            # Executing at today's open is look-ahead-free (prior close → next open).
+            if enable_partial and pos.get("partial_pending") and not pos.get("partial_taken"):
+                partial_shares = max(1, pos["shares"] // 3)
+                partial_pnl    = (day_open - entry) * partial_shares
+                partial_pnl_pct = (day_open - entry) / entry * 100
+                cash  += day_open * partial_shares
+                pos["shares"]       -= partial_shares
+                pos["partial_taken"]  = True
+                pos["partial_pending"]= False
+                all_trades.append({
+                    "ticker":       ticker,
+                    "entry_date":   pos["entry_date"].isoformat(),
+                    "exit_date":    today.isoformat(),
+                    "entry_price":  round(entry, 2),
+                    "exit_price":   round(day_open, 2),
+                    "shares":       partial_shares,
+                    "stop_loss":    round(stop, 2),
+                    "take_profit":  round(target, 2) if target else None,
+                    "initial_stop_loss": round(pos.get("initial_stop_loss", stop), 2),
+                    "pnl_dollar":   round(partial_pnl, 2),
+                    "pnl_pct":      round(partial_pnl_pct, 2),
+                    "hold_days":    age_days,
+                    "exit_reason":  "partial_profit",
+                    "strategy":     pos.get("strategy", "unknown"),
+                    "net_score":    pos.get("net_score", 0),
+                    "confidence":   pos.get("confidence", 0),
+                    "signals":      pos.get("signals", []),
+                })
+                vprint(f"  [cyan]PARTIAL[/cyan] {ticker} {today} | "
+                       f"sold {partial_shares} @ ${day_open:.2f} "
+                       f"({partial_pnl_pct:+.2f}%) | {pos['shares']} remain")
+                shares = pos["shares"]
+                if shares < 1:
+                    closed_tickers.append(ticker)
+                    continue
 
             # ── Exit checks: use stops armed by PRIOR bars only ───────────────
             # Breakeven and trailing-stop updates happen at END of this block so
@@ -652,16 +716,23 @@ def run_backtest(
                 gain_pct   = (highest   - entry) / entry if entry > 0 else 0.0
                 close_gain = (day_close - entry) / entry if entry > 0 else 0.0
 
-                # Breakeven off CLOSE — buffer prevents trivial noise from hitting stop
-                if (close_gain >= BREAKEVEN_TRIGGER_PCT
-                        and pos["stop_loss"] < entry * (1 - BREAKEVEN_BUFFER)):
-                    pos["stop_loss"] = round(entry * (1 - BREAKEVEN_BUFFER), 2)
+                # Breakeven off CLOSE — Change 2: lock in +0.5% once close reaches trigger
+                if close_gain >= _breakeven_trigger:
+                    if _breakeven_lock is not None:
+                        # New behaviour: stop never below entry + lock_pct (locked positive)
+                        _be_floor = round(entry * (1 + _breakeven_lock), 2)
+                        if pos["stop_loss"] < _be_floor:
+                            pos["stop_loss"] = _be_floor
+                    else:
+                        # Old behaviour: stop at entry*(1-buffer) — slightly negative
+                        if pos["stop_loss"] < entry * (1 - BREAKEVEN_BUFFER):
+                            pos["stop_loss"] = round(entry * (1 - BREAKEVEN_BUFFER), 2)
 
-                # Midpoint ratchet: 50% to target → lock in 25% of range as stop floor
+                # Midpoint ratchet — Change 3: fires at 30% of range, locks 40% (was 50%/25%)
                 if target and target > entry > 0:
                     _tp_range = target - entry
-                    if highest >= entry + 0.5 * _tp_range:
-                        _ratchet_stop = round(entry + 0.25 * _tp_range, 2)
+                    if highest >= entry + _ratchet_trigger * _tp_range:
+                        _ratchet_stop = round(entry + _ratchet_lock * _tp_range, 2)
                         if pos["stop_loss"] < _ratchet_stop:
                             pos["stop_loss"] = _ratchet_stop
 
@@ -669,9 +740,10 @@ def run_backtest(
                 if not pos.get("tight_trail_activated") and close_gain >= PARTIAL_TIGHT_PCT:
                     pos["tight_trail_activated"] = True
 
-                trail_pct = TRAIL_TIGHT_PCT if pos.get("tight_trail_activated") else TRAIL_GIVEBACK_PCT
+                # Change 3: use tightened _trail_giveback (3% vs 5%)
+                trail_pct = TRAIL_TIGHT_PCT if pos.get("tight_trail_activated") else _trail_giveback
 
-                # Trailing stop: activates once highest-seen >= +6%
+                # Trailing stop: activates once highest-seen >= TRAIL_ACTIVATE_PCT
                 if gain_pct >= TRAIL_ACTIVATE_PCT:
                     pct_trail = round(highest * (1.0 - trail_pct), 2)
                     _sd_t = sorted_dates_by_ticker.get(ticker, [])
@@ -688,6 +760,13 @@ def run_backtest(
                     if cur_trail is None or new_trail > cur_trail:
                         pos["trailing_stop_price"] = new_trail
 
+                # Partial profit flag — Change 3: armed off CLOSE, executes at NEXT open
+                if (enable_partial
+                        and close_gain >= PARTIAL_PROFIT_PCT
+                        and not pos.get("partial_taken")
+                        and not pos.get("partial_pending")):
+                    pos["partial_pending"] = True
+
             if exit_price is not None:
                 pnl_dollar = (exit_price - entry) * shares
                 pnl_pct    = (exit_price - entry) / entry * 100
@@ -703,22 +782,23 @@ def run_backtest(
                     f"high=${pos.get('highest_price_seen', entry):.2f}"
                 )
                 trade_rec  = {
-                    "ticker":       ticker,
-                    "entry_date":   pos["entry_date"].isoformat(),
-                    "exit_date":    today.isoformat(),
-                    "entry_price":  round(entry, 2),
-                    "exit_price":   round(exit_price, 2),
-                    "shares":       shares,
-                    "stop_loss":    round(stop, 2),
-                    "take_profit":  round(target, 2) if target else None,
-                    "pnl_dollar":   round(pnl_dollar, 2),
-                    "pnl_pct":      round(pnl_pct, 2),
-                    "hold_days":    age_days,
-                    "exit_reason":  exit_reason,
-                    "strategy":     pos.get("strategy", "unknown"),
-                    "net_score":    pos.get("net_score", 0),
-                    "confidence":   pos.get("confidence", 0),
-                    "signals":      pos.get("signals", []),
+                    "ticker":           ticker,
+                    "entry_date":       pos["entry_date"].isoformat(),
+                    "exit_date":        today.isoformat(),
+                    "entry_price":      round(entry, 2),
+                    "exit_price":       round(exit_price, 2),
+                    "shares":           shares,
+                    "stop_loss":        round(stop, 2),
+                    "initial_stop_loss":round(pos.get("initial_stop_loss", stop), 2),
+                    "take_profit":      round(target, 2) if target else None,
+                    "pnl_dollar":       round(pnl_dollar, 2),
+                    "pnl_pct":          round(pnl_pct, 2),
+                    "hold_days":        age_days,
+                    "exit_reason":      exit_reason,
+                    "strategy":         pos.get("strategy", "unknown"),
+                    "net_score":        pos.get("net_score", 0),
+                    "confidence":       pos.get("confidence", 0),
+                    "signals":          pos.get("signals", []),
                 }
                 all_trades.append(trade_rec)
                 closed_tickers.append(ticker)
@@ -810,7 +890,7 @@ def run_backtest(
                 continue
 
             # Skip strategies with no coherent edge
-            if filter_bad_strategies and strategy in BAD_STRATEGIES:
+            if filter_bad_strategies and strategy in _bad_strategies:
                 vprint(f"  [dim]skip {ticker} | bad_strategy={strategy} net={net} conf={confidence:.2f}[/dim]")
                 continue
 
@@ -1104,39 +1184,46 @@ def run_backtest(
             if regime == "caution" and new_entries_today >= CAUTION_MAX_ENTRIES:
                 continue
 
+            # ── Stop/target first — sizing must know the actual stop distance ──
+            # Change 1: compute stop before sizing so both use the same distance.
+            _rr      = score.get("risk_reward") or 2.5
+            _sl_mult = _SCFG.get(strategy, _SCFG["mixed"])["sl_atr_mult"]
+            _atr_pct = (atr / entry_price) if entry_price > 0 else 0.02
+            _sl_pct  = max(_SL_FLOOR, min(_atr_pct * _sl_mult, _SL_CAP))
+            stop_loss   = round(entry_price * (1 - _sl_pct), 2)
+            take_profit = round(entry_price * (1 + _sl_pct * _rr), 2)
+
             # Position sizing — value each open position at its own last close (mark-to-market)
             mark_to_market = cash + sum(
                 p["shares"] * (_last_close(t, today) or p["entry_price"])
                 for t, p in positions.items()
             )
-            shares = size_position(
-                portfolio_value=mark_to_market,
-                confidence=confidence,
-                atr=atr,
-                price=entry_price,
-                risk_pct=ticker_risk_pct,
-                time_horizon=time_horizon,
-                is_high_vol=is_high_vol,
-            )
+            pos_cap = MAX_POSITION_PCT_HIGH_VOL if is_high_vol else MAX_POSITION_PCT
+            if fix_sizing:
+                # Change 1: size off the SAME stop distance that is placed — RISK_PCT is now real
+                stop_dist = max(entry_price * 0.005, entry_price - stop_loss)
+                dollar_risk = mark_to_market * ticker_risk_pct * confidence
+                shares = floor(dollar_risk / stop_dist) if stop_dist > 0 else 0
+                shares = min(shares, floor(mark_to_market * pos_cap / entry_price))
+            else:
+                shares = size_position(
+                    portfolio_value=mark_to_market,
+                    confidence=confidence,
+                    atr=atr,
+                    price=entry_price,
+                    risk_pct=ticker_risk_pct,
+                    time_horizon=time_horizon,
+                    is_high_vol=is_high_vol,
+                )
             if shares < 1:
                 continue
 
-            pos_cap = MAX_POSITION_PCT_HIGH_VOL if is_high_vol else MAX_POSITION_PCT
             cost = shares * entry_price
             if cost > cash:
                 shares = floor(cash * pos_cap / entry_price)
                 cost   = shares * entry_price
             if shares < 1:
                 continue
-
-            # ATR-based stop using per-strategy sl_atr_mult (mirrors classify_strategy logic)
-            _rr       = score.get("risk_reward") or 2.5
-            from bot.strategies import STRATEGY_CONFIGS as _SCFG, ATR_STOP_FLOOR as _SL_FLOOR, ATR_STOP_CAP as _SL_CAP
-            _sl_mult  = _SCFG.get(strategy, _SCFG["mixed"])["sl_atr_mult"]
-            _atr_pct  = (atr / entry_price) if entry_price > 0 else 0.02
-            _sl_pct   = max(_SL_FLOOR, min(_atr_pct * _sl_mult, _SL_CAP))
-            stop_loss   = round(entry_price * (1 - _sl_pct), 2)
-            take_profit = round(entry_price * (1 + _sl_pct * _rr), 2)
 
             cash -= cost
 
@@ -1145,17 +1232,18 @@ def run_backtest(
                 sector_counts[sec] = sector_counts.get(sec, 0) + 1
 
             positions[ticker] = {
-                "ticker":       ticker,
-                "entry_date":   next_day,
-                "entry_price":  entry_price,
-                "shares":       shares,
-                "stop_loss":    stop_loss,
-                "take_profit":  take_profit,
-                "strategy":     strategy,
-                "time_horizon": time_horizon,
-                "net_score":    net,
-                "confidence":   confidence,
-                "signals":      score.get("signals_triggered", []),
+                "ticker":            ticker,
+                "entry_date":        next_day,
+                "entry_price":       entry_price,
+                "shares":            shares,
+                "stop_loss":         stop_loss,
+                "initial_stop_loss": stop_loss,   # preserved for risk metric
+                "take_profit":       take_profit,
+                "strategy":          strategy,
+                "time_horizon":      time_horizon,
+                "net_score":         net,
+                "confidence":        confidence,
+                "signals":           score.get("signals_triggered", []),
             }
             last_entry_day = next_day  # reset silence counter
             new_entries_today += 1
@@ -1274,6 +1362,32 @@ def compute_stats(results: dict) -> dict:
         ym = t["exit_date"][:7]
         monthly[ym] = monthly.get(ym, 0) + t["pnl_dollar"]
 
+    # (a) Avg realized risk per trade as % of capital
+    # = mean over trades of ((entry - initial_stop)/entry × position_value / start_capital)
+    risk_pcts = []
+    for t in trades:
+        ep   = t.get("entry_price", 0)
+        isl  = t.get("initial_stop_loss") or t.get("stop_loss") or ep
+        if ep > 0:
+            stop_pct   = (ep - isl) / ep
+            pos_val    = ep * t.get("shares", 0)
+            risk_pcts.append(stop_pct * pos_val / start * 100)
+    avg_realized_risk = round(np.mean(risk_pcts), 3) if risk_pcts else 0.0
+
+    # (b) Avg % of capital deployed = 1 - mean(daily_cash / daily_equity)
+    deployed_fracs = []
+    for e in eq:
+        eq_val   = e.get("equity", 0)
+        cash_val = e.get("cash",   eq_val)  # fallback: old curve entries without cash field
+        if eq_val > 0:
+            deployed_fracs.append(1.0 - cash_val / eq_val)
+    avg_deployed = round(np.mean(deployed_fracs) * 100, 1) if deployed_fracs else 0.0
+
+    # Expectancy: avg_win*win_rate + avg_loss*(1-win_rate)
+    wr  = len(wins) / len(trades) if trades else 0
+    exp = round((np.mean(win_pcts) if win_pcts else 0) * wr
+               + (np.mean(loss_pcts) if loss_pcts else 0) * (1 - wr), 3)
+
     return {
         "total_trades":   len(trades),
         "winners":        len(wins),
@@ -1289,6 +1403,9 @@ def compute_stats(results: dict) -> dict:
         "max_drawdown_pct": max_dd,
         "sharpe":         round(sharpe, 2),
         "avg_hold_days":  round(avg_hold, 1),
+        "avg_realized_risk_pct": avg_realized_risk,
+        "avg_deployed_pct":      avg_deployed,
+        "expectancy_pct": exp,
         "by_strategy":    {s: {"trades": len(v), "total_pnl": round(sum(v), 2),
                                "win_rate": round(len([x for x in v if x > 0]) / len(v) * 100, 1)}
                            for s, v in by_strategy.items()},
@@ -1339,14 +1456,18 @@ def print_report(results: dict, stats: dict, args) -> None:
     t.add_row("Total trades",      str(stats.get("total_trades", 0)))
     t.add_row("Win rate",          f"{stats.get('win_rate', 0):.1f}%  "
                                    f"({stats.get('winners',0)}W / {stats.get('losers',0)}L)")
-    t.add_row("Avg win",           f"[green]{_pct(stats.get('avg_win_pct', 0))}[/green]")
-    t.add_row("Avg loss",          f"[red]{_pct(stats.get('avg_loss_pct', 0))}[/red]")
-    t.add_row("Profit factor",     f"{stats.get('profit_factor', 0):.2f}")
-    t.add_row("Max drawdown",      f"[red]{stats.get('max_drawdown_pct', 0):.2f}%[/red]")
-    t.add_row("Sharpe ratio",      str(stats.get("sharpe", 0)))
-    t.add_row("Avg hold (days)",   str(stats.get("avg_hold_days", 0)))
-    t.add_row("Best trade",        f"[green]{_pct(stats.get('best_trade_pct', 0))}[/green]")
-    t.add_row("Worst trade",       f"[red]{_pct(stats.get('worst_trade_pct', 0))}[/red]")
+    t.add_row("Avg win",                f"[green]{_pct(stats.get('avg_win_pct', 0))}[/green]")
+    t.add_row("Avg loss",               f"[red]{_pct(stats.get('avg_loss_pct', 0))}[/red]")
+    exp = stats.get("expectancy_pct", 0)
+    t.add_row("Expectancy",             f"[{'green' if exp >= 0 else 'red'}]{exp:+.3f}%[/{'green' if exp >= 0 else 'red'}]")
+    t.add_row("Profit factor",          f"{stats.get('profit_factor', 0):.2f}")
+    t.add_row("Max drawdown",           f"[red]{stats.get('max_drawdown_pct', 0):.2f}%[/red]")
+    t.add_row("Sharpe ratio",           str(stats.get("sharpe", 0)))
+    t.add_row("Avg hold (days)",        str(stats.get("avg_hold_days", 0)))
+    t.add_row("Best trade",             f"[green]{_pct(stats.get('best_trade_pct', 0))}[/green]")
+    t.add_row("Worst trade",            f"[red]{_pct(stats.get('worst_trade_pct', 0))}[/red]")
+    t.add_row("Avg realized risk/trade",f"{stats.get('avg_realized_risk_pct', 0):.3f}% of capital")
+    t.add_row("Avg capital deployed",   f"{stats.get('avg_deployed_pct', 0):.1f}%")
     console.print(t)
 
     # ── Strategy breakdown ────────────────────────────────────────────────────
@@ -1505,6 +1626,19 @@ def main():
                         help="Disable net-score relaxation after silence period")
     parser.add_argument("--no-adx-filter", action="store_true",
                         help="Disable ADX > 20 confirmation gate for trend_follow entries")
+    # Change-group ablation flags (all default ON)
+    parser.add_argument("--no-sizing-fix", action="store_true",
+                        help="Change 1: revert to ATR-mult sizing (mismatched with stop)")
+    parser.add_argument("--no-breakeven-fix", action="store_true",
+                        help="Change 2: revert breakeven to 2.5%/-0.2% buffer")
+    parser.add_argument("--no-trail-fix", action="store_true",
+                        help="Change 3: revert trail giveback to 5%, ratchet to 50%/25%")
+    parser.add_argument("--no-partial", action="store_true",
+                        help="Change 3: disable partial profit-taking at +6%")
+    parser.add_argument("--no-regime-deploy", action="store_true",
+                        help="Change 4: revert downtrend regime_mult to 0.0 (no new longs)")
+    parser.add_argument("--no-trend-follow", action="store_true",
+                        help="Change 5: exclude trend_follow strategy entirely")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Print detailed entry/exit/rejection reasoning per trade")
     args = parser.parse_args()
@@ -1523,21 +1657,29 @@ def main():
     if "SPY" not in tickers:
         tickers = ["SPY"] + tickers
 
-    filter_bad = not args.no_strategy_filter
-    vol_cap    = not args.no_vol_cap
-    relax      = not args.no_reentry_relax
-    adx_filt   = not args.no_adx_filter
+    filter_bad         = not args.no_strategy_filter
+    vol_cap            = not args.no_vol_cap
+    relax              = not args.no_reentry_relax
+    adx_filt           = not args.no_adx_filter
+    fix_sizing         = not args.no_sizing_fix
+    fix_breakeven      = not args.no_breakeven_fix
+    fix_trail          = not args.no_trail_fix
+    enable_partial     = not args.no_partial
+    fix_regime_deploy  = not args.no_regime_deploy
+    disable_trend_follow = args.no_trend_follow
 
+    def _on(flag): return "[green]ON[/green]" if flag else "[red]OFF[/red]"
     console.print(f"\n[bold cyan]MoneyPrinter Backtester[/bold cyan]")
     console.print(f"Period:  {start} → {end}  ({(end-start).days} calendar days)")
     console.print(f"Capital: ${args.capital:,.0f}")
     console.print(f"Tickers: {len(tickers)} (including SPY for regime)")
     console.print(f"Min net: {args.min_net}")
-    console.print(f"Improvements: "
-                  f"strategy_filter={'[green]ON[/green]' if filter_bad else '[red]OFF[/red]'}  "
-                  f"vol_cap={'[green]ON[/green]' if vol_cap else '[red]OFF[/red]'}  "
-                  f"reentry_relax={'[green]ON[/green]' if relax else '[red]OFF[/red]'}  "
-                  f"adx_filter={'[green]ON[/green]' if adx_filt else '[red]OFF[/red]'}\n")
+    console.print(f"Core:    strat_filter={_on(filter_bad)}  vol_cap={_on(vol_cap)}  "
+                  f"reentry_relax={_on(relax)}  adx_filter={_on(adx_filt)}")
+    console.print(f"Fixes:   sizing={_on(fix_sizing)}  breakeven={_on(fix_breakeven)}  "
+                  f"trail={_on(fix_trail)}  partial={_on(enable_partial)}  "
+                  f"regime_deploy={_on(fix_regime_deploy)}  "
+                  f"trend_follow={'[red]OFF[/red]' if disable_trend_follow else '[green]ON[/green]'}\n")
 
     results = run_backtest(
         tickers=tickers,
@@ -1549,6 +1691,12 @@ def main():
         apply_vol_cap=vol_cap,
         reentry_relax=relax,
         adx_filter=adx_filt,
+        fix_sizing=fix_sizing,
+        fix_breakeven=fix_breakeven,
+        fix_trail=fix_trail,
+        enable_partial=enable_partial,
+        fix_regime_deploy=fix_regime_deploy,
+        disable_trend_follow=disable_trend_follow,
         verbose=getattr(args, "verbose", False),
     )
 
