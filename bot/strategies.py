@@ -8,55 +8,55 @@ STRATEGY_CONFIGS = {
     "trend_follow": {
         "description": "EMA9>EMA21>EMA50 + ADX>22 + MACD hist positive + volume confirm — 2-5 day swing",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.0,
-        "tp_rr": 3.0,          # raised from 2.5 — genuine trends deserve more room to run
+        "sl_atr_mult": 2.5,    # widened from 2.0 — trends need room to breathe through pullbacks
+        "tp_rr": 3.0,
     },
     "mean_reversion": {
         "description": "RSI<38 or >68 AND BB extreme, ADX<22, not in downtrend — same-day to 2-day scalp",
         "time_horizon": "scalp",
-        "sl_atr_mult": 1.5,
+        "sl_atr_mult": 2.0,    # widened from 1.5 — oversold bounces need room to form
         "tp_rr": 2.0,
     },
     "breakout": {
         "description": "Level break + in_uptrend + vol>=2x + ADX>=25 — 1-4 day momentum",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.2,   # tight: cut fast if the break fails
-        "tp_rr": 3.5,          # breakouts that work run further than trend trades
+        "sl_atr_mult": 1.8,    # widened from 1.2 — was too tight, noise was stopping out valid breaks
+        "tp_rr": 3.5,
     },
     "breakdown": {
         "description": "Price breaks S1 with volume — 1-3 day momentum",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.5,
+        "sl_atr_mult": 2.0,    # widened from 1.5
         "tp_rr": 2.5,
     },
     "squeeze_breakout": {
         "description": "BB squeeze + KC breakout + vol>=1.5x + not in downtrend — 2-4 day expansion play",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.5,
+        "sl_atr_mult": 2.0,    # widened from 1.5
         "tp_rr": 3.0,
     },
     "news_momentum": {
         "description": "Catalyst-driven move with trend confirmation — same-day scalp",
         "time_horizon": "scalp",
-        "sl_atr_mult": 1.5,
+        "sl_atr_mult": 2.0,    # widened from 1.5
         "tp_rr": 2.0,
     },
     "mixed": {
         "description": "Mixed signals — no dominant pattern, short hold only",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.0,
+        "sl_atr_mult": 2.5,    # widened from 2.0
         "tp_rr": 2.0,
     },
     "gap_momentum": {
         "description": "Pre-market gap 4-18% + catalyst + ORB breakout — same-day close",
         "time_horizon": "intraday",
-        "sl_atr_mult": 0.8,   # tight stop — ORB low is the invalidation
-        "tp_rr": 4.0,         # 4:1 R:R — gap trades either work fast or don't
+        "sl_atr_mult": 1.2,    # widened from 0.8 — ORB low still the invalidation but with a buffer
+        "tp_rr": 4.0,
     },
     "orb": {
         "description": "Opening range breakout — first 15-min high with volume surge",
         "time_horizon": "intraday",
-        "sl_atr_mult": 1.0,
+        "sl_atr_mult": 1.5,    # widened from 1.0
         "tp_rr": 3.0,
     },
 }

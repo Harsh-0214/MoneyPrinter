@@ -68,7 +68,7 @@ MAX_OPEN_POSITIONS        = 5
 MAX_POSITION_PCT          = 0.12   # 12% cap for normal tickers
 MAX_POSITION_PCT_HIGH_VOL = 0.08   # 8% cap for gap-prone / high-vol tickers
 RISK_PCT                  = 0.02   # 2% portfolio risk per trade
-ATR_STOP_MULT_MAP  = {"scalp": 1.5, "swing": 2.0, "mixed": 2.0, "intraday": 0.8}  # per-horizon stop distance
+ATR_STOP_MULT_MAP  = {"scalp": 2.0, "swing": 2.5, "mixed": 2.5, "intraday": 1.2}  # per-horizon stop distance
 MAX_PER_SECTOR     = 2
 MAX_PER_SECTOR_ENERGY = 1       # energy stocks are oil-correlated — cap tighter
 # Time exits: profitable trades get extended hold — cut losers, let winners run
@@ -646,6 +646,14 @@ def run_backtest(
                 if (close_gain >= BREAKEVEN_TRIGGER_PCT
                         and pos["stop_loss"] < entry * (1 - BREAKEVEN_BUFFER)):
                     pos["stop_loss"] = round(entry * (1 - BREAKEVEN_BUFFER), 2)
+
+                # Midpoint ratchet: 50% to target → lock in 25% of range as stop floor
+                if target and target > entry > 0:
+                    _tp_range = target - entry
+                    if highest >= entry + 0.5 * _tp_range:
+                        _ratchet_stop = round(entry + 0.25 * _tp_range, 2)
+                        if pos["stop_loss"] < _ratchet_stop:
+                            pos["stop_loss"] = _ratchet_stop
 
                 # Tight trail armed off CLOSE >= +8% (not intraday wick)
                 if not pos.get("tight_trail_activated") and close_gain >= PARTIAL_TIGHT_PCT:

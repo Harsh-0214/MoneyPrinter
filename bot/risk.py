@@ -190,18 +190,22 @@ BREAKEVEN_TRIGGER_PCT  = 0.015  # move stop to entry at +1.5% (protect small gai
 PARTIAL_TIGHT_PCT      = 0.08   # highest_price_seen threshold to activate tight trail
 
 
-def update_trailing_stop(trade_record: dict, current_price: float) -> dict:
+def update_trailing_stop(
+    trade_record: dict,
+    current_price: float,
+    take_profit: float = 0.0,
+) -> dict:
     """
-    Returns updated trade_record with trailing stop, breakeven, and tight-trail logic.
-    Call this every cycle for open long positions.
+    Returns updated trade_record with trailing stop, breakeven, midpoint-ratchet,
+    and tight-trail logic. Call this every cycle for open long positions.
 
     Keys added/updated in returned dict:
       - highest_price_seen: float
       - trailing_stop_price: float or None
       - trailing_stop_updated: bool
       - trailing_stop_triggered: bool
-      - breakeven_set: bool         (True when stop was moved to entry this cycle)
-      - new_stop_loss: float|None   (new stop_loss value if breakeven was set)
+      - breakeven_set: bool         (True when stop was moved to entry or ratchet this cycle)
+      - new_stop_loss: float|None   (new stop_loss value when stop was raised this cycle)
     """
     result = dict(trade_record)
     result["trailing_stop_updated"]   = False
@@ -222,14 +226,30 @@ def update_trailing_stop(trade_record: dict, current_price: float) -> dict:
         highest = current_price
     result["highest_price_seen"] = highest
 
-    gain_pct = (highest - entry_price) / entry_price if entry_price > 0 else 0.0
-
-    # Breakeven: move stop to entry once highest has reached +3%
+    gain_pct     = (highest - entry_price) / entry_price if entry_price > 0 else 0.0
     current_stop = float(trade_record.get("stop_loss") or 0)
+
+    # Breakeven: move stop to entry once highest has reached BREAKEVEN_TRIGGER_PCT
     if gain_pct >= BREAKEVEN_TRIGGER_PCT and current_stop < entry_price:
-        result["new_stop_loss"]           = round(entry_price, 2)
-        result["breakeven_set"]           = True
-        result["trailing_stop_updated"]   = True
+        result["new_stop_loss"]         = round(entry_price, 2)
+        result["breakeven_set"]         = True
+        result["trailing_stop_updated"] = True
+        current_stop                    = entry_price  # use new floor for ratchet comparison below
+
+    # Midpoint ratchet: once highest crosses 50% of the way to target,
+    # lock in a floor stop at entry + 25% of (target − entry).
+    # This fires before the trailing stop and protects half-way gains.
+    if take_profit > entry_price > 0:
+        _tp_range      = take_profit - entry_price
+        _ratchet_level = entry_price + 0.25 * _tp_range
+        if highest >= entry_price + 0.5 * _tp_range and current_stop < _ratchet_level:
+            result["new_stop_loss"]         = round(_ratchet_level, 2)
+            result["breakeven_set"]         = True
+            result["trailing_stop_updated"] = True
+            logger.info(
+                f"[risk] Midpoint ratchet: stop raised to {_ratchet_level:.2f} "
+                f"(entry={entry_price:.2f} target={take_profit:.2f} highest={highest:.2f})"
+            )
 
     # Tight trail activates once highest has reached +8%
     tight = gain_pct >= PARTIAL_TIGHT_PCT

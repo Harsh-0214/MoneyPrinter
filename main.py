@@ -1497,7 +1497,8 @@ def session_continuous(alpaca_client, data_client) -> None:
             current_price = pos.get("current_price") or pos.get("entry_price")
             if not current_price:
                 continue
-            updated = update_trailing_stop(pos, current_price)
+            updated = update_trailing_stop(pos, current_price,
+                                           take_profit=float(pos.get("take_profit") or 0))
             if updated.get("trailing_stop_updated") and pos.get("id"):
                 update_trade_trailing(
                     pos["id"],
