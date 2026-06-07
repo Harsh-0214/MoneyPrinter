@@ -79,7 +79,8 @@ MAX_HOLD_DAYS      = {
     "swing":            7,
     "mixed":            5,
     # strategy name keys (stored in position["strategy"])
-    "trend_follow":     10,  # trailing stop is primary exit — let trends run
+    "trend_follow":     5,   # extension code adds 5 more days for profitable trades (≥3%)
+                             # so effective max is 5+5=10d for winners, 5d for weak trades
     "mean_reversion":   3,   # fast reversal; cut if stalls
     "news_momentum":    2,   # event-driven, same-day to 1-day
     "breakout":         4,   # exit fast if breakout doesn't follow through
@@ -114,7 +115,7 @@ ADX_TREND_MIN          = 22   # smooth bull trends run ADX 18-26; MACD accel is 
 TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
 TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
 TRAIL_TIGHT_PCT        = 0.025  # tighten to 2.5% once +8% intraday hit
-BREAKEVEN_TRIGGER_PCT  = 0.03   # arm breakeven when CLOSE reaches +3%
+BREAKEVEN_TRIGGER_PCT  = 0.015  # arm breakeven when CLOSE reaches +1.5% (protect small gains)
 PARTIAL_TIGHT_PCT      = 0.08   # arm tight trail when CLOSE reaches +8%
 BREAKEVEN_BUFFER       = 0.002  # stop at entry*(1-buffer) not exactly entry
 # Stale-trade breakeven

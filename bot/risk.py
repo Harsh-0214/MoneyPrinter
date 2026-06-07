@@ -155,7 +155,7 @@ def calculate_scale_in(
 TRAILING_ACTIVATE_PCT  = 0.06   # wait until +6% before trailing
 TRAILING_TRAIL_PCT     = 0.05   # trail 5% below highest seen
 TRAIL_TIGHT_PCT        = 0.025  # tighten to 2.5% once PARTIAL_TIGHT_PCT reached
-BREAKEVEN_TRIGGER_PCT  = 0.03   # move stop to entry at +3%
+BREAKEVEN_TRIGGER_PCT  = 0.015  # move stop to entry at +1.5% (protect small gains)
 PARTIAL_TIGHT_PCT      = 0.08   # highest_price_seen threshold to activate tight trail
 
 
