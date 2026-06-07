@@ -6,19 +6,19 @@ on:
       start:
         description: "Start date (YYYY-MM-DD)"
         required: true
-        default: "2024-06-01"
+        default: "2026-01-01"
       end:
         description: "End date (YYYY-MM-DD)"
         required: true
-        default: "2025-06-01"
+        default: "2026-06-01"
       capital:
         description: "Starting capital ($)"
         required: false
         default: "100000"
       min_net:
-        description: "Min scorer net score for entry (default 60)"
+        description: "Min scorer net score for entry"
         required: false
-        default: "60"
+        default: "80"
       tickers:
         description: "Space-separated tickers to test (leave blank = full universe)"
         required: false

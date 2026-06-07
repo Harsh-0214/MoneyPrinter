@@ -913,8 +913,8 @@ def score_ticker(
                 bull = round(bull / 1.25)
                 logger.info(f"[{ticker}] Hype override: trigger boost cancelled due to velocity penalty {total_conf_adj:.2f}")
         else:
-            net = round(net * 0.75)
-            bull = round(bull * 0.75)
+            net = round(net * 0.65)
+            bull = round(bull * 0.65)
             signals_against.append("no_fresh_trigger")
             logger.info(
                 f"[{ticker}] NO fresh bullish triggers "

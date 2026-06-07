@@ -88,8 +88,9 @@ MAX_HOLD_DAYS      = {
     "breakdown":        5,   # short-side momentum
     "squeeze_breakout": 4,   # exit fast if expansion stalls
 }
-MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
-TICKER_STOP_COOLDOWN  = 7       # days to wait before re-entering a ticker after a stop/stale exit
+MIN_CONFIDENCE               = 0.65        # baseline gate (all strategies)
+TREND_FOLLOW_MIN_CONFIDENCE  = 0.75        # trend_follow needs higher conviction
+TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker after stop
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
 # squeeze_breakout disabled: 0% win rate even after strict momentum filtering.
@@ -126,7 +127,7 @@ STALE_LOSS_THRESHOLD   = -0.01
 # Mean reversion regime gate
 MEAN_REV_MAX_ADX       = 20
 # Breakout entry quality minimums
-BREAKOUT_MIN_VOL       = 2.5   # raised: 2x wasn't selective enough
+BREAKOUT_MIN_VOL       = 2.0   # 2x volume — breakout is already well-filtered by level + ADX
 BREAKOUT_MIN_ADX       = 25
 # Concentration cap for momentum strategies
 MAX_TREND_FOLLOW_POSITIONS  = 2  # max concurrent open trend_follow trades
@@ -821,6 +822,19 @@ def run_backtest(
                 _tf_earn = _earnings_map.get(ticker, set())
                 if any(1 <= (ed - today).days <= 6 for ed in _tf_earn):
                     vprint(f"  [dim]skip {ticker} | trend_follow: earnings within 5d[/dim]")
+                    continue
+                # Signal-day momentum: stock must be going UP on signal day.
+                # Entering a stock that closed down today means we're fading immediate momentum.
+                _r1d_tf = ind.get("return_1d")
+                if _r1d_tf is not None and _r1d_tf <= 0:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: return_1d={_r1d_tf:.2%} <= 0 (fading)[/dim]")
+                    continue
+                # High-conviction gate: trend_follow needs stronger confidence than baseline
+                if confidence < TREND_FOLLOW_MIN_CONFIDENCE:
+                    vprint(
+                        f"  [dim]skip {ticker} | trend_follow: conf={confidence:.2f} < "
+                        f"{TREND_FOLLOW_MIN_CONFIDENCE:.2f} (need higher conviction)[/dim]"
+                    )
                     continue
 
             # ── Mean reversion guard ──────────────────────────────────────────
