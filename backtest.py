@@ -540,9 +540,13 @@ def run_backtest(
             )
             _prev_regime = regime
 
+        # Map backtest regime labels to the scorer's expected spy_regime values.
+        # Scorer checks "bull"/"caution"/"bear" — passing "confirmed_uptrend" or
+        # "downtrend" silently skips all regime-based score adjustments.
+        _scorer_regime = {"confirmed_uptrend": "bull", "caution": "caution", "downtrend": "bear"}.get(regime, "bull")
         macro  = {
             "vix": 18.0,
-            "spy_regime": regime,
+            "spy_regime": _scorer_regime,
             "bearish_market": regime == "downtrend",
             "vix_multiplier": 1.0,
             "regime_mult": regime_mult,
