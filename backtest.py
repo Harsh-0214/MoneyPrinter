@@ -68,7 +68,7 @@ MAX_OPEN_POSITIONS        = 5
 MAX_POSITION_PCT          = 0.12   # 12% cap for normal tickers
 MAX_POSITION_PCT_HIGH_VOL = 0.08   # 8% cap for gap-prone / high-vol tickers
 RISK_PCT                  = 0.02   # 2% portfolio risk per trade
-ATR_STOP_MULT_MAP  = {"scalp": 1.5, "swing": 2.0, "mixed": 2.0}  # per-horizon stop distance
+ATR_STOP_MULT_MAP  = {"scalp": 1.5, "swing": 2.0, "mixed": 2.0, "intraday": 0.8}  # per-horizon stop distance
 MAX_PER_SECTOR     = 2
 # Time exits: profitable trades get extended hold — cut losers, let winners run
 TIME_EXIT_PROFIT_THRESHOLD = 0.03  # if unrealised >= 3%, extend hold
@@ -85,6 +85,9 @@ MAX_HOLD_DAYS      = {
     "breakout":         4,   # exit fast if breakout doesn't follow through
     "breakdown":        5,   # short-side momentum
     "squeeze_breakout": 4,   # exit fast if expansion stalls
+    "gap_momentum":     1,   # intraday — always same-day exit
+    "orb":              1,   # intraday — always same-day exit
+    "intraday":         1,
 }
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
 
@@ -110,6 +113,19 @@ CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
 ADX_TREND_MIN          = 22   # smooth bull trends run ADX 18-26; MACD accel is the real quality gate
+# ── Gap-and-go intraday proxy (daily OHLCV approximation) ─────────────────────
+GAP_MOMENTUM_ENABLED   = True
+GAP_MIN_PCT            = 0.04   # 4% min gap — fills <4% = 60-89% (research-verified)
+GAP_MAX_PCT            = 0.18   # >18% = reversal risk too high
+GAP_MIN_VOL_RATIO      = 1.5    # volume_ratio at gap open (institutional interest)
+GAP_MIN_QUALITY_SCORE  = 50     # minimum score to trade the gap
+GAP_ATR_STOP_MULT      = 0.8    # tight stop — ORB low is the invalidation
+GAP_TP_RR              = 4.0    # 4:1 R:R — gap trades either work fast or don't
+GAP_RISK_PCT           = 0.01   # risk 1% per intraday trade (half swing risk)
+GAP_POS_CAP            = 0.08   # max 8% of portfolio per gap position
+MAX_GAP_POSITIONS_DAY  = 3      # max same-day gap trades (they open & close same day)
+MIN_PRICE              = 5.0    # skip penny stocks (manipulation / spread risk)
+MAX_PRICE              = 200.0  # skip very expensive stocks (capital concentration)
 # Trailing stop — structure-based, activates later so winners can run
 TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
 TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
@@ -673,6 +689,161 @@ def run_backtest(
 
         for t in closed_tickers:
             del positions[t]
+
+        # ── 1b. Gap-and-go intraday proxy ────────────────────────────────────
+        # Detect pre-market gaps using today's open vs yesterday's close.
+        # Entry: open × 1.005 (15-min ORB simulation). Exit: same day.
+        # SPY gap filter: if SPY itself gapped down >1% today, skip all gap trades.
+        if GAP_MOMENTUM_ENABLED:
+            _spy_today   = ohlcv_by_date.get("SPY", {}).get(today)
+            _spy_prev_i  = _bisect.bisect_right(_spy_dates, today) - 2  # index of prior SPY bar
+            _spy_prev_c  = float(_spy_close.iloc[_spy_prev_i]) if (_spy_close is not None and _spy_prev_i >= 0) else 0
+            _spy_today_o = float(_spy_today["O"]) if _spy_today else 0
+            _spy_gap_ok  = (
+                _spy_prev_c <= 0 or _spy_today_o <= 0 or
+                (_spy_today_o - _spy_prev_c) / _spy_prev_c >= -0.01
+            )
+            _gap_trades_today = 0
+
+            if _spy_gap_ok:
+                _gap_mark = cash + sum(
+                    p["shares"] * (_last_close(t, today) or p["entry_price"])
+                    for t, p in positions.items()
+                )
+                for ticker in tickers:
+                    if ticker == "SPY":
+                        continue
+                    if _gap_trades_today >= MAX_GAP_POSITIONS_DAY:
+                        break
+
+                    sd   = sorted_dates_by_ticker.get(ticker, [])
+                    today_i = _bisect.bisect_right(sd, today) - 1
+                    if today_i <= 0:
+                        continue
+                    prev_d   = sd[today_i - 1]
+                    prev_bar = ohlcv_by_date.get(ticker, {}).get(prev_d)
+                    curr_bar = ohlcv_by_date.get(ticker, {}).get(today)
+                    if prev_bar is None or curr_bar is None:
+                        continue
+
+                    prev_close = prev_bar["C"]
+                    today_open = curr_bar["O"]
+                    today_high = curr_bar["H"]
+                    today_low  = curr_bar["L"]
+                    today_close_bar = curr_bar["C"]
+
+                    if prev_close <= 0 or today_open <= 0:
+                        continue
+
+                    gap_pct = (today_open - prev_close) / prev_close
+                    if gap_pct < GAP_MIN_PCT or gap_pct > GAP_MAX_PCT:
+                        continue
+
+                    # Get indicator context (pre-computed for this day)
+                    _gind = ind_cache.get(ticker, {}).get(today)
+                    if _gind is None or _gind.get("error"):
+                        continue
+
+                    vol_ratio = float(_gind.get("volume_ratio") or 0)
+                    if vol_ratio < GAP_MIN_VOL_RATIO:
+                        continue
+
+                    atr   = float(_gind.get("atr") or (today_open * 0.02))
+                    ema50 = float(_gind.get("ema50") or 0)
+                    rsi   = float(_gind.get("rsi") or 50)
+
+                    # Technical filters: gap must be in context of strength
+                    if ema50 > 0 and today_open < ema50:
+                        continue
+                    if rsi > 78:
+                        continue  # overbought at open — reversal risk
+                    if today_open > MAX_PRICE or today_open < MIN_PRICE:
+                        continue
+
+                    # Quality score (abridged — no catalyst data in daily OHLCV proxy)
+                    gscore = 0
+                    if 0.05 <= gap_pct <= 0.10:
+                        gscore += 50
+                    elif 0.04 <= gap_pct < 0.05:
+                        gscore += 25
+                    elif 0.10 < gap_pct <= 0.15:
+                        gscore += 35
+                    else:
+                        gscore += 15
+                    if vol_ratio >= 3.0:
+                        gscore += 25
+                    elif vol_ratio >= 2.0:
+                        gscore += 18
+                    else:
+                        gscore += 10
+                    if ema50 > 0 and today_open > ema50:
+                        gscore += 10
+                    if 50 <= rsi <= 70:
+                        gscore += 5
+                    elif rsi > 75:
+                        gscore -= 15
+
+                    if gscore < GAP_MIN_QUALITY_SCORE:
+                        continue
+
+                    # Position: ORB entry (open + 0.5%)
+                    entry_price = round(today_open * 1.005, 2)
+                    stop_price  = round(entry_price - atr * GAP_ATR_STOP_MULT, 2)
+                    stop_price  = max(stop_price, round(today_open * (1 - gap_pct * 0.45), 2))
+                    risk_dollar = entry_price - stop_price
+                    if risk_dollar <= 0:
+                        continue
+                    take_profit = round(entry_price + risk_dollar * GAP_TP_RR, 2)
+
+                    # Exit proxy: target or stop or EOD close
+                    if today_high >= take_profit:
+                        gx_price  = take_profit
+                        gx_reason = "target"
+                    elif today_low <= stop_price:
+                        gx_price  = stop_price
+                        gx_reason = "stop"
+                    else:
+                        gx_price  = today_close_bar
+                        gx_reason = "eod_close"
+
+                    # Shares (risk 1% of portfolio)
+                    shares_gap = floor(_gap_mark * GAP_RISK_PCT / risk_dollar)
+                    shares_gap = min(shares_gap, floor(_gap_mark * GAP_POS_CAP / entry_price))
+                    if shares_gap < 1:
+                        continue
+                    cost_gap = shares_gap * entry_price
+                    if cost_gap > cash:
+                        continue
+
+                    pnl_gap = (gx_price - entry_price) * shares_gap
+                    pnl_pct_gap = (gx_price - entry_price) / entry_price * 100
+                    cash += pnl_gap   # net P&L (opens and closes same day)
+                    _gap_trades_today += 1
+                    _ec = "green" if pnl_gap >= 0 else "red"
+                    vprint(
+                        f"\n  [bold {_ec}]GAP-TRADE[/bold {_ec}] {ticker} {today} | "
+                        f"gap={gap_pct:.1%} vol={vol_ratio:.1f}x score={gscore} | "
+                        f"{gx_reason} | ${entry_price:.2f}→${gx_price:.2f} "
+                        f"[{_ec}]{pnl_pct_gap:+.1f}% (${pnl_gap:+,.0f})[/{_ec}]"
+                    )
+                    all_trades.append({
+                        "ticker":      ticker,
+                        "entry_date":  today.isoformat(),
+                        "exit_date":   today.isoformat(),
+                        "entry_price": round(entry_price, 2),
+                        "exit_price":  round(gx_price, 2),
+                        "shares":      shares_gap,
+                        "stop_loss":   round(stop_price, 2),
+                        "take_profit": round(take_profit, 2),
+                        "pnl_dollar":  round(pnl_gap, 2),
+                        "pnl_pct":     round(pnl_pct_gap, 2),
+                        "hold_days":   0,
+                        "exit_reason": gx_reason,
+                        "strategy":    "gap_momentum",
+                        "net_score":   gscore,
+                        "confidence":  round(min(gscore / 100.0, 1.0), 2),
+                        "signals":     [f"gap={gap_pct:.1%}", f"rvol={vol_ratio:.1f}x"],
+                    })
 
         # ── 2. Generate signals using today's close ───────────────────────────
         if len(positions) >= MAX_OPEN_POSITIONS:

@@ -11,6 +11,11 @@ KILL_SWITCH_ACTIVE = False
 DAILY_REALIZED_PNL = 0.0
 DAILY_START_VALUE  = 0.0
 
+# Intraday-specific kill switch (separate from swing daily kill switch)
+INTRADAY_REALIZED_PNL = 0.0
+INTRADAY_KILL_ACTIVE  = False
+_INTRADAY_KILL_SWITCH_PCT = -0.025  # stop new intraday entries if down 2.5%
+
 
 def init_daily_state(starting_portfolio_value: float) -> None:
     global KILL_SWITCH_ACTIVE, DAILY_REALIZED_PNL, DAILY_START_VALUE
@@ -37,6 +42,32 @@ def record_trade_pnl(pnl: float) -> None:
 
 def is_kill_switch_active() -> bool:
     return KILL_SWITCH_ACTIVE
+
+
+def record_intraday_pnl(pnl: float, portfolio_value: float) -> None:
+    """Track intraday trade P&L and activate intraday kill switch if threshold exceeded."""
+    global INTRADAY_REALIZED_PNL, INTRADAY_KILL_ACTIVE
+    INTRADAY_REALIZED_PNL += pnl
+    if portfolio_value > 0 and not INTRADAY_KILL_ACTIVE:
+        ratio = INTRADAY_REALIZED_PNL / portfolio_value
+        if ratio < _INTRADAY_KILL_SWITCH_PCT:
+            INTRADAY_KILL_ACTIVE = True
+            logger.critical(
+                f"[risk] INTRADAY KILL SWITCH — down {ratio*100:.2f}% on intraday trades "
+                f"(${INTRADAY_REALIZED_PNL:,.2f}), exceeds -{abs(_INTRADAY_KILL_SWITCH_PCT)*100:.1f}% threshold"
+            )
+
+
+def is_intraday_kill_active() -> bool:
+    return INTRADAY_KILL_ACTIVE
+
+
+def reset_intraday_state() -> None:
+    """Reset intraday P&L tracker and kill switch at start of each session."""
+    global INTRADAY_REALIZED_PNL, INTRADAY_KILL_ACTIVE
+    INTRADAY_REALIZED_PNL = 0.0
+    INTRADAY_KILL_ACTIVE  = False
+    logger.info("[risk] Intraday state reset")
 
 
 def get_vix_multiplier(vix: float) -> float:

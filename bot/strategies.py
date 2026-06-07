@@ -47,6 +47,18 @@ STRATEGY_CONFIGS = {
         "sl_atr_mult": 2.0,
         "tp_rr": 2.0,
     },
+    "gap_momentum": {
+        "description": "Pre-market gap 4-18% + catalyst + ORB breakout — same-day close",
+        "time_horizon": "intraday",
+        "sl_atr_mult": 0.8,   # tight stop — ORB low is the invalidation
+        "tp_rr": 4.0,         # 4:1 R:R — gap trades either work fast or don't
+    },
+    "orb": {
+        "description": "Opening range breakout — first 15-min high with volume surge",
+        "time_horizon": "intraday",
+        "sl_atr_mult": 1.0,
+        "tp_rr": 3.0,
+    },
 }
 
 # Confidence penalty when no clean strategy is identifiable
