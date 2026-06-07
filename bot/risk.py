@@ -183,10 +183,10 @@ def calculate_scale_in(
     return scale_in_shares
 
 
-TRAILING_ACTIVATE_PCT  = 0.06   # wait until +6% before trailing
+TRAILING_ACTIVATE_PCT  = 0.05   # wait until +5% before trailing (was 6%)
 TRAILING_TRAIL_PCT     = 0.05   # trail 5% below highest seen
 TRAIL_TIGHT_PCT        = 0.025  # tighten to 2.5% once PARTIAL_TIGHT_PCT reached
-BREAKEVEN_TRIGGER_PCT  = 0.015  # move stop to entry at +1.5% (protect small gains)
+BREAKEVEN_TRIGGER_PCT  = 0.025  # move stop to entry at +2.5% (was 1.5% — reduces noise whipsaw)
 PARTIAL_TIGHT_PCT      = 0.08   # highest_price_seen threshold to activate tight trail
 
 

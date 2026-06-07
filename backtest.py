@@ -60,8 +60,8 @@ from main import STATIC_TICKERS, SECTOR_GROUPS
 ALL_TICKERS = list(dict.fromkeys(STATIC_TICKERS + UNIVERSE))  # deduped, order preserved
 
 # ── Backtest defaults ─────────────────────────────────────────────────────────
-DEFAULT_START      = "2026-01-01"
-DEFAULT_END        = "2026-06-01"
+DEFAULT_START      = "2024-01-01"
+DEFAULT_END        = "2025-12-31"
 STARTING_CAPITAL   = 100_000.0
 MIN_NET_SCORE      = 70          # lowered from 80 — capture more breakout setups
 MAX_OPEN_POSITIONS        = 5
@@ -114,10 +114,10 @@ REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
 ADX_TREND_MIN          = 25   # strict but allows trending-market setups through
 # Trailing stop — structure-based, activates later so winners can run
-TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
+TRAIL_ACTIVATE_PCT     = 0.05   # start trailing at +5% (was 0.06)
 TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
 TRAIL_TIGHT_PCT        = 0.025  # tighten to 2.5% once +8% intraday hit
-BREAKEVEN_TRIGGER_PCT  = 0.015  # arm breakeven when CLOSE reaches +1.5% (protect small gains)
+BREAKEVEN_TRIGGER_PCT  = 0.025  # arm breakeven at +2.5% (was 0.015 — reduces noise whipsaw)
 PARTIAL_TIGHT_PCT      = 0.08   # arm tight trail when CLOSE reaches +8%
 BREAKEVEN_BUFFER       = 0.002  # stop at entry*(1-buffer) not exactly entry
 # Stale-trade breakeven
@@ -937,6 +937,17 @@ def run_backtest(
 
             # squeeze_breakout is in BAD_STRATEGIES — no guard needed here.
 
+            # ── News momentum quality guard ───────────────────────────────────
+            # news_momentum has the lowest R:R (2.0x) and is news-feed dependent.
+            # Require conf >= 0.80 and volume >= 2x to filter low-conviction entries.
+            if strategy == "news_momentum":
+                _nm_vol = float(ind.get("volume_ratio") or 0)
+                if confidence < 0.80:
+                    vprint(f"  [dim]skip {ticker} | news_momentum: conf={confidence:.2f} < 0.80[/dim]")
+                    continue
+                if _nm_vol < 2.0:
+                    vprint(f"  [dim]skip {ticker} | news_momentum: vol_ratio={_nm_vol:.2f} < 2.0x[/dim]")
+                    continue
 
             # ── Breakout guard ────────────────────────────────────────────────
             # On top of the classifier's conditions, require strong volume,
@@ -1118,10 +1129,14 @@ def run_backtest(
             if shares < 1:
                 continue
 
-            # Fixed 6% stop below actual entry price; target uses strategy R:R
-            _rr = score.get("risk_reward") or 2.5
-            stop_loss   = round(entry_price * 0.94, 2)
-            take_profit = round(entry_price * (1 + 0.06 * _rr), 2)
+            # ATR-based stop using per-strategy sl_atr_mult (mirrors classify_strategy logic)
+            _rr       = score.get("risk_reward") or 2.5
+            from bot.strategies import STRATEGY_CONFIGS as _SCFG, ATR_STOP_FLOOR as _SL_FLOOR, ATR_STOP_CAP as _SL_CAP
+            _sl_mult  = _SCFG.get(strategy, _SCFG["mixed"])["sl_atr_mult"]
+            _atr_pct  = (atr / entry_price) if entry_price > 0 else 0.02
+            _sl_pct   = max(_SL_FLOOR, min(_atr_pct * _sl_mult, _SL_CAP))
+            stop_loss   = round(entry_price * (1 - _sl_pct), 2)
+            take_profit = round(entry_price * (1 + _sl_pct * _rr), 2)
 
             cash -= cost
 

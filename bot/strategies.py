@@ -52,7 +52,8 @@ STRATEGY_CONFIGS = {
 # Confidence penalty when no clean strategy is identifiable
 MIXED_CONFIDENCE_PENALTY = 0.15
 
-FIXED_SL_PCT = 0.06  # 6% fixed stop below entry — consistent across all strategies
+ATR_STOP_FLOOR = 0.025  # never stop tighter than 2.5% — avoids noise exits on low-ATR stocks
+ATR_STOP_CAP   = 0.095  # never stop wider than 9.5% — limits max loss on extremely volatile stocks
 
 
 def classify_strategy(score_result: dict, indicators: dict) -> dict:
@@ -72,13 +73,17 @@ def classify_strategy(score_result: dict, indicators: dict) -> dict:
     rr      = cfg["tp_rr"]
     horizon = cfg["time_horizon"]
 
-    # Fixed 6% stop below entry; target scales with strategy R:R
+    # ATR-based stop: uses per-strategy sl_atr_mult with floor/cap to fit actual volatility.
+    # R:R is preserved — take profit scales proportionally with the stop distance.
+    atr_pct = (atr / cp) if cp else 0.02
+    sl_pct  = max(ATR_STOP_FLOOR, min(atr_pct * sl_mult, ATR_STOP_CAP))
+
     if action == "buy" and cp:
-        stop_loss   = round(cp * (1 - FIXED_SL_PCT), 2)
-        take_profit = round(cp * (1 + FIXED_SL_PCT * rr), 2)
+        stop_loss   = round(cp * (1 - sl_pct), 2)
+        take_profit = round(cp * (1 + sl_pct * rr), 2)
     elif action in ("short", "sell") and cp:
-        stop_loss   = round(cp * (1 + FIXED_SL_PCT), 2)
-        take_profit = round(cp * (1 - FIXED_SL_PCT * rr), 2)
+        stop_loss   = round(cp * (1 + sl_pct), 2)
+        take_profit = round(cp * (1 - sl_pct * rr), 2)
     else:
         stop_loss   = score_result.get("stop_loss")
         take_profit = score_result.get("take_profit")

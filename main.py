@@ -1015,6 +1015,39 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 continue
 
+        # ── News momentum quality guard ───────────────────────────────────────
+        # news_momentum has lowest R:R (2.0x) and relies on news feed quality.
+        # Require conf >= 0.80 and volume >= 2x to filter low-conviction entries.
+        if action == "buy" and strategy == "news_momentum":
+            _ind_nm = sig.get("_indicators", {})
+            _vol_nm = float(_ind_nm.get("volume_ratio") or 0)
+            if confidence < 0.80:
+                log_rejection(
+                    session=session, ticker=ticker,
+                    net_score=sig.get("net_score", 0), confidence=confidence,
+                    action=action, rejection_reason="news_momentum_low_confidence",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                logger.info(
+                    f"[execute] {ticker} news_momentum quality gate: "
+                    f"conf={confidence:.2f} < 0.80"
+                )
+                continue
+            if _vol_nm < 2.0:
+                log_rejection(
+                    session=session, ticker=ticker,
+                    net_score=sig.get("net_score", 0), confidence=confidence,
+                    action=action, rejection_reason="news_momentum_low_volume",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                logger.info(
+                    f"[execute] {ticker} news_momentum quality gate: "
+                    f"vol_ratio={_vol_nm:.2f} < 2.0x"
+                )
+                continue
+
         # ── Gap-chase guard: skip if stock already ran > 3% past prior close ──
         if action == "buy":
             r1d = sig.get("return_1d")
