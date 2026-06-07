@@ -47,18 +47,6 @@ STRATEGY_CONFIGS = {
         "sl_atr_mult": 2.5,    # widened from 2.0
         "tp_rr": 2.0,
     },
-    "gap_momentum": {
-        "description": "Pre-market gap 4-18% + catalyst + ORB breakout — same-day close",
-        "time_horizon": "intraday",
-        "sl_atr_mult": 1.2,    # widened from 0.8 — ORB low still the invalidation but with a buffer
-        "tp_rr": 4.0,
-    },
-    "orb": {
-        "description": "Opening range breakout — first 15-min high with volume surge",
-        "time_horizon": "intraday",
-        "sl_atr_mult": 1.5,    # widened from 1.0
-        "tp_rr": 3.0,
-    },
 }
 
 # Confidence penalty when no clean strategy is identifiable
