@@ -1276,6 +1276,56 @@ def session_premarket() -> None:
     console.print(f"[dim]Gap Down       ({len(gap_downs)}): {[(t, round(g,1)) for t,g in gap_downs]}[/dim]")
     console.print(f"[bold green]Pre-open scored decisions written to live feed.[/bold green]")
 
+    # ── Intraday gap scanner — build quality-scored ORB watchlist ─────────────
+    # Uses snapshot + news data already fetched above. The watchlist is saved to
+    # data/intraday_watchlist.json and consumed by session_continuous().
+    try:
+        from bot.intraday import scan_premarket_gappers, build_intraday_universe
+        from bot.risk     import reset_intraday_state
+
+        reset_intraday_state()
+
+        # Build indicator map from all_decisions (_indicators field) — no extra API calls
+        _intraday_ind_map = {
+            d["ticker"]: d.get("_indicators", {})
+            for d in all_decisions
+            if d.get("ticker") and d.get("_indicators")
+        }
+
+        # SPY change on the day (price vs prev_close from snapshot)
+        _spy_snap = snapshots.get("SPY", {})
+        _spy_price = _spy_snap.get("price") or 0
+        _spy_prev  = _spy_snap.get("prev_close") or 0
+        _spy_chg   = (_spy_price / _spy_prev - 1) if _spy_prev > 0 else 0.0
+
+        # ADV proxy from indicator volume data (average volume from indicator calc)
+        _adv_map = {}
+        for ticker, ind in _intraday_ind_map.items():
+            _vr = ind.get("volume_ratio") or 0
+            _lv = (snapshots.get(ticker) or {}).get("last_volume") or 0
+            if _vr > 0 and _lv > 0:
+                _adv_map[ticker] = _lv / _vr  # avg_volume = current_volume / ratio
+            else:
+                _adv_map[ticker] = 500_000  # conservative default — don't block on missing data
+
+        # Expand universe with dynamic discovery (earnings reporters + most-actives)
+        _intraday_universe = build_intraday_universe(all_tickers)
+
+        gap_candidates = scan_premarket_gappers(
+            tickers       = _intraday_universe,
+            adv_map       = _adv_map,
+            snapshots     = snapshots,
+            news_map      = news_map,
+            daily_ind_map = _intraday_ind_map,
+            spy_change_pct= _spy_chg,
+        )
+        console.print(
+            f"[bold cyan]Intraday watchlist: {len(gap_candidates)} gap candidates "
+            f"(SPY {_spy_chg:+.2%}) → data/intraday_watchlist.json[/bold cyan]"
+        )
+    except Exception as _e:
+        logger.warning(f"[premarket] Intraday gap scanner failed: {_e}", exc_info=True)
+
     from bot.logger import log_scan
     log_scan("premarket", len(all_tickers), len(all_decisions),
              0, len(gap_ups_with_news) + len(gap_ups_plain), 0)
@@ -1330,6 +1380,23 @@ def session_continuous(alpaca_client, data_client) -> None:
     ]
     if gap_catalyst_tickers:
         console.print(f"[bold yellow]Gap-catalyst tickers from pre-market: {gap_catalyst_tickers}[/bold yellow]")
+
+    # ── Load intraday gap watchlist built during pre-market ────────────────
+    from bot.intraday import (load_gap_watchlist, compute_orb, check_orb_breakout,
+                               calculate_intraday_position, should_exit_intraday,
+                               compute_intraday_vwap, compute_rvol,
+                               MAX_ENTRY_HOUR_ET, MAX_ENTRY_MINUTE_ET,
+                               HARD_CLOSE_HOUR_ET, HARD_CLOSE_MINUTE_ET,
+                               MAX_INTRADAY_POSITIONS)
+    from bot.risk import (is_intraday_kill_active, record_intraday_pnl, reset_intraday_state)
+    from bot.data import fetch_intraday_bars, fetch_snapshot
+
+    _gap_watchlist = load_gap_watchlist()
+    if _gap_watchlist:
+        console.print(
+            f"[bold cyan]Intraday watchlist loaded: {len(_gap_watchlist)} candidates "
+            f"(top: {', '.join(c['ticker'] for c in _gap_watchlist[:5])})[/bold cyan]"
+        )
 
     # ── One-time session setup ─────────────────────────────────────────────
     global _session_start_equity, _daily_loss_halt
@@ -1487,6 +1554,135 @@ def session_continuous(alpaca_client, data_client) -> None:
                         pass
             except Exception as _pe:
                 logger.warning(f"[continuous] partial exit failed for {pos['ticker']}: {_pe}")
+
+        # ── Intraday gap-and-go ORB monitoring ───────────────────────────────
+        _now_et = _et_now()
+        _orb_window_open = (
+            _now_et.hour > 9 or (_now_et.hour == 9 and _now_et.minute >= 45)
+        )  # ORB complete after 9:45 AM
+        _entry_window_open = (
+            _now_et.hour < MAX_ENTRY_HOUR_ET or
+            (_now_et.hour == MAX_ENTRY_HOUR_ET and _now_et.minute < MAX_ENTRY_MINUTE_ET)
+        )  # no new entries after 10:30 AM
+
+        if _gap_watchlist and _orb_window_open and not is_intraday_kill_active():
+            # Count existing intraday positions
+            _existing_intraday = [
+                p for p in get_open_positions(alpaca_client)
+                if p.get("time_horizon") == "intraday"
+            ]
+            _intraday_count = len(_existing_intraday)
+
+            # Monitor existing intraday positions — check VWAP exits
+            for _ipos in _existing_intraday:
+                try:
+                    _it   = _ipos["ticker"]
+                    _ibars = fetch_intraday_bars(_it, days=1)
+                    _ivwap = compute_intraday_vwap(_ibars)
+                    _isnap = fetch_snapshot(_it)
+                    _icprice = (_isnap or {}).get("price") or _ipos.get("entry_price", 0)
+                    _irvol   = compute_rvol(_ibars)
+                    _ivol_ratio = _irvol or 1.0
+                    _icheck = should_exit_intraday(
+                        position=_ipos,
+                        current_price=float(_icprice),
+                        vwap=float(_ivwap or 0),
+                        current_volume_ratio=float(_ivol_ratio),
+                        current_time_et=_now_et,
+                    )
+                    if _icheck.get("exit"):
+                        close_position_and_log(alpaca_client, _ipos, _icprice, "continuous",
+                                               status=f"intraday_{_icheck['reason']}")
+                        console.print(
+                            f"[yellow]INTRADAY EXIT: {_it} @ {_icprice:.2f} "
+                            f"— {_icheck['reason']}[/yellow]"
+                        )
+                        _pnl = (_icprice - _ipos.get("entry_price", 0)) * _ipos.get("quantity", 0)
+                        record_intraday_pnl(_pnl, portfolio_value=float(
+                            (get_open_positions(alpaca_client) and _icprice) or _icprice
+                        ))
+                        _intraday_count -= 1
+                except Exception as _ie:
+                    logger.warning(f"[main] intraday exit check failed for {_ipos.get('ticker')}: {_ie}")
+
+            # Check ORB breakouts for watchlist candidates (if entry window open)
+            if _entry_window_open and _intraday_count < MAX_INTRADAY_POSITIONS:
+                _open_tickers = {p["ticker"] for p in get_open_positions(alpaca_client)}
+                _intraday_signals = []
+
+                for _cand in _gap_watchlist:
+                    if _intraday_count + len(_intraday_signals) >= MAX_INTRADAY_POSITIONS:
+                        break
+                    _ct = _cand["ticker"]
+                    if _ct in _open_tickers:
+                        continue
+                    try:
+                        _ibars  = fetch_intraday_bars(_ct, days=1)
+                        _iorb   = compute_orb(_ibars)
+                        if not _iorb.get("orb_complete"):
+                            continue
+                        _ivwap  = compute_intraday_vwap(_ibars) or 0
+                        _isnap  = fetch_snapshot(_ct)
+                        _iprice = (_isnap or {}).get("price") or 0
+                        _ivol   = (_isnap or {}).get("last_volume") or 0
+                        _irvol  = compute_rvol(_ibars)
+
+                        # RVOL gate at entry
+                        from bot.intraday import MIN_RVOL_ENTRY
+                        if _irvol is not None and _irvol < MIN_RVOL_ENTRY:
+                            logger.debug(f"[intraday] {_ct}: RVOL={_irvol:.1f} < {MIN_RVOL_ENTRY} — skip")
+                            continue
+
+                        _ibrk = check_orb_breakout(_iprice, _ivol, _iorb, _ivwap)
+                        if not _ibrk.get("signal"):
+                            continue
+
+                        # Build synthetic signal for execute_signals()
+                        _atr     = _cand.get("atr") or (_iprice * 0.02)
+                        _ostop   = round(_iorb["orb_low"] * 0.998, 2)
+                        _orisk   = _iprice - _ostop
+                        _otgt    = round(_iprice + _orisk * 4.0, 2) if _orisk > 0 else 0
+                        _intraday_signals.append({
+                            "ticker":       _ct,
+                            "action":       "buy",
+                            "strategy":     "gap_momentum",
+                            "time_horizon": "intraday",
+                            "entry_price":  _iprice,
+                            "stop_loss":    _ostop,
+                            "take_profit":  _otgt,
+                            "confidence":   round(_cand["quality_score"] / 100.0, 2),
+                            "net_score":    _cand["quality_score"],
+                            "atr":          _atr,
+                            "signals_triggered": [f"orb_breakout", f"gap={_cand['gap_pct']:.1%}"],
+                            "reason":       _ibrk["reason"],
+                        })
+                        console.print(
+                            f"[bold green]ORB BREAKOUT: {_ct} @ {_iprice:.2f} "
+                            f"(gap={_cand['gap_pct']:.1%} score={_cand['quality_score']} "
+                            f"orb_high={_iorb['orb_high']:.2f})[/bold green]"
+                        )
+                    except Exception as _oe:
+                        logger.warning(f"[main] ORB check failed for {_ct}: {_oe}")
+
+                if _intraday_signals:
+                    execute_signals(_intraday_signals, alpaca_client, data_client, macro,
+                                    "intraday", max_trades=MAX_INTRADAY_POSITIONS)
+
+        # ── Intraday hard close at 3:30 PM ────────────────────────────────────
+        _hard_close_et = (HARD_CLOSE_HOUR_ET, HARD_CLOSE_MINUTE_ET)
+        if now_hm >= _hard_close_et:
+            _intraday_to_close = [
+                p for p in get_open_positions(alpaca_client)
+                if p.get("time_horizon") == "intraday"
+            ]
+            for _ipos in _intraday_to_close:
+                _it  = _ipos["ticker"]
+                _icp = _ipos.get("current_price") or _ipos.get("entry_price", 0)
+                close_position_and_log(alpaca_client, _ipos, _icp, "continuous",
+                                       status="intraday_hard_close_3:30pm")
+                console.print(f"[yellow]INTRADAY HARD CLOSE: {_it} @ {_icp:.2f} (3:30 PM)[/yellow]")
+                _pnl = (_icp - _ipos.get("entry_price", 0)) * _ipos.get("quantity", 0)
+                record_intraday_pnl(_pnl, portfolio_value=_icp)
 
         # ── Scalp close at 3:45 PM ─────────────────────────────────────────
         if now_hm >= SCALP_CLOSE_ET:
