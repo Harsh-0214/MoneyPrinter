@@ -60,8 +60,8 @@ from main import STATIC_TICKERS, SECTOR_GROUPS
 ALL_TICKERS = list(dict.fromkeys(STATIC_TICKERS + UNIVERSE))  # deduped, order preserved
 
 # ── Backtest defaults ─────────────────────────────────────────────────────────
-DEFAULT_START      = "2024-06-01"
-DEFAULT_END        = "2025-06-01"
+DEFAULT_START      = "2026-01-01"
+DEFAULT_END        = "2026-06-01"
 STARTING_CAPITAL   = 100_000.0
 MIN_NET_SCORE      = 75          # raised from 60 — tighter quality bar
 MAX_OPEN_POSITIONS        = 5
