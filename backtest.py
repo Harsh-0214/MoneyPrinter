@@ -365,7 +365,20 @@ def run_backtest(
                 _earnings_map[_t] = _dates
         except Exception:
             _earnings_map[_t] = set()
-    console.print(f"[green]Earnings dates loaded for {len(_earnings_map)} tickers[/green]\n")
+    console.print(f"[green]Earnings dates loaded for {len(_earnings_map)} tickers[/green]")
+
+    # ── Pre-fetch news for gap catalyst scoring ───────────────────────────────
+    # Fetches current headlines for each ticker — same sources as the live bot.
+    # For very recent backtest dates the articles will be live; for older dates
+    # the earnings-map catalyst (below) takes over since news won't match.
+    console.print("[cyan]Pre-fetching news for gap catalyst scoring…[/cyan]")
+    _gap_news_cache: dict[str, dict] = {}
+    try:
+        from bot.news import get_news_batch as _gnb
+        _gap_news_cache = _gnb(tickers, {}, api_key=os.getenv("NEWS_API_KEY", ""), max_workers=4)
+        console.print(f"[green]Gap news cache: {len(_gap_news_cache)} tickers[/green]\n")
+    except Exception as _gne:
+        console.print(f"[yellow]Gap news pre-fetch skipped ({_gne}) — earnings-only catalyst[/yellow]\n")
 
     # ── State ─────────────────────────────────────────────────────────────────
     cash      = starting_capital
@@ -710,7 +723,18 @@ def run_backtest(
                     p["shares"] * (_last_close(t, today) or p["entry_price"])
                     for t, p in positions.items()
                 )
-                for ticker in tickers:
+                # Earnings reporters go first — they're the highest-quality gap candidates.
+                # This simulates the live bot's dynamic universe (earnings reporters get
+                # priority slots in MAX_GAP_POSITIONS_DAY before plain volume movers).
+                _earn_today_set = {
+                    t for t, _eds in _earnings_map.items()
+                    if any(abs((_d - today).days) <= 1 for _d in _eds)
+                }
+                _gap_scan_order = (
+                    [t for t in tickers if t in _earn_today_set] +
+                    [t for t in tickers if t not in _earn_today_set and t != "SPY"]
+                )
+                for ticker in _gap_scan_order:
                     if ticker == "SPY":
                         continue
                     if _gap_trades_today >= MAX_GAP_POSITIONS_DAY:
@@ -760,28 +784,98 @@ def run_backtest(
                     if today_open > MAX_PRICE or today_open < MIN_PRICE:
                         continue
 
-                    # Quality score (abridged — no catalyst data in daily OHLCV proxy)
+                    # ── Full premarket quality score (mirrors bot/intraday.py) ──────
                     gscore = 0
+
+                    # 1. Gap size — 5-10% is the sweet spot for continuation
                     if 0.05 <= gap_pct <= 0.10:
                         gscore += 50
                     elif 0.04 <= gap_pct < 0.05:
                         gscore += 25
                     elif 0.10 < gap_pct <= 0.15:
-                        gscore += 35
+                        gscore += 35   # larger gap = more reversal risk
                     else:
-                        gscore += 15
+                        gscore += 15   # 15-18%: borderline
+
+                    # 2. Volume vs ADV (institutional conviction gate)
                     if vol_ratio >= 3.0:
-                        gscore += 25
+                        gscore += 25   # ≥3x RVOL: strong institutional interest
                     elif vol_ratio >= 2.0:
                         gscore += 18
+                    elif vol_ratio >= 1.5:
+                        gscore += 10
                     else:
-                        gscore += 10
+                        gscore -= 20   # <1.5x: retail noise, not institutional
+
+                    # 3. Technical context
                     if ema50 > 0 and today_open > ema50:
-                        gscore += 10
+                        gscore += 10   # above EMA50 = confirmed uptrend
                     if 50 <= rsi <= 70:
-                        gscore += 5
+                        gscore += 5    # healthy momentum, not overbought
                     elif rsi > 75:
-                        gscore -= 15
+                        gscore -= 15   # overbought = reversal risk at open
+
+                    # 4. Catalyst: earnings event (biggest gap-and-go driver, 60-70% continuation)
+                    _earn_ts   = _earnings_map.get(ticker, set())
+                    _cat_bonus = 0
+                    _cat_label = "no_catalyst"
+                    for _ced in _earn_ts:
+                        _ddiff = (_ced - today).days  # negative = past
+                        if _ddiff == 0:               # earnings released this morning (premarket)
+                            _cat_bonus = 30
+                            _cat_label = "earnings_day"
+                            break
+                        elif _ddiff == -1:             # after-hours yesterday → gap at today's open
+                            _cat_bonus = 25
+                            _cat_label = "earnings_prev_aft"
+                            break
+                        elif _ddiff == 1:              # reporting today during market hours
+                            _cat_bonus = 15
+                            _cat_label = "earnings_imminent"
+                            break
+
+                    # 5. News-based catalyst (uses pre-fetched headlines — most reliable
+                    #    for recent backtest dates; falls back to no_catalyst for older dates)
+                    if _cat_bonus == 0:
+                        _gnews = _gap_news_cache.get(ticker, {})
+                        _gpol  = float(_gnews.get("avg_polarity") or 0)
+                        _ghcnt = int(_gnews.get("headline_count") or 0)
+                        _ghdl  = " ".join(
+                            h.get("text", "") for h in (_gnews.get("top_headlines") or [])
+                        ).lower()
+                        _earn_kws = ["earnings", "beat", "surprise", "eps beat",
+                                     "record quarter", "blowout", "raised guidance"]
+                        _upgr_kws = ["upgrade", "raised target", "overweight",
+                                     "outperform", "buy rating", "price target"]
+                        if any(kw in _ghdl for kw in _earn_kws):
+                            _cat_bonus = 30
+                            _cat_label = "earnings_news"
+                        elif any(kw in _ghdl for kw in _upgr_kws):
+                            _cat_bonus = 20
+                            _cat_label = "analyst_upgrade"
+                        elif _gpol > 0.3 and _ghcnt >= 1:
+                            _cat_bonus = 15
+                            _cat_label = "strong_positive_news"
+                        elif _gpol > 0.1 and _ghcnt >= 1:
+                            _cat_bonus = 8
+                            _cat_label = "positive_news"
+
+                    gscore += _cat_bonus
+
+                    # 6. SPY 5-day trend context (same gate as live bot premarket check)
+                    _spy_5d_i = _bisect.bisect_right(_spy_dates, today) - 1
+                    _spy_5d_r = float(_spy_ret5d.iloc[_spy_5d_i]) if (_spy_ret5d is not None and _spy_5d_i >= 5) else 0
+                    if _spy_5d_r > 0.003:
+                        gscore += 5    # SPY trending up → gap tailwind
+                    elif _spy_5d_r < -0.005:
+                        gscore -= 25   # SPY sinking → macro headwind kills intraday momentum
+
+                    vprint(
+                        f"  [dim]GAP SCORE {ticker} {today}: "
+                        f"gap={gap_pct:.1%} vol={vol_ratio:.1f}x "
+                        f"cat={_cat_label}(+{_cat_bonus}) "
+                        f"spy5d={_spy_5d_r:.1%} total={gscore}[/dim]"
+                    )
 
                     if gscore < GAP_MIN_QUALITY_SCORE:
                         continue
@@ -842,7 +936,7 @@ def run_backtest(
                         "strategy":    "gap_momentum",
                         "net_score":   gscore,
                         "confidence":  round(min(gscore / 100.0, 1.0), 2),
-                        "signals":     [f"gap={gap_pct:.1%}", f"rvol={vol_ratio:.1f}x"],
+                        "signals":     [f"gap={gap_pct:.1%}", f"rvol={vol_ratio:.1f}x", f"cat={_cat_label}"],
                     })
 
         # ── 2. Generate signals using today's close ───────────────────────────
