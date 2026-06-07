@@ -621,13 +621,26 @@ def run_backtest(
             if exit_price is None:
                 unrealised_pct = (day_close - entry) / entry if entry > 0 else 0.0
                 if age_days >= STALE_EXIT_DAYS and unrealised_pct < STALE_LOSS_THRESHOLD:
-                    if pos["stop_loss"] < entry * (1 - BREAKEVEN_BUFFER):
-                        stale_stop = round(entry * (1 - BREAKEVEN_BUFFER), 2)
-                        pos["stop_loss"] = stale_stop
-                        stop = stale_stop
-                    if day_close < stop:
-                        exit_price  = day_close
-                        exit_reason = "stale_exit"
+                    # For trend_follow: skip stale exit if trend is still technically intact.
+                    # Trends take time to develop — a -1% after 3 days isn't broken, just slow.
+                    _skip_stale = False
+                    if _strat == "trend_follow":
+                        _ind_stale = ind_cache.get(ticker, {}).get(today, {})
+                        _adx_s  = float(_ind_stale.get("adx") or 0)
+                        _e50_s  = float(_ind_stale.get("ema50") or 0)
+                        _mh_s   = float(_ind_stale.get("macd_hist") or 0)
+                        _mhp_s  = float(_ind_stale.get("macd_hist_prev1") or 0)
+                        if _adx_s > 22 and _e50_s > 0 and day_close > _e50_s and _mh_s >= _mhp_s:
+                            _skip_stale = True
+                            vprint(f"  [dim]stale suppressed {ticker} | trend intact ADX={_adx_s:.0f}[/dim]")
+                    if not _skip_stale:
+                        if pos["stop_loss"] < entry * (1 - BREAKEVEN_BUFFER):
+                            stale_stop = round(entry * (1 - BREAKEVEN_BUFFER), 2)
+                            pos["stop_loss"] = stale_stop
+                            stop = stale_stop
+                        if day_close < stop:
+                            exit_price  = day_close
+                            exit_reason = "stale_exit"
 
             # ── UPDATE stops for NEXT bar — armed off today's CLOSE ───────────
             # Only runs when the trade remains open this bar.
@@ -873,6 +886,12 @@ def run_backtest(
                         f"  [dim]skip {ticker} | trend_follow: conf={confidence:.2f} < "
                         f"{TREND_FOLLOW_MIN_CONFIDENCE:.2f} (need higher conviction)[/dim]"
                     )
+                    continue
+                # Sector-regime guards: macro-sensitive sectors only trend reliably
+                # in confirmed uptrends; block them in caution/downtrend regimes.
+                _tf_sec = _SECTOR_OF.get(ticker.upper())
+                if _tf_sec in ("energy", "financials", "defense") and regime != "confirmed_uptrend":
+                    vprint(f"  [dim]skip {ticker} | trend_follow: {_tf_sec} blocked in {regime}[/dim]")
                     continue
 
             # ── Mean reversion guard ──────────────────────────────────────────

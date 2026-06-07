@@ -83,9 +83,16 @@ SECTOR_GROUPS = {
     "ai_chips":   ["NVDA", "AMD", "MRVL", "SMCI", "AVGO", "ARM"],
     "big_tech":   ["AAPL", "MSFT", "GOOGL", "META", "AMZN"],
     "crypto":     ["COIN", "MSTR", "SOFI", "RIOT", "MARA"],
-    "energy":     ["XOM", "CVX", "SLB", "OXY"],
-    "financials": ["JPM", "GS", "BAC", "MS"],
-    "healthcare": ["LLY", "UNH", "ABBV", "MRNA"],
+    "energy":     ["XOM", "CVX", "SLB", "OXY", "DVN", "COP", "EOG", "MRO", "APA",
+                   "CTRA", "VLO", "MPC", "PSX", "HAL", "FANG"],
+    "financials": ["JPM", "GS", "BAC", "MS", "WFC", "C", "AXP", "COF", "DFS",
+                   "SCHW", "BLK", "KKR", "BX", "APO"],
+    "healthcare": ["LLY", "UNH", "ABBV", "MRNA", "PFE", "JNJ", "BMY", "GILD",
+                   "BIIB", "REGN", "VRTX", "ISRG", "CVS", "MCK", "DHR",
+                   "TMDX", "GMED", "PODD", "DXCM"],
+    "defense":    ["RTX", "NOC", "LMT", "GE", "HII", "BA", "AXON", "KTOS",
+                   "LDOS", "SAIC", "CACI", "BAH", "DRS"],
+    "transport":  ["SAIA", "ODFL", "XPO", "CHRW", "EXPD", "GXO", "UPS"],
 }
 MAX_POSITIONS_PER_SECTOR = 2
 

@@ -160,6 +160,10 @@ HIGH_VOLATILITY_TICKERS = {
     "NVDA", "TSLA", "COIN", "MSTR", "SMCI", "PLTR", "AMD", "SOFI", "LI", "MDB",
     "MRNA", "AFRM", "AMC", "PLUG", "GME", "RIVN", "LCID", "ARM",
     "AVGO", "PANW", "CRM", "SNOW", "NET", "DDOG", "CRWD", "ZS", "TEAM",
+    # Medical device / diagnostics — event-driven, gap-prone
+    "TMDX", "GMED", "PODD", "DXCM", "IRTC", "INSP", "NVST",
+    # Small/mid-cap momentum with high ATR
+    "SAIA", "AXON", "KTOS", "JOBY", "ACHR", "SPCE",
 }
 
 
