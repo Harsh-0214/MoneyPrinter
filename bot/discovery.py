@@ -64,6 +64,29 @@ UNIVERSE = [
     "TSLA", "GME", "AMC", "SPCE", "JOBY", "ACHR",
     # ETFs with single-stock-like behavior (leveraged/thematic)
     "SOXL", "TQQQ", "ARKK", "LABU",
+    # Consumer discretionary — premium brands with strong breakout patterns
+    "LULU", "DECK", "ONON", "RH", "ULTA", "BKNG", "EXPE", "ABNB",
+    "F", "GM", "RACE", "TSCO", "POOL", "SFM",
+    # Industrials — high-quality compounders with trend characteristics
+    "ETN", "EMR", "PH", "ROK", "GEV", "GNRC", "AXON", "LDOS",
+    "SAIC", "CACI", "BAH", "DRS", "ACLS",
+    # Healthcare — liquid breakout candidates
+    "ELV", "HUM", "CI", "MCK", "DHR", "PODD", "TMDX",
+    "IRTC", "INSP", "ONEM", "GMED", "NVST",
+    # Financials — asset managers + exchanges
+    "KKR", "BX", "APO", "ARES", "CG", "ICE", "CME", "CBOE",
+    "SPGI", "MCO", "MSCI", "COF", "DFS",
+    # Enterprise software — high-conviction breakout names
+    "FTNT", "OKTA", "GTLB", "PCTY", "PAYC", "HUBS", "ZI",
+    "BILL", "FRSH", "BSY",
+    # Materials / specialty chemicals
+    "APD", "SHW", "PPG", "ECL", "ALB", "LTHM", "MP",
+    # Energy — diversified names with breakout history
+    "COP", "EOG", "MRO", "APA", "CTRA",
+    # Consumer staples — can produce clean breakouts in sector rotations
+    "PG", "KO", "PEP", "CL", "MDLZ", "KHC",
+    # Transportation / logistics
+    "ODFL", "SAIA", "XPO", "CHRW", "EXPD", "GXO",
 ]
 
 

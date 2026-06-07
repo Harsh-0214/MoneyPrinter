@@ -63,7 +63,7 @@ ALL_TICKERS = list(dict.fromkeys(STATIC_TICKERS + UNIVERSE))  # deduped, order p
 DEFAULT_START      = "2026-01-01"
 DEFAULT_END        = "2026-06-01"
 STARTING_CAPITAL   = 100_000.0
-MIN_NET_SCORE      = 80          # raised from 75 — fewer, higher-quality signals
+MIN_NET_SCORE      = 70          # lowered from 80 — capture more breakout setups
 MAX_OPEN_POSITIONS        = 5
 MAX_POSITION_PCT          = 0.12   # 12% cap for normal tickers
 MAX_POSITION_PCT_HIGH_VOL = 0.08   # 8% cap for gap-prone / high-vol tickers
@@ -88,7 +88,7 @@ MAX_HOLD_DAYS      = {
     "squeeze_breakout":10,
 }
 MIN_CONFIDENCE               = 0.65        # baseline gate (all strategies)
-TREND_FOLLOW_MIN_CONFIDENCE  = 0.85        # raised from 0.75 — top-tier signals only
+TREND_FOLLOW_MIN_CONFIDENCE  = 0.80        # re-enabled: strict but not zero-trade
 TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker after stop
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
@@ -112,7 +112,7 @@ CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
 # Re-entry relaxation
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
-ADX_TREND_MIN          = 28   # raised from 22 — require a genuinely strong trend, not just a hint
+ADX_TREND_MIN          = 25   # strict but allows trending-market setups through
 # Trailing stop — structure-based, activates later so winners can run
 TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
 TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
@@ -815,23 +815,23 @@ def run_backtest(
                 if adx_val is not None and adx_val < ADX_TREND_MIN:
                     vprint(f"  [dim]skip {ticker} | trend_follow: ADX={adx_val:.1f} < {ADX_TREND_MIN}[/dim]")
                     continue
-                # SPY must be rising meaningfully — index sinking means individual trends fail
+                # SPY must be rising — index sinking means individual trends fail
                 _spy_5d = float(_spy_ret5d.iloc[_bisect.bisect_right(_spy_dates, today) - 1]) if _spy_ret5d is not None and _spy_dates else None
-                if _spy_5d is not None and _spy_5d <= 0.01:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: SPY 5d return={_spy_5d:.2%} <= 1%[/dim]")
+                if _spy_5d is not None and _spy_5d <= 0.005:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: SPY 5d return={_spy_5d:.2%} <= 0.5%[/dim]")
                     continue
-                # Stock must have real recent momentum (+2% 5d) and confirmed medium-term trend (+3% 1m)
+                # Stock must have real recent momentum (+1.5% 5d) and confirmed medium-term trend (+2% 1m)
                 r5d = ind.get("return_5d")
-                if r5d is not None and r5d <= 0.02:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} <= 2%[/dim]")
+                if r5d is not None and r5d <= 0.015:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} <= 1.5%[/dim]")
                     continue
                 # Don't enter stocks already up >12% in 5 days — overextended, late entry
                 if r5d is not None and r5d > 0.12:
                     vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} > 12% overextended[/dim]")
                     continue
                 r1m = ind.get("return_1m")
-                if r1m is not None and r1m <= 0.03:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: return_1m={r1m:.2%} <= 3%[/dim]")
+                if r1m is not None and r1m <= 0.02:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: return_1m={r1m:.2%} <= 2%[/dim]")
                     continue
                 # RSI cap: tightened to 68 — don't enter stocks already extended
                 _rsi_tf = float(ind.get("rsi") or 0)
