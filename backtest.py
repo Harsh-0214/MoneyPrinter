@@ -509,6 +509,7 @@ def run_backtest(
     # ── Day loop ──────────────────────────────────────────────────────────────
     _prev_regime: str = ""
     _regime_days: dict[str, int] = {"confirmed_uptrend": 0, "caution": 0, "downtrend": 0, "shocked": 0}
+    _rejection_counts: dict[str, int] = {}  # reason → count, shown in summary when 0 trades
     for day_idx, today in enumerate(trading_days):
 
         # Portfolio value = cash + mark-to-market open positions
@@ -853,6 +854,7 @@ def run_backtest(
 
         new_entries_today = 0   # per-day counter for regime-aware entry cap
         new_signals: list[dict] = []
+        _rej: dict = _rejection_counts  # shorthand for rejection counters
 
         for ticker in tickers:
             if ticker in positions:
@@ -884,20 +886,25 @@ def run_backtest(
 
             # Apply same gates as live bot (no Claude)
             if action != "buy":
+                _rej["action_hold"] = _rej.get("action_hold", 0) + 1
                 continue
             if net < effective_min_net:
+                _rej["net_score_low"] = _rej.get("net_score_low", 0) + 1
                 continue
             if confidence < MIN_CONFIDENCE:
                 vprint(f"  [dim]skip {ticker} {strategy} net={net} | conf={confidence:.2f} < {MIN_CONFIDENCE:.2f}[/dim]")
+                _rej["confidence_low"] = _rej.get("confidence_low", 0) + 1
                 continue
             # Regime gate: 0.0 = no new longs (downtrend or shock)
             if regime_mult == 0.0:
                 vprint(f"  [dim]skip {ticker} {strategy} net={net} | regime={regime} blocks all longs[/dim]")
+                _rej["regime_block"] = _rej.get("regime_block", 0) + 1
                 continue
 
             # Skip strategies with no coherent edge
             if filter_bad_strategies and strategy in _bad_strategies:
                 vprint(f"  [dim]skip {ticker} | bad_strategy={strategy} net={net} conf={confidence:.2f}[/dim]")
+                _rej["bad_strategy"] = _rej.get("bad_strategy", 0) + 1
                 continue
 
             # ── Strategy-regime alignment ─────────────────────────────────────
@@ -906,6 +913,7 @@ def run_backtest(
             # a high rate of false signals and fast stops.
             if strategy in ("trend_follow", "squeeze_breakout", "mean_reversion") and regime != "confirmed_uptrend":
                 vprint(f"  [dim]skip {ticker} | {strategy} blocked in {regime}[/dim]")
+                _rej["strat_regime_block"] = _rej.get("strat_regime_block", 0) + 1
                 continue
 
             # trend_follow guards
@@ -1305,11 +1313,12 @@ def run_backtest(
 
     final_equity = cash
     return {
-        "trades":       all_trades,
-        "equity_curve": equity_curve,
-        "final_equity": final_equity,
-        "start_equity": starting_capital,
-        "regime_days":  _regime_days,
+        "trades":           all_trades,
+        "equity_curve":     equity_curve,
+        "final_equity":     final_equity,
+        "start_equity":     starting_capital,
+        "regime_days":      _regime_days,
+        "rejection_counts": _rejection_counts,
     }
 
 
@@ -1325,7 +1334,8 @@ def compute_stats(results: dict) -> dict:
 
     if not trades:
         rd = results.get("regime_days", {})
-        return {"total_trades": 0, "regime_days": rd}
+        rc = results.get("rejection_counts", {})
+        return {"total_trades": 0, "regime_days": rd, "rejection_counts": rc}
 
     pnls    = [t["pnl_dollar"] for t in trades]
     wins    = [p for p in pnls if p > 0]
@@ -1490,6 +1500,18 @@ def print_report(results: dict, stats: dict, args) -> None:
                   f"shocked={rd.get('shocked',0)}[/red]  "
                   f"({100*rd.get('confirmed_uptrend',0)//total_d}% up)")
     console.print(t)
+
+    # ── Rejection breakdown (shown when 0 trades to diagnose why) ─────────────
+    rc = results.get("rejection_counts", stats.get("rejection_counts", {}))
+    if rc and stats.get("total_trades", 0) == 0:
+        rt = Table(title="[red]Signal Rejection Breakdown (0 trades)[/red]",
+                   box=box.SIMPLE)
+        rt.add_column("Reason")
+        rt.add_column("Count", justify="right")
+        total_considered = sum(rc.values()) or 1
+        for reason, cnt in sorted(rc.items(), key=lambda x: -x[1]):
+            rt.add_row(reason, f"{cnt:,}  ({100*cnt//total_considered}%)")
+        console.print(rt)
 
     # ── Strategy breakdown ────────────────────────────────────────────────────
     by_s = stats.get("by_strategy", {})

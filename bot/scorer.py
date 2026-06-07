@@ -926,8 +926,11 @@ def score_ticker(
                 bull = round(bull / 1.25)
                 logger.info(f"[{ticker}] Hype override: trigger boost cancelled due to velocity penalty {total_conf_adj:.2f}")
         else:
-            net = round(net * 0.65)
-            bull = round(bull * 0.65)
+            # Mild penalty — no crossover TODAY doesn't mean setup is bad, it means
+            # the trigger happened a few days ago. 0.65 required pre-score ≥ 108 to
+            # pass min_net=70, effectively blocking all non-same-day-crossover trades.
+            net = round(net * 0.80)
+            bull = round(bull * 0.80)
             signals_against.append("no_fresh_trigger")
             logger.info(
                 f"[{ticker}] NO fresh bullish triggers "
