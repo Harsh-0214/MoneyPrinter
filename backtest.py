@@ -88,6 +88,7 @@ MAX_HOLD_DAYS      = {
     "squeeze_breakout": 4,   # exit fast if expansion stalls
 }
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
+TICKER_STOP_COOLDOWN  = 7       # days to wait before re-entering a ticker after a stop/stale exit
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
 # squeeze_breakout disabled: 0% win rate even after strict momentum filtering.
@@ -358,6 +359,7 @@ def run_backtest(
     all_trades: list[dict]     = []
     equity_curve: list[dict]   = []
     last_entry_day: date | None  = None  # tracks last day an entry was made
+    ticker_last_stop: dict[str, date] = {}  # ticker -> date of last stop/stale exit
 
     # Macro approximation: SPY above EMA50 = bull, else caution
     spy_bars = bars_map.get("SPY")
@@ -671,6 +673,8 @@ def run_backtest(
                 }
                 all_trades.append(trade_rec)
                 closed_tickers.append(ticker)
+                if exit_reason in ("stop", "stale_exit"):
+                    ticker_last_stop[ticker] = today
 
         for t in closed_tickers:
             del positions[t]
@@ -720,6 +724,11 @@ def run_backtest(
                 continue
             if ticker == "SPY":
                 continue
+            # Per-ticker cooldown: don't re-enter a ticker for TICKER_STOP_COOLDOWN days
+            # after it was stopped out — prevents double-dipping into the same failing trade
+            if ticker in ticker_last_stop:
+                if (today - ticker_last_stop[ticker]).days < TICKER_STOP_COOLDOWN:
+                    continue
 
             # Cache lookup — indicators + triggers already pre-computed
             ind = ind_cache.get(ticker, {}).get(today)
@@ -775,10 +784,19 @@ def run_backtest(
                 if r5d is not None and r5d <= 0:
                     vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} <= 0[/dim]")
                     continue
+                # Don't enter stocks already up >12% in 5 days — overextended, late entry
+                if r5d is not None and r5d > 0.12:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} > 12% overextended[/dim]")
+                    continue
                 r1m = ind.get("return_1m")
                 if r1m is not None and r1m <= 0:
                     logger.debug(f"[backtest] {ticker} trend_follow skip {today}: return_1m={r1m:.2%} <= 0")
                     vprint(f"  [dim]skip {ticker} | trend_follow: return_1m={r1m:.2%} <= 0[/dim]")
+                    continue
+                # RSI cap: don't enter into extreme overbought — elevated mean-reversion risk
+                _rsi_tf = float(ind.get("rsi") or 0)
+                if _rsi_tf > 74:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: RSI={_rsi_tf:.1f} > 74 overbought[/dim]")
                     continue
                 # MACD must be accelerating (momentum building, not fading)
                 _mh   = ind.get("macd_hist") or 0
@@ -792,6 +810,11 @@ def run_backtest(
                 if "bb_squeeze_detected" in _sigs and "kc_breakout_bull" in _sigs:
                     logger.debug(f"[backtest] {ticker} trend_follow skip {today}: squeeze reclassification guard")
                     vprint(f"  [dim]skip {ticker} | trend_follow: squeeze reclassification guard[/dim]")
+                    continue
+                # Pre-earnings guard: don't open within 5 calendar days of earnings binary event
+                _tf_earn = _earnings_map.get(ticker, set())
+                if any(1 <= (ed - today).days <= 6 for ed in _tf_earn):
+                    vprint(f"  [dim]skip {ticker} | trend_follow: earnings within 5d[/dim]")
                     continue
 
             # ── Mean reversion guard ──────────────────────────────────────────
@@ -820,6 +843,16 @@ def run_backtest(
                     continue
                 if _mh <= _mh_p:
                     logger.debug(f"[backtest] {ticker} mean_rev skip {today}: MACD not improving ({_mh:.3f} <= {_mh_p:.3f})")
+                    continue
+                # Long mean_reversion: RSI must be genuinely oversold, not ambiguous mid-range
+                # RSI 45-70 is "normal"; only RSI<45 represents real oversold territory
+                if action == "buy" and _rsi >= 45:
+                    vprint(f"  [dim]skip {ticker} | mean_rev long: RSI={_rsi:.1f} >= 45 not oversold[/dim]")
+                    continue
+                # Knife-catch guard: if down >25% in 3 months it's fundamental, not technical
+                _r3m = ind.get("return_3m")
+                if _r3m is not None and _r3m < -0.25:
+                    vprint(f"  [dim]skip {ticker} | mean_rev: return_3m={_r3m:.1%} < -25% knife_catch[/dim]")
                     continue
                 _mr_open = sum(1 for p in positions.values() if p.get("strategy") == "mean_reversion")
                 if _mr_open >= MAX_MEAN_REV_POSITIONS:
@@ -922,6 +955,24 @@ def run_backtest(
                     f"open={entry_price:.2f} signal_close={signal_day_close:.2f}"
                 )
                 continue
+
+            # ── Breakout failed-break rejection ───────────────────────────────
+            # If next-day open is already below the breakout level the break failed
+            # overnight — don't chase it (fill is no better than a broken setup).
+            if strategy == "breakout":
+                _R1_brk   = float(ind.get("R1") or 0)
+                _w52h_brk = float(ind.get("wk52_high") or 0)
+                _brk_lvl  = (
+                    max(_R1_brk, _w52h_brk * 0.99)
+                    if _w52h_brk > 0 and _R1_brk > 0
+                    else (_R1_brk or _w52h_brk * 0.99)
+                )
+                if _brk_lvl > 0 and entry_price < _brk_lvl * 0.99:
+                    vprint(
+                        f"  [dim]skip {ticker} | breakout: entry ${entry_price:.2f} < "
+                        f"level ${_brk_lvl:.2f} (failed break on open)[/dim]"
+                    )
+                    continue
 
             # ── Gap-down guard for momentum strategies ────────────────────────
             if strategy in ("trend_follow", "breakout", "squeeze_breakout"):

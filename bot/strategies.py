@@ -152,7 +152,8 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     trend_follow_ok = (ema_aligned and in_uptrend
                        and adx > 22
                        and macd_hist > 0
-                       and macd_hist > macd_hist_p1)
+                       and macd_hist > macd_hist_p1
+                       and rsi < 74)   # don't classify as trend if overbought
 
     # ── Mean reversion: both RSI AND BB extreme + MACD improving
     # MACD improving (hist rising toward zero) confirms the bottom is forming —
