@@ -107,8 +107,8 @@ REGIME_RISK_MULT = {
     "caution":           0.5,   # one condition met (XOR) → half risk, 1 entry/day
     "downtrend":         0.3,   # Change 4: half-size entries allowed (was 0.0); SPY shock still hard-zeros
 }
-SPY_SHOCK_THRESHOLD  = -0.04   # 5-day SPY return <= -4% overrides regime → 0.0
-CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
+SPY_SHOCK_THRESHOLD  = -0.06   # 5-day SPY return <= -6% overrides regime → 0.0 (was -4%; -4% froze bot for weeks after the Apr-2025 tariff crash during valid recovery days)
+CAUTION_MAX_ENTRIES  =  2      # max new entries per day in "caution" (was 1 — too restrictive in recovery)
 # Re-entry relaxation
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
@@ -508,6 +508,7 @@ def run_backtest(
 
     # ── Day loop ──────────────────────────────────────────────────────────────
     _prev_regime: str = ""
+    _regime_days: dict[str, int] = {"confirmed_uptrend": 0, "caution": 0, "downtrend": 0, "shocked": 0}
     for day_idx, today in enumerate(trading_days):
 
         # Portfolio value = cash + mark-to-market open positions
@@ -525,6 +526,9 @@ def run_backtest(
             regime_mult = 0.0  # revert to hard block when flag is off
         if _spy_stressed(today):
             regime_mult = 0.0  # SPY 5-day shock always hard-zeros regardless of fix_regime_deploy
+            _regime_days["shocked"] += 1
+        else:
+            _regime_days[regime] = _regime_days.get(regime, 0) + 1
 
         if regime != _prev_regime:
             _rc = {"confirmed_uptrend": "green", "caution": "yellow", "downtrend": "red"}.get(regime, "white")
@@ -1305,6 +1309,7 @@ def run_backtest(
         "equity_curve": equity_curve,
         "final_equity": final_equity,
         "start_equity": starting_capital,
+        "regime_days":  _regime_days,
     }
 
 
@@ -1319,7 +1324,8 @@ def compute_stats(results: dict) -> dict:
     end_eq = results["final_equity"]
 
     if not trades:
-        return {"total_trades": 0}
+        rd = results.get("regime_days", {})
+        return {"total_trades": 0, "regime_days": rd}
 
     pnls    = [t["pnl_dollar"] for t in trades]
     wins    = [p for p in pnls if p > 0]
@@ -1415,6 +1421,7 @@ def compute_stats(results: dict) -> dict:
                                "win_rate": round(len([x for x in v if x > 0]) / len(v) * 100, 1)}
                            for s, v in by_strategy.items()},
         "monthly_pnl":    {k: round(v, 2) for k, v in sorted(monthly.items())},
+        "regime_days":    results.get("regime_days", {}),
     }
 
 
@@ -1473,6 +1480,15 @@ def print_report(results: dict, stats: dict, args) -> None:
     t.add_row("Worst trade",            f"[red]{_pct(stats.get('worst_trade_pct', 0))}[/red]")
     t.add_row("Avg realized risk/trade",f"{stats.get('avg_realized_risk_pct', 0):.3f}% of capital")
     t.add_row("Avg capital deployed",   f"{stats.get('avg_deployed_pct', 0):.1f}%")
+    rd = results.get("regime_days", stats.get("regime_days", {}))
+    if rd:
+        total_d = sum(rd.values()) or 1
+        t.add_row("Regime days",
+                  f"[green]uptrend={rd.get('confirmed_uptrend',0)}[/green]  "
+                  f"[yellow]caution={rd.get('caution',0)}[/yellow]  "
+                  f"[red]downtrend={rd.get('downtrend',0)}  "
+                  f"shocked={rd.get('shocked',0)}[/red]  "
+                  f"({100*rd.get('confirmed_uptrend',0)//total_d}% up)")
     console.print(t)
 
     # ── Strategy breakdown ────────────────────────────────────────────────────
@@ -1600,7 +1616,7 @@ def save_equity_csv(equity_curve: list[dict], path: Path) -> None:
     if not equity_curve:
         return
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["date", "equity"])
+        writer = csv.DictWriter(f, fieldnames=["date", "equity", "cash"])
         writer.writeheader()
         writer.writerows(equity_curve)
     console.print(f"[green]Equity curve exported → {path}[/green]")
