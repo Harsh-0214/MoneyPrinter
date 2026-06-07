@@ -63,13 +63,14 @@ ALL_TICKERS = list(dict.fromkeys(STATIC_TICKERS + UNIVERSE))  # deduped, order p
 DEFAULT_START      = "2026-01-01"
 DEFAULT_END        = "2026-06-01"
 STARTING_CAPITAL   = 100_000.0
-MIN_NET_SCORE      = 75          # raised from 60 — tighter quality bar
+MIN_NET_SCORE      = 80          # raised from 75 — fewer, higher-quality signals
 MAX_OPEN_POSITIONS        = 5
 MAX_POSITION_PCT          = 0.12   # 12% cap for normal tickers
 MAX_POSITION_PCT_HIGH_VOL = 0.08   # 8% cap for gap-prone / high-vol tickers
 RISK_PCT                  = 0.02   # 2% portfolio risk per trade
 ATR_STOP_MULT_MAP  = {"scalp": 1.5, "swing": 2.0, "mixed": 2.0}  # per-horizon stop distance
 MAX_PER_SECTOR     = 2
+MAX_PER_SECTOR_ENERGY = 1       # energy stocks are oil-correlated — cap tighter
 # Time exits: profitable trades get extended hold — cut losers, let winners run
 TIME_EXIT_PROFIT_THRESHOLD = 0.03  # if unrealised >= 3%, extend hold
 TIME_EXIT_EXTEND_DAYS      = 5     # extra calendar days before hard exit
@@ -766,10 +767,10 @@ def run_backtest(
                 continue
 
             # ── Strategy-regime alignment ─────────────────────────────────────
-            # squeeze_breakout and mean_reversion are range/momentum plays that
-            # only work when the broad market is clearly trending up. In caution
-            # or correction regimes they produce a high rate of false signals.
-            if strategy in ("squeeze_breakout", "mean_reversion") and regime != "confirmed_uptrend":
+            # trend_follow, squeeze_breakout, and mean_reversion only work in a
+            # clearly trending broad market. In caution or downtrend they produce
+            # a high rate of false signals and fast stops.
+            if strategy in ("trend_follow", "squeeze_breakout", "mean_reversion") and regime != "confirmed_uptrend":
                 vprint(f"  [dim]skip {ticker} | {strategy} blocked in {regime}[/dim]")
                 continue
 
@@ -778,6 +779,11 @@ def run_backtest(
                 adx_val = ind.get("adx")
                 if adx_val is not None and adx_val < ADX_TREND_MIN:
                     vprint(f"  [dim]skip {ticker} | trend_follow: ADX={adx_val:.1f} < {ADX_TREND_MIN}[/dim]")
+                    continue
+                # SPY must itself be trending up — if the index is sinking, individual trend trades fail
+                _spy_5d = float(_spy_ret5d.iloc[_bisect.bisect_right(_spy_dates, today) - 1]) if _spy_ret5d is not None and _spy_dates else None
+                if _spy_5d is not None and _spy_5d <= 0:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: SPY 5d return={_spy_5d:.2%} <= 0[/dim]")
                     continue
                 # 5-day AND 1-month return must be positive — medium-term trend confirmed
                 r5d = ind.get("return_5d")
@@ -908,9 +914,10 @@ def run_backtest(
                     )
                     continue
 
-            # Sector cap
+            # Sector cap — energy gets a tighter cap (oil-correlated, cluster losses)
             sec = _SECTOR_OF.get(ticker.upper())
-            if sec and sector_counts.get(sec, 0) >= MAX_PER_SECTOR:
+            _sec_cap = MAX_PER_SECTOR_ENERGY if sec == "energy" else MAX_PER_SECTOR
+            if sec and sector_counts.get(sec, 0) >= _sec_cap:
                 continue
 
             new_signals.append(score)
