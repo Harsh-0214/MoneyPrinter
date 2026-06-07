@@ -68,7 +68,7 @@ MAX_OPEN_POSITIONS        = 5
 MAX_POSITION_PCT          = 0.12   # 12% cap for normal tickers
 MAX_POSITION_PCT_HIGH_VOL = 0.08   # 8% cap for gap-prone / high-vol tickers
 RISK_PCT                  = 0.02   # 2% portfolio risk per trade
-ATR_STOP_MULT_MAP  = {"scalp": 2.0, "swing": 2.5, "mixed": 2.5, "intraday": 1.2}  # per-horizon stop distance
+ATR_STOP_MULT_MAP  = {"scalp": 4.0, "swing": 5.0, "mixed": 5.0, "intraday": 2.4}  # per-horizon stop distance
 MAX_PER_SECTOR     = 2
 MAX_PER_SECTOR_ENERGY = 1       # energy stocks are oil-correlated — cap tighter
 # Time exits: profitable trades get extended hold — cut losers, let winners run

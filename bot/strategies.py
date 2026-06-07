@@ -8,43 +8,43 @@ STRATEGY_CONFIGS = {
     "trend_follow": {
         "description": "EMA9>EMA21>EMA50 + ADX>22 + MACD hist positive + volume confirm — 2-5 day swing",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.5,    # widened from 2.0 — trends need room to breathe through pullbacks
+        "sl_atr_mult": 5.0,
         "tp_rr": 3.0,
     },
     "mean_reversion": {
         "description": "RSI<38 or >68 AND BB extreme, ADX<22, not in downtrend — same-day to 2-day scalp",
         "time_horizon": "scalp",
-        "sl_atr_mult": 2.0,    # widened from 1.5 — oversold bounces need room to form
+        "sl_atr_mult": 4.0,
         "tp_rr": 2.0,
     },
     "breakout": {
         "description": "Level break + in_uptrend + vol>=2x + ADX>=25 — 1-4 day momentum",
         "time_horizon": "swing",
-        "sl_atr_mult": 1.8,    # widened from 1.2 — was too tight, noise was stopping out valid breaks
+        "sl_atr_mult": 3.6,
         "tp_rr": 3.5,
     },
     "breakdown": {
         "description": "Price breaks S1 with volume — 1-3 day momentum",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.0,    # widened from 1.5
+        "sl_atr_mult": 4.0,
         "tp_rr": 2.5,
     },
     "squeeze_breakout": {
         "description": "BB squeeze + KC breakout + vol>=1.5x + not in downtrend — 2-4 day expansion play",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.0,    # widened from 1.5
+        "sl_atr_mult": 4.0,
         "tp_rr": 3.0,
     },
     "news_momentum": {
         "description": "Catalyst-driven move with trend confirmation — same-day scalp",
         "time_horizon": "scalp",
-        "sl_atr_mult": 2.0,    # widened from 1.5
+        "sl_atr_mult": 4.0,
         "tp_rr": 2.0,
     },
     "mixed": {
         "description": "Mixed signals — no dominant pattern, short hold only",
         "time_horizon": "swing",
-        "sl_atr_mult": 2.5,    # widened from 2.0
+        "sl_atr_mult": 5.0,
         "tp_rr": 2.0,
     },
 }
