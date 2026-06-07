@@ -63,7 +63,7 @@ ALL_TICKERS = list(dict.fromkeys(STATIC_TICKERS + UNIVERSE))  # deduped, order p
 DEFAULT_START      = "2024-01-01"
 DEFAULT_END        = "2025-12-31"
 STARTING_CAPITAL   = 100_000.0
-MIN_NET_SCORE      = 70          # lowered from 80 — capture more breakout setups
+MIN_NET_SCORE      = 60          # lowered from 70 — breakout at 70 produced only 11 trades/5mo
 MAX_OPEN_POSITIONS        = 5
 MAX_POSITION_PCT          = 0.18   # 18% cap — raised from 12% so risk-based sizing can reach ~1.5% realized risk
 MAX_POSITION_PCT_HIGH_VOL = 0.10   # 10% cap for gap-prone / high-vol tickers (was 8%)
@@ -95,7 +95,7 @@ TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker
 # squeeze_breakout disabled: 0% win rate even after strict momentum filtering.
 # In a declining market, KC breakouts are bull traps. These setups must not
 # bleed into trend_follow via reclassification — disable at strategy level.
-BAD_STRATEGIES         = {"mixed", "squeeze_breakout"}
+BAD_STRATEGIES         = {"mixed", "squeeze_breakout", "trend_follow"}
 # High-volatility detection — data-driven, no hardcoded ticker list (Change 9)
 HIGH_VOL_ATR_PCT       = 0.05   # atr/price >= 5%: whippy daily range
 HIGH_VOL_PRICE_MAX     = 5.00   # price < $5: gap/slip risk
