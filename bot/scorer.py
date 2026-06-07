@@ -60,18 +60,27 @@ def get_fundamental_quality(ticker: str) -> dict:
     eps_surprise_pct = None
     eps_actual = None
 
+    def _sf(v):
+        """Safe float — yfinance occasionally returns strings for numeric fields."""
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
     try:
         info = yf.Ticker(ticker).info or {}
 
-        revenue_growth      = info.get("revenueGrowth")
-        short_pct           = info.get("shortPercentOfFloat")
-        institutional_pct   = (info.get("institutionsPercentHeld")
-                                or info.get("institutionPercentHeld"))
-        eps_actual          = info.get("trailingEps")
-        eps_estimate        = info.get("epsCurrentYear")
-        forward_pe          = info.get("forwardPE")
-        trailing_pe         = info.get("trailingPE")
-        total_revenue       = info.get("totalRevenue")
+        revenue_growth      = _sf(info.get("revenueGrowth"))
+        short_pct           = _sf(info.get("shortPercentOfFloat"))
+        institutional_pct   = _sf(info.get("institutionsPercentHeld")
+                                   or info.get("institutionPercentHeld"))
+        eps_actual          = _sf(info.get("trailingEps"))
+        eps_estimate        = _sf(info.get("epsCurrentYear"))
+        forward_pe          = _sf(info.get("forwardPE"))
+        trailing_pe         = _sf(info.get("trailingPE"))
+        total_revenue       = _sf(info.get("totalRevenue"))
 
         # Revenue growth signals
         if revenue_growth is not None:

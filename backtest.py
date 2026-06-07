@@ -360,6 +360,8 @@ def run_backtest(
     # through a binary gap event.
     console.print("[cyan]Pre-fetching earnings dates…[/cyan]")
     import yfinance as _yf
+    import logging as _logging
+    _logging.getLogger("yfinance").setLevel(_logging.CRITICAL)  # suppress ETF "no earnings" noise
     _earnings_map: dict[str, set] = {}
     for _t in tickers:
         if _t == "SPY":
@@ -936,10 +938,13 @@ def run_backtest(
                 if _vol_tf < 1.5:
                     vprint(f"  [dim]skip {ticker} | trend_follow: vol_ratio={_vol_tf:.2f} < 1.5[/dim]")
                     continue
-                # MACD must be accelerating (momentum building, not fading)
-                _mh   = ind.get("macd_hist") or 0
-                _mh_p = ind.get("macd_hist_prev1") or 0
-                if _mh <= _mh_p:
+                # MACD must be accelerating (momentum building, not fading).
+                # Use explicit None check — `or 0` treats 0.0 as missing and would
+                # always skip when MACD hist is exactly zero (crossed signal line).
+                # If either value is absent, skip the check rather than defaulting 0<=0.
+                _mh   = ind.get("macd_hist")
+                _mh_p = ind.get("macd_hist_prev1")
+                if _mh is not None and _mh_p is not None and float(_mh) <= float(_mh_p):
                     logger.debug(f"[backtest] {ticker} trend_follow skip {today}: MACD not accelerating ({_mh:.3f} <= {_mh_p:.3f})")
                     vprint(f"  [dim]skip {ticker} | trend_follow: MACD_hist {_mh:.3f} not > prev {_mh_p:.3f}[/dim]")
                     continue
