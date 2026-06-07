@@ -88,7 +88,7 @@ MAX_HOLD_DAYS      = {
     "squeeze_breakout":10,
 }
 MIN_CONFIDENCE               = 0.65        # baseline gate (all strategies)
-TREND_FOLLOW_MIN_CONFIDENCE  = 0.75        # trend_follow needs higher conviction
+TREND_FOLLOW_MIN_CONFIDENCE  = 0.85        # raised from 0.75 — top-tier signals only
 TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker after stop
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
@@ -112,7 +112,7 @@ CAUTION_MAX_ENTRIES  =  1      # max new entries per day in "caution"
 # Re-entry relaxation
 REENTRY_SILENCE_DAYS   = 7
 REENTRY_NET_REDUCTION  = 5
-ADX_TREND_MIN          = 22   # smooth bull trends run ADX 18-26; MACD accel is the real quality gate
+ADX_TREND_MIN          = 28   # raised from 22 — require a genuinely strong trend, not just a hint
 # Trailing stop — structure-based, activates later so winners can run
 TRAIL_ACTIVATE_PCT     = 0.06   # don't trail until +6% proven
 TRAIL_GIVEBACK_PCT     = 0.05   # trail 5% below highest seen
@@ -815,29 +815,33 @@ def run_backtest(
                 if adx_val is not None and adx_val < ADX_TREND_MIN:
                     vprint(f"  [dim]skip {ticker} | trend_follow: ADX={adx_val:.1f} < {ADX_TREND_MIN}[/dim]")
                     continue
-                # SPY must itself be trending up — if the index is sinking, individual trend trades fail
+                # SPY must be rising meaningfully — index sinking means individual trends fail
                 _spy_5d = float(_spy_ret5d.iloc[_bisect.bisect_right(_spy_dates, today) - 1]) if _spy_ret5d is not None and _spy_dates else None
-                if _spy_5d is not None and _spy_5d <= 0:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: SPY 5d return={_spy_5d:.2%} <= 0[/dim]")
+                if _spy_5d is not None and _spy_5d <= 0.01:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: SPY 5d return={_spy_5d:.2%} <= 1%[/dim]")
                     continue
-                # 5-day AND 1-month return must be positive — medium-term trend confirmed
+                # Stock must have real recent momentum (+2% 5d) and confirmed medium-term trend (+3% 1m)
                 r5d = ind.get("return_5d")
-                if r5d is not None and r5d <= 0:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} <= 0[/dim]")
+                if r5d is not None and r5d <= 0.02:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} <= 2%[/dim]")
                     continue
                 # Don't enter stocks already up >12% in 5 days — overextended, late entry
                 if r5d is not None and r5d > 0.12:
                     vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} > 12% overextended[/dim]")
                     continue
                 r1m = ind.get("return_1m")
-                if r1m is not None and r1m <= 0:
-                    logger.debug(f"[backtest] {ticker} trend_follow skip {today}: return_1m={r1m:.2%} <= 0")
-                    vprint(f"  [dim]skip {ticker} | trend_follow: return_1m={r1m:.2%} <= 0[/dim]")
+                if r1m is not None and r1m <= 0.03:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: return_1m={r1m:.2%} <= 3%[/dim]")
                     continue
-                # RSI cap: don't enter into extreme overbought — elevated mean-reversion risk
+                # RSI cap: tightened to 68 — don't enter stocks already extended
                 _rsi_tf = float(ind.get("rsi") or 0)
-                if _rsi_tf > 74:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: RSI={_rsi_tf:.1f} > 74 overbought[/dim]")
+                if _rsi_tf > 68:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: RSI={_rsi_tf:.1f} > 68 overbought[/dim]")
+                    continue
+                # Volume confirmation: require institutional participation
+                _vol_tf = float(ind.get("volume_ratio") or 0)
+                if _vol_tf < 1.5:
+                    vprint(f"  [dim]skip {ticker} | trend_follow: vol_ratio={_vol_tf:.2f} < 1.5[/dim]")
                     continue
                 # MACD must be accelerating (momentum building, not fading)
                 _mh   = ind.get("macd_hist") or 0
