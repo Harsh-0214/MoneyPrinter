@@ -155,7 +155,13 @@ def load_all_bars(tickers: list[str], start: date, end: date) -> dict[str, pd.Da
                   f"({fetch_start} → {end})…[/cyan]")
     days_needed = (end - fetch_start).days + 10
     bars = fetch_daily_bars_batch(tickers, days=days_needed)
+
+    failed = [t for t in tickers if t not in bars]
     console.print(f"[green]Loaded {len(bars)}/{len(tickers)} tickers[/green]")
+    if failed:
+        console.print(f"[yellow]  Data load FAILED for {len(failed)} tickers: "
+                      f"{', '.join(failed[:20])}{'…' if len(failed)>20 else ''}[/yellow]")
+        logger.warning(f"[backtest] bars missing for: {failed}")
     return bars
 
 
@@ -326,6 +332,11 @@ def run_backtest(
 
     console.print(f"[cyan]Simulating {len(trading_days)} trading days "
                   f"({trading_days[0]} → {trading_days[-1]})[/cyan]")
+    console.print(
+        f"[dim]Thresholds: min_net={min_net}  min_conf={MIN_CONFIDENCE}  "
+        f"bad_strategies={sorted(BAD_STRATEGIES)}  "
+        f"reentry_relax={reentry_relax}[/dim]"
+    )
 
     # ── Pre-compute all indicators (parallel, replaces per-day per-ticker calls) ─
     ind_cache = precompute_all_indicators(tickers, bars_map, trading_days)
@@ -479,6 +490,31 @@ def run_backtest(
         if cut < 0:
             return None
         return dm[sd[cut]]["C"]
+
+    # ── Trace log setup ───────────────────────────────────────────────────────
+    import csv as _csv
+    import os as _os
+    _os.makedirs("backtest_output", exist_ok=True)
+    _trace_path = f"backtest_output/trace_{start}_{end}.csv"
+    _trace_file = open(_trace_path, "w", newline="")
+    _trace_w    = _csv.writer(_trace_file)
+    _trace_w.writerow(["date", "ticker", "bull", "bear", "net", "conf",
+                        "action", "strategy", "gate", "gate_detail"])
+    console.print(f"[cyan]Trace log: {_trace_path}[/cyan]")
+
+    # Net-score distribution for action_hold signals
+    _net_dist: dict[str, int] = {}
+    # Up to 5 examples per gate
+    _gate_examples: dict[str, list[str]] = {}
+    # Rejection counters
+    _rej: dict[str, int] = {}
+
+    def _record(today, ticker, bull, bear, net, conf, action, strategy, gate, detail=""):
+        _trace_w.writerow([today, ticker, f"{bull:.0f}", f"{bear:.0f}", net,
+                            f"{conf:.3f}", action, strategy, gate, detail])
+        ex = _gate_examples.setdefault(gate, [])
+        if len(ex) < 5:
+            ex.append(f"{today} {ticker} net={net} conf={conf:.2f} strat={strategy} | {detail}")
 
     # ── Day loop ──────────────────────────────────────────────────────────────
     _prev_regime: str = ""
@@ -782,6 +818,8 @@ def run_backtest(
             # Cache lookup — indicators + triggers already pre-computed
             ind = ind_cache.get(ticker, {}).get(today)
             if ind is None or ind.get("error"):
+                err = (ind or {}).get("error", "no_cache_entry")
+                _rej[f"ind_error:{err}"] = _rej.get(f"ind_error:{err}", 0) + 1
                 continue
 
             try:
@@ -789,29 +827,53 @@ def run_backtest(
                 score = classify_strategy(score, ind)
             except Exception as e:
                 logger.debug(f"[backtest] scorer failed {ticker} on {today}: {e}")
+                _rej["scorer_exception"] = _rej.get("scorer_exception", 0) + 1
                 continue
 
             action     = score.get("action", "hold")
             net        = score.get("net_score", 0)
             confidence = score.get("confidence", 0.0)
             strategy   = score.get("strategy", "")
+            _bull_sc   = score.get("bull_score", 0)
+            _bear_sc   = score.get("bear_score", 0)
 
             # Apply same gates as live bot (no Claude)
             if action != "buy":
+                _rej["action_hold"] = _rej.get("action_hold", 0) + 1
+                _bkt = f"net_{(net//10)*10}-{(net//10)*10+9}" if net >= 0 else "net_negative"
+                _net_dist[_bkt] = _net_dist.get(_bkt, 0) + 1
+                _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                        action, strategy, "action_hold", f"action={action}")
                 continue
             if net < effective_min_net:
+                _rej["net_score_low"] = _rej.get("net_score_low", 0) + 1
+                _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                        action, strategy, "net_low",
+                        f"net={net} < eff_min={effective_min_net}")
                 continue
             if confidence < MIN_CONFIDENCE:
                 vprint(f"  [dim]skip {ticker} {strategy} net={net} | conf={confidence:.2f} < {MIN_CONFIDENCE:.2f}[/dim]")
+                _rej["confidence_low"] = _rej.get("confidence_low", 0) + 1
+                _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                        action, strategy, "conf_low",
+                        f"conf={confidence:.3f} < {MIN_CONFIDENCE}")
                 continue
             # Regime gate: 0.0 = no new longs (downtrend or shock)
             if regime_mult == 0.0:
                 vprint(f"  [dim]skip {ticker} {strategy} net={net} | regime={regime} blocks all longs[/dim]")
+                _rej["regime_block"] = _rej.get("regime_block", 0) + 1
+                _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                        action, strategy, "regime_block",
+                        f"regime={regime} regime_mult=0.0")
                 continue
 
             # Skip strategies with no coherent edge
             if filter_bad_strategies and strategy in BAD_STRATEGIES:
                 vprint(f"  [dim]skip {ticker} | bad_strategy={strategy} net={net} conf={confidence:.2f}[/dim]")
+                _rej["bad_strategy"] = _rej.get("bad_strategy", 0) + 1
+                _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                        action, strategy, "bad_strategy",
+                        f"strategy={strategy}")
                 continue
 
             # ── Strategy-regime alignment ─────────────────────────────────────
@@ -820,6 +882,10 @@ def run_backtest(
             # a high rate of false signals and fast stops.
             if strategy in ("trend_follow", "squeeze_breakout", "mean_reversion") and regime != "confirmed_uptrend":
                 vprint(f"  [dim]skip {ticker} | {strategy} blocked in {regime}[/dim]")
+                _rej["strat_regime_block"] = _rej.get("strat_regime_block", 0) + 1
+                _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                        action, strategy, "strat_regime_block",
+                        f"{strategy} blocked in {regime}")
                 continue
 
             # trend_follow guards
@@ -909,30 +975,55 @@ def run_backtest(
                 _mh_p  = ind.get("macd_hist_prev1") or 0
                 if _cp > 0 and _e50 > 0 and _e200 > 0 and _cp < _e50 and _cp < _e200:
                     logger.debug(f"[backtest] {ticker} mean_rev skip {today}: downtrend")
+                    _rej["mean_rev:downtrend"] = _rej.get("mean_rev:downtrend", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "mean_rev:downtrend",
+                            f"price={_cp:.2f} ema50={_e50:.2f} ema200={_e200:.2f}")
                     continue
                 if _adx > MEAN_REV_MAX_ADX:
                     logger.debug(f"[backtest] {ticker} mean_rev skip {today}: trending adx={_adx:.1f}")
+                    _rej["mean_rev:trending"] = _rej.get("mean_rev:trending", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "mean_rev:trending",
+                            f"adx={_adx:.1f} > {MEAN_REV_MAX_ADX}")
                     continue
                 _rsi_extreme = _rsi < 30 or _rsi > 70
                 _bb_extreme  = _bb_pb is not None and (_bb_pb < 0.15 or _bb_pb > 0.85)
                 if not (_rsi_extreme and _bb_extreme):
                     logger.debug(f"[backtest] {ticker} mean_rev skip {today}: not extreme rsi={_rsi:.1f} bb={_bb_pb}")
+                    _rej["mean_rev:not_extreme"] = _rej.get("mean_rev:not_extreme", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "mean_rev:not_extreme",
+                            f"rsi={_rsi:.1f} bb_pctb={_bb_pb}")
                     continue
                 if _mh <= _mh_p:
                     logger.debug(f"[backtest] {ticker} mean_rev skip {today}: MACD not improving ({_mh:.3f} <= {_mh_p:.3f})")
+                    _rej["mean_rev:macd_not_improving"] = _rej.get("mean_rev:macd_not_improving", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "mean_rev:macd_not_improving",
+                            f"macd_hist={_mh:.3f} prev={_mh_p:.3f}")
                     continue
                 # Long mean_reversion: RSI must be genuinely oversold, not ambiguous mid-range
                 # RSI 45-70 is "normal"; only RSI<45 represents real oversold territory
                 if action == "buy" and _rsi >= 45:
                     vprint(f"  [dim]skip {ticker} | mean_rev long: RSI={_rsi:.1f} >= 45 not oversold[/dim]")
+                    _rej["mean_rev:rsi_not_oversold"] = _rej.get("mean_rev:rsi_not_oversold", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "mean_rev:rsi_not_oversold",
+                            f"rsi={_rsi:.1f} >= 45")
                     continue
                 # Knife-catch guard: if down >25% in 3 months it's fundamental, not technical
                 _r3m = ind.get("return_3m")
                 if _r3m is not None and _r3m < -0.25:
                     vprint(f"  [dim]skip {ticker} | mean_rev: return_3m={_r3m:.1%} < -25% knife_catch[/dim]")
+                    _rej["mean_rev:knife_catch"] = _rej.get("mean_rev:knife_catch", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "mean_rev:knife_catch",
+                            f"return_3m={_r3m:.1%}")
                     continue
                 _mr_open = sum(1 for p in positions.values() if p.get("strategy") == "mean_reversion")
                 if _mr_open >= MAX_MEAN_REV_POSITIONS:
+                    _rej["mean_rev:cap"] = _rej.get("mean_rev:cap", 0) + 1
                     continue
 
             # squeeze_breakout is in BAD_STRATEGIES — no guard needed here.
@@ -944,9 +1035,17 @@ def run_backtest(
                 _nm_vol = float(ind.get("volume_ratio") or 0)
                 if confidence < 0.80:
                     vprint(f"  [dim]skip {ticker} | news_momentum: conf={confidence:.2f} < 0.80[/dim]")
+                    _rej["news:conf_low"] = _rej.get("news:conf_low", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "news:conf_low",
+                            f"conf={confidence:.3f} < 0.80")
                     continue
                 if _nm_vol < 2.0:
                     vprint(f"  [dim]skip {ticker} | news_momentum: vol_ratio={_nm_vol:.2f} < 2.0x[/dim]")
+                    _rej["news:vol_low"] = _rej.get("news:vol_low", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "news:vol_low",
+                            f"vol_ratio={_nm_vol:.2f} < 2.0x")
                     continue
 
             # ── Breakout guard ────────────────────────────────────────────────
@@ -994,14 +1093,22 @@ def run_backtest(
                     logger.debug(
                         f"[backtest] {ticker} breakout skip {today}: {_skip_reason}"
                     )
+                    _rej["breakout:quality"] = _rej.get("breakout:quality", 0) + 1
+                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                            action, strategy, "breakout:quality", _skip_reason)
                     continue
 
             # Sector cap — energy gets a tighter cap (oil-correlated, cluster losses)
             sec = _SECTOR_OF.get(ticker.upper())
             _sec_cap = MAX_PER_SECTOR_ENERGY if sec == "energy" else MAX_PER_SECTOR
             if sec and sector_counts.get(sec, 0) >= _sec_cap:
+                _rej["sector_cap"] = _rej.get("sector_cap", 0) + 1
+                _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                        action, strategy, "sector_cap", f"sector={sec}")
                 continue
 
+            _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
+                    action, strategy, "queued", "passed all gates")
             new_signals.append(score)
 
         # Rank by confidence, take top N to fill remaining slots
@@ -1159,6 +1266,11 @@ def run_backtest(
             }
             last_entry_day = next_day  # reset silence counter
             new_entries_today += 1
+            _rej["entered"] = _rej.get("entered", 0) + 1
+            _record(today, ticker, score.get("bull_score", 0), score.get("bear_score", 0),
+                    net, confidence, action, strategy, "entered",
+                    f"exec={next_day} entry={entry_price:.2f} stop={stop_loss:.2f} "
+                    f"target={take_profit:.2f} shares={shares}")
             _risk_pct_entry = (entry_price - stop_loss) / entry_price * 100 if entry_price > 0 else 0
             _top_sigs = score.get("signals_triggered", [])[:6]
             vprint(
@@ -1179,6 +1291,11 @@ def run_backtest(
             )
             if _top_sigs:
                 vprint(f"     [dim]signals: {', '.join(_top_sigs)}[/dim]")
+
+    # ── Close trace log ───────────────────────────────────────────────────────
+    _trace_file.close()
+    console.print(f"[cyan]Trace written → {_trace_path} "
+                  f"({sum(_rej.values()):,} signals logged)[/cyan]")
 
     # ── Close any remaining open positions at end date ────────────────────────
     final_day = trading_days[-1] if trading_days else end
@@ -1208,10 +1325,14 @@ def run_backtest(
 
     final_equity = cash
     return {
-        "trades":       all_trades,
-        "equity_curve": equity_curve,
-        "final_equity": final_equity,
-        "start_equity": starting_capital,
+        "trades":           all_trades,
+        "equity_curve":     equity_curve,
+        "final_equity":     final_equity,
+        "start_equity":     starting_capital,
+        "rejection_counts": _rej,
+        "net_distribution": _net_dist,
+        "gate_examples":    _gate_examples,
+        "trace_path":       _trace_path,
     }
 
 
@@ -1226,7 +1347,12 @@ def compute_stats(results: dict) -> dict:
     end_eq = results["final_equity"]
 
     if not trades:
-        return {"total_trades": 0}
+        return {
+            "total_trades":    0,
+            "rejection_counts": results.get("rejection_counts", {}),
+            "net_distribution": results.get("net_distribution", {}),
+            "gate_examples":    results.get("gate_examples", {}),
+        }
 
     pnls    = [t["pnl_dollar"] for t in trades]
     wins    = [p for p in pnls if p > 0]
@@ -1348,6 +1474,49 @@ def print_report(results: dict, stats: dict, args) -> None:
     t.add_row("Best trade",        f"[green]{_pct(stats.get('best_trade_pct', 0))}[/green]")
     t.add_row("Worst trade",       f"[red]{_pct(stats.get('worst_trade_pct', 0))}[/red]")
     console.print(t)
+
+    # ── Rejection breakdown (always shown) ────────────────────────────────────
+    rc = results.get("rejection_counts", stats.get("rejection_counts", {}))
+    if rc:
+        title_color = "red" if stats.get("total_trades", 0) == 0 else "cyan"
+        rt = Table(title=f"[{title_color}]Signal Gate Breakdown[/{title_color}]",
+                   box=box.SIMPLE)
+        rt.add_column("Gate / Reason")
+        rt.add_column("Count", justify="right")
+        rt.add_column("%", justify="right")
+        total_considered = sum(rc.values()) or 1
+        for reason, cnt in sorted(rc.items(), key=lambda x: -x[1]):
+            pct = 100 * cnt // total_considered
+            color = "green" if reason == "entered" else ("yellow" if pct >= 10 else "")
+            row_str = f"[{color}]{cnt:,}[/{color}]" if color else f"{cnt:,}"
+            rt.add_row(reason, row_str, f"{pct}%")
+        console.print(rt)
+
+    # ── Net score distribution for action_hold signals ─────────────────────
+    nd = results.get("net_distribution", stats.get("net_distribution", {}))
+    if nd:
+        nt = Table(title="[dim]Net Score Distribution (action=hold signals)[/dim]",
+                   box=box.SIMPLE)
+        nt.add_column("Net Bucket")
+        nt.add_column("Count", justify="right")
+        for bkt, cnt in sorted(nd.items(), key=lambda x: x[0]):
+            nt.add_row(bkt, f"{cnt:,}")
+        console.print(nt)
+
+    # ── Gate examples (up to 5 per gate) ──────────────────────────────────
+    ge = results.get("gate_examples", stats.get("gate_examples", {}))
+    if ge:
+        console.print("\n[dim]── Gate Examples (first 5 per gate) ──[/dim]")
+        for gate in sorted(ge.keys()):
+            examples = ge[gate]
+            console.print(f"  [yellow]{gate}[/yellow]:")
+            for ex in examples:
+                console.print(f"    {ex}")
+
+    # ── Trace log path ─────────────────────────────────────────────────────
+    tp = results.get("trace_path")
+    if tp:
+        console.print(f"\n[dim]Full trace log: {tp}[/dim]")
 
     # ── Strategy breakdown ────────────────────────────────────────────────────
     by_s = stats.get("by_strategy", {})
