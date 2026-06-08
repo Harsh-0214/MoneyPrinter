@@ -873,8 +873,8 @@ def execute_signals(signals: list, alpaca_client, data_client,
             except Exception as _cap_err:
                 logger.warning(f"[execute] caution cap check failed: {_cap_err}")
 
-        # ── breakout + squeeze_breakout disabled ─────────────────────────
-        if action == "buy" and strategy in ("breakout", "squeeze_breakout"):
+        # ── breakdown + squeeze_breakout disabled ────────────────────────
+        if action == "buy" and strategy in ("breakdown", "squeeze_breakout"):
             log_rejection(
                 session=session, ticker=ticker,
                 net_score=sig.get("net_score", 0), confidence=confidence,
@@ -997,6 +997,28 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 continue
 
+        # ── Gap-down guard for breakout ────────────────────────────────────
+        if action == "buy" and strategy == "breakout":
+            r1d = sig.get("return_1d")
+            if r1d is not None and r1d < 0 and entry_price > 0:
+                prev_close = entry_price / (1 + r1d)
+                if (prev_close - entry_price) > atr:
+                    log_rejection(
+                        session=session,
+                        ticker=ticker,
+                        net_score=sig.get("net_score", 0),
+                        confidence=confidence,
+                        action=action,
+                        rejection_reason="gap_down",
+                        bull_score=sig.get("bull_score", 0),
+                        bear_score=sig.get("bear_score", 0),
+                        strategy=strategy,
+                    )
+                    logger.info(
+                        f"[execute] {ticker} gap-down guard: price={entry_price:.2f} "
+                        f"prev_close={prev_close:.2f} drop={prev_close-entry_price:.2f} atr={atr:.2f}"
+                    )
+                    continue
 
         # ── Stale signal latency guard ─────────────────────────────────────
         signal_age = _time.time() - sig.get("scored_at", _time.time())

@@ -92,7 +92,7 @@ MIN_CONFIDENCE               = 0.60        # aligns with scorer MIN_CONFIDENCE_B
 TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker after stop
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
-BAD_STRATEGIES         = {"trend_follow", "mixed", "breakout", "squeeze_breakout"}
+BAD_STRATEGIES         = {"trend_follow", "mixed", "breakdown", "squeeze_breakout"}
 # High-volatility detection — data-driven, no hardcoded ticker list (Change 9)
 HIGH_VOL_ATR_PCT       = 0.05   # atr/price >= 5%: whippy daily range
 HIGH_VOL_PRICE_MAX     = 5.00   # price < $5: gap/slip risk
