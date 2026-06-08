@@ -52,7 +52,7 @@ STATIC_TICKERS = (
     + WATCHLIST["trade"]["financials"]
     + WATCHLIST["trade"]["energy"]
 )
-MACRO_TICKERS = WATCHLIST["macro_context_only"]
+
 COMPANY_NAMES = WATCHLIST["company_names"]
 DRY_RUN       = os.getenv("DRY_RUN", "true").lower() == "true"
 
@@ -160,7 +160,6 @@ def _quick_news_recheck(ticker: str) -> bool:
 
 def _rescore_open_positions(tickers, alpaca_client, data_client, dry_run: bool) -> None:
     """Re-score all open buy positions and exit early if thesis is broken (net < 20)."""
-    import time as _time
     from bot.indicators import get_indicators
     from bot.scorer import score_ticker
     from bot.logger import get_open_trades, update_trade_exit
@@ -545,7 +544,6 @@ def execute_signals(signals: list, alpaca_client, data_client,
     Submit orders for the top-N signals by confidence.
     Skips duplicates (ticker already has an open position in the DB).
     """
-    import time as _time
     global _session_start_equity, _daily_loss_halt
 
     from bot.logger import log_trade, log_rejection
@@ -1335,7 +1333,6 @@ def session_continuous(alpaca_client, data_client) -> None:
       - First cycle (9:30-9:45 AM): treated as market_open — wider signal net
       - 3:45 PM onward: close all scalps, check signal flips, then exit loop
     """
-    import time as _time
     from datetime import datetime, timezone, timedelta
     from zoneinfo import ZoneInfo
     from bot.portfolio import (check_stops, check_targets, check_time_exits,

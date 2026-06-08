@@ -471,38 +471,6 @@ def run_backtest(
             return None
         return dm[sd[cut]]["C"]
 
-    # Pre-build date-keyed OHLCV lookup for all tickers — replaces all per-day
-    # lambda-mask operations (O(n) each) with O(1) dict lookups.
-    console.print("[cyan]Building OHLCV date index…[/cyan]")
-    ohlcv_by_date: dict[str, dict[date, dict]] = {}
-    for t, df in bars_map.items():
-        day_map: dict[date, dict] = {}
-        for ts, row in df.iterrows():
-            d = ts.date() if hasattr(ts, "date") else ts
-            day_map[d] = {
-                "O": float(row["Open"]),
-                "H": float(row["High"]),
-                "L": float(row["Low"]),
-                "C": float(row["Close"]),
-            }
-        ohlcv_by_date[t] = day_map
-
-    # For mark-to-market, also build cumulative close (last close on or before date)
-    # by storing sorted dates per ticker for bisect lookups
-    sorted_dates_by_ticker: dict[str, list[date]] = {
-        t: sorted(dm.keys()) for t, dm in ohlcv_by_date.items()
-    }
-
-    def _last_close(ticker: str, as_of: date) -> float | None:
-        dm = ohlcv_by_date.get(ticker)
-        sd = sorted_dates_by_ticker.get(ticker)
-        if not dm or not sd:
-            return None
-        cut = _bisect.bisect_right(sd, as_of) - 1
-        if cut < 0:
-            return None
-        return dm[sd[cut]]["C"]
-
     # ── Day loop ──────────────────────────────────────────────────────────────
     _prev_regime: str = ""
     _regime_days: dict[str, int] = {"confirmed_uptrend": 0, "caution": 0, "downtrend": 0, "shocked": 0}
