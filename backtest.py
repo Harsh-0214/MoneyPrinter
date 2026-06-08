@@ -63,7 +63,7 @@ ALL_TICKERS = list(dict.fromkeys(STATIC_TICKERS + UNIVERSE))  # deduped, order p
 DEFAULT_START      = "2024-01-01"
 DEFAULT_END        = "2025-12-31"
 STARTING_CAPITAL   = 100_000.0
-MIN_NET_SCORE      = 70          # baseline; use --min-net to override
+MIN_NET_SCORE      = 60          # aligns with scorer MIN_NET_SCORE_BUY=60; use --min-net to override
 MAX_OPEN_POSITIONS        = 5
 MAX_POSITION_PCT          = 0.18   # 18% cap — raised from 12% so risk-based sizing can reach ~1.5% realized risk
 MAX_POSITION_PCT_HIGH_VOL = 0.10   # 10% cap for gap-prone / high-vol tickers (was 8%)
@@ -87,7 +87,7 @@ MAX_HOLD_DAYS      = {
     "breakdown":       14,
     "squeeze_breakout":10,
 }
-MIN_CONFIDENCE               = 0.65        # baseline gate (all strategies)
+MIN_CONFIDENCE               = 0.60        # aligns with scorer MIN_CONFIDENCE_BUY=0.60
 TREND_FOLLOW_MIN_CONFIDENCE  = 0.80        # re-enabled: strict but not zero-trade
 TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker after stop
 

@@ -159,8 +159,8 @@ def get_fundamental_quality(ticker: str) -> dict:
     return result
 
 # ── Trading thresholds ─────────────────────────────────────────────────────
-MIN_NET_SCORE_BUY      = 65    # strong conviction required
-MIN_CONFIDENCE_BUY     = 0.65  # conf = net/100, matches net>=65
+MIN_NET_SCORE_BUY      = 60    # matches backtest MIN_NET_SCORE; quality gates provide additional filtering
+MIN_CONFIDENCE_BUY     = 0.60  # conf = net/100, matches net>=60
 MIN_NET_SCORE_SHORT    = 70    # shorts need strong conviction, especially in bull markets
 MIN_CONFIDENCE_SHORT   = 0.70  # shorts are riskier
 
@@ -921,10 +921,10 @@ def score_ticker(
         else:
             # Mild penalty for no same-day trigger — ongoing trends don't fire fresh
             # crossovers every day but are still valid entries. 0.65 was a near-block
-            # (needed raw ≥108), 0.80 still too harsh (raw ≥88). 0.90 requires raw ≥78
-            # which strong setups clear while filtering genuinely weak signals.
-            net = round(net * 0.90)
-            bull = round(bull * 0.90)
+            # (needed raw ≥108), 0.80 still too harsh (raw ≥88). 0.90 requires raw ≥73
+            # for min=65 (too strict for late-stage trends). 0.95 requires raw ≥64.
+            net = round(net * 0.95)
+            bull = round(bull * 0.95)
             signals_against.append("no_fresh_trigger")
             logger.info(
                 f"[{ticker}] NO fresh bullish triggers "
