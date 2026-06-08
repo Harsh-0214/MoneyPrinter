@@ -153,15 +153,27 @@ def fetch_snapshots_batch(tickers: list[str]) -> dict[str, dict]:
         return {}
 
 
-def _fetch_daily_bars_yfinance(tickers: list[str], days: int = 365) -> dict[str, pd.DataFrame]:
+def _fetch_daily_bars_yfinance(
+    tickers: list[str],
+    days: int = 365,
+    start=None,
+    end=None,
+) -> dict[str, pd.DataFrame]:
     """yfinance fallback for fetch_daily_bars_batch — used when Alpaca credentials are absent."""
     try:
         import yfinance as yf
         from datetime import date as date_cls
-        end_dt   = datetime.now(timezone.utc)
-        start_dt = end_dt - timedelta(days=days)
-        start_str = start_dt.strftime("%Y-%m-%d")
-        end_str   = end_dt.strftime("%Y-%m-%d")
+        if start is not None and end is not None:
+            # Explicit window: use caller-supplied dates. Add one day to end so the
+            # yfinance [start, end) half-open interval includes the end date itself.
+            start_str = start.strftime("%Y-%m-%d") if hasattr(start, "strftime") else str(start)
+            end_inc   = end + timedelta(days=1)
+            end_str   = end_inc.strftime("%Y-%m-%d") if hasattr(end_inc, "strftime") else str(end_inc)
+        else:
+            end_dt    = datetime.now(timezone.utc)
+            start_dt  = end_dt - timedelta(days=days)
+            start_str = start_dt.strftime("%Y-%m-%d")
+            end_str   = end_dt.strftime("%Y-%m-%d")
         batch_size = 50  # yfinance handles ~50 symbols comfortably per call
         result: dict[str, pd.DataFrame] = {}
         for i in range(0, len(tickers), batch_size):
@@ -206,30 +218,50 @@ def _fetch_daily_bars_yfinance(tickers: list[str], days: int = 365) -> dict[str,
         return {}
 
 
-def fetch_daily_bars_batch(tickers: list[str], days: int = 365) -> dict[str, pd.DataFrame]:
+def fetch_daily_bars_batch(
+    tickers: list[str],
+    days: int = 365,
+    start=None,
+    end=None,
+) -> dict[str, pd.DataFrame]:
     """
     Fetch daily bars for multiple tickers.
     Tries Alpaca first; falls back to yfinance when credentials are absent.
     Returns dict of ticker -> DataFrame (Open/High/Low/Close/Volume, date-indexed).
     Missing/failed tickers are absent from the result.
+
+    When start and end are provided (date objects), the fetch covers that exact
+    window regardless of today. When omitted, behavior is anchored to now (live bot).
     """
     if not tickers:
         return {}
     # Check if Alpaca credentials are configured before attempting
     if not (os.environ.get("ALPACA_API_KEY") and os.environ.get("ALPACA_SECRET_KEY")):
         logger.info("[data] No Alpaca credentials — using yfinance fallback")
-        return _fetch_daily_bars_yfinance(tickers, days)
+        return _fetch_daily_bars_yfinance(tickers, days, start=start, end=end)
     try:
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
         from alpaca.data.enums import Adjustment
+        from datetime import datetime as _dt
         client = get_data_client()
-        req = StockBarsRequest(
-            symbol_or_symbols=tickers,
-            timeframe=TimeFrame.Day,
-            start=datetime.now(timezone.utc) - timedelta(days=days),
-            adjustment=Adjustment.ALL,
-        )
+        if start is not None and end is not None:
+            _req_start = _dt(start.year, start.month, start.day, tzinfo=timezone.utc)
+            _req_end   = _dt(end.year,   end.month,   end.day,   tzinfo=timezone.utc) + timedelta(days=1)
+            req = StockBarsRequest(
+                symbol_or_symbols=tickers,
+                timeframe=TimeFrame.Day,
+                start=_req_start,
+                end=_req_end,
+                adjustment=Adjustment.ALL,
+            )
+        else:
+            req = StockBarsRequest(
+                symbol_or_symbols=tickers,
+                timeframe=TimeFrame.Day,
+                start=datetime.now(timezone.utc) - timedelta(days=days),
+                adjustment=Adjustment.ALL,
+            )
         bars = client.get_stock_bars(req)
         bars_data = (bars.data or {}) if bars and hasattr(bars, "data") else {}
         result = {}
@@ -241,11 +273,11 @@ def fetch_daily_bars_batch(tickers: list[str], days: int = 365) -> dict[str, pd.
                     result[ticker] = df
         if not result:
             logger.warning("[data] Alpaca returned no data — trying yfinance fallback")
-            return _fetch_daily_bars_yfinance(tickers, days)
+            return _fetch_daily_bars_yfinance(tickers, days, start=start, end=end)
         return result
     except Exception as e:
         logger.warning(f"[data] batch daily bars failed: {e} — trying yfinance fallback")
-        return _fetch_daily_bars_yfinance(tickers, days)
+        return _fetch_daily_bars_yfinance(tickers, days, start=start, end=end)
 
 
 def fetch_vix(days: int = 5) -> Optional[pd.DataFrame]:
