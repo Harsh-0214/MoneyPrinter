@@ -330,13 +330,15 @@ def get_macro_context() -> dict:
             else:
                 macro["spy_regime"]      = "downtrend"
                 macro["bearish_market"]  = True
-                macro["regime_mult"]     = 0.0
+                macro["regime_mult"]     = 0.3   # matches backtest REGIME_RISK_MULT: half-size, not blocked
 
         # SPY 5-day shock gate — overrides regime_mult to 0.0
+        # Threshold -6% matches backtest SPY_SHOCK_THRESHOLD (-4% froze the bot
+        # for weeks after the Apr-2025 crash during valid recovery days).
         r5d = spy_ind.get("return_5d")
         if r5d is not None:
             macro["spy_5d_return"] = round(float(r5d), 4)
-            macro["spy_stressed"]  = float(r5d) <= -0.04   # >4% drop in 5 days
+            macro["spy_stressed"]  = float(r5d) <= -0.06   # >6% drop in 5 days
             if macro["spy_stressed"]:
                 macro["regime_mult"] = 0.0
                 logger.warning(
@@ -363,8 +365,8 @@ def run_full_scan(session: str, macro_context: dict,
     """
     Score all tickers and return actionable signal list.
 
-    Applies SPY trend filter: if bearish_market=True, all buy signals are
-    dropped and only shorts with confidence > 0.80 pass through.
+    Applies SPY trend filter (matches backtest): longs are hard-blocked only
+    on a SPY 5-day shock; caution/downtrend trade at reduced size via regime_mult.
     """
     from bot.indicators import get_indicators_batch
     from bot.news        import get_news_batch
@@ -374,12 +376,12 @@ def run_full_scan(session: str, macro_context: dict,
     NEWS_API_KEY    = os.getenv("NEWS_API_KEY", "")
     bearish_market  = macro_context.get("bearish_market", False)
 
-    if bearish_market:
-        console.print("[bold red]Downtrend regime (SPY below EMA50+EMA200) — BUY signals suppressed[/bold red]")
-    elif macro_context.get("spy_stressed"):
-        console.print("[bold yellow]SPY shock (5d drop >4%) — BUY signals will be blocked at execution[/bold yellow]")
+    if macro_context.get("spy_stressed"):
+        console.print("[bold yellow]SPY shock (5d drop >6%) — BUY signals will be blocked at execution[/bold yellow]")
+    elif bearish_market:
+        console.print("[bold red]Downtrend regime (SPY below EMA50+EMA200) — 0.3x half-size longs allowed[/bold red]")
     elif macro_context.get("spy_regime") == "caution":
-        console.print("[bold yellow]Caution regime — half risk sizing, max 1 new entry today[/bold yellow]")
+        console.print("[bold yellow]Caution regime — half risk sizing, max 2 new entries today[/bold yellow]")
 
     # ── Fetch live Alpaca positions once ──────────────────────────────────────
     live_positions: dict = {}   # {ticker: position_dict}
@@ -441,8 +443,12 @@ def run_full_scan(session: str, macro_context: dict,
         confidence = score.get("confidence", 0.0)
 
         # ── SPY trend filter ───────────────────────────────────────────────
-        if bearish_market and action == "buy":
-            logger.info(f"[{ticker}] buy suppressed — bearish market")
+        # Matches backtest: longs are hard-blocked ONLY on a SPY 5-day shock
+        # (regime_mult==0.0). A plain downtrend is handled by 0.3x position
+        # sizing (regime_mult), not a hard block, so the bot keeps trading at
+        # reduced size in weak tapes exactly as simulated.
+        if macro_context.get("spy_stressed") and action == "buy":
+            logger.info(f"[{ticker}] buy suppressed — SPY 5-day shock")
             action = "hold"
             score["action"] = "hold"
 
@@ -468,10 +474,11 @@ def run_full_scan(session: str, macro_context: dict,
 
     # ── Net-score pre-filter: only send qualifying signals to Claude ──────────
     # Held positions always pass (needed for exit/add evaluation).
-    # New entries must meet MIN_NET_SCORE (75) — aligns live bot with backtest.
+    # New entries must meet MIN_NET_SCORE (60) — matches backtest MIN_NET_SCORE
+    # and the scorer's MIN_NET_SCORE_BUY so the live deterministic floor == sim.
     # Exception: mean-reversion oversold longs are validated by the scorer's
     # dedicated override, not by net (a trend-following net suppresses them).
-    MIN_NET_SCORE = 75
+    MIN_NET_SCORE = 60
     held_tickers  = set(live_positions.keys())
     signals_all   = [
         s for s in signals_all
@@ -495,8 +502,10 @@ def run_full_scan(session: str, macro_context: dict,
         action     = score.get("action", "hold")
         confidence = score.get("confidence", 0.0)
 
-        # Re-apply strategy/confidence gates after AI changes
-        if action == "buy" and (confidence < 0.65 or score.get("strategy") == "mixed"):
+        # Re-apply strategy/confidence gates after AI changes.
+        # 0.60 floor matches backtest MIN_CONFIDENCE / scorer MIN_CONFIDENCE_BUY.
+        # mixed is always blocked (no coherent edge), same as backtest BAD_STRATEGIES.
+        if action == "buy" and (confidence < 0.60 or score.get("strategy") == "mixed"):
             action = "hold"
             score["action"] = "hold"
         elif action in ("short", "sell") and confidence < 0.70:
@@ -853,14 +862,15 @@ def execute_signals(signals: list, alpaca_client, data_client,
             )
             continue
 
-        # ── Caution per-day entry cap (max 1 new long per day) ────────────
+        # ── Caution per-day entry cap (max 2 new longs per day) ────────────
+        # Matches backtest CAUTION_MAX_ENTRIES = 2.
         if action == "buy" and macro_context.get("spy_regime") == "caution":
             try:
                 from bot.logger import get_trades_today as _gtt
                 _today_buys = sum(1 for t in _gtt()
                                   if t.get("action") == "buy"
                                   and t.get("status") in ("open", "dry_run", "filled"))
-                if _today_buys >= 1:
+                if _today_buys >= 2:
                     log_rejection(
                         session=session,
                         ticker=ticker,
@@ -992,6 +1002,23 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 logger.info(
                     f"[execute] {ticker} gap-chase guard: return_1d={r1d:.2%} > 3%"
                 )
+                continue
+
+        # ── Breakout momentum guard (mirror backtest) ──────────────────────
+        # The classifier already enforces vol>=2x, ADX>=25, uptrend. The backtest
+        # additionally requires a positive MACD histogram — a level break without
+        # momentum behind it tends to fail. Add it here for live/sim parity.
+        if action == "buy" and strategy == "breakout":
+            _bk_mh = float(sig.get("_indicators", {}).get("macd_hist") or 0)
+            if _bk_mh <= 0:
+                log_rejection(
+                    session=session, ticker=ticker,
+                    net_score=sig.get("net_score", 0), confidence=confidence,
+                    action=action, rejection_reason="breakout_no_momentum",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                logger.info(f"[execute] {ticker} breakout: macd_hist={_bk_mh:.3f} not positive")
                 continue
 
         # ── Gap-down guard for breakout ────────────────────────────────────
