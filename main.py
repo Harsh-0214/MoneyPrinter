@@ -873,37 +873,16 @@ def execute_signals(signals: list, alpaca_client, data_client,
             except Exception as _cap_err:
                 logger.warning(f"[execute] caution cap check failed: {_cap_err}")
 
-        # ── Squeeze breakout quality gate ─────────────────────────────────
-        # confirmed_uptrend-only already enforced above (regime_strategy_mismatch).
-        # Additional: must still be in compression (ADX<=30), volume surge >=2x,
-        # MACD hist positive, confidence >=0.72.
-        if action == "buy" and strategy == "squeeze_breakout":
-            _ind_sq  = sig.get("_indicators", {})
-            _sq_vol  = float(_ind_sq.get("volume_ratio") or 0)
-            _sq_adx  = float(_ind_sq.get("adx") or 0)
-            _sq_mh   = float(_ind_sq.get("macd_hist") or 0)
-            _sq_fail = None
-            if confidence < 0.72:
-                _sq_fail = "conf_low"
-            elif _sq_vol < 2.0:
-                _sq_fail = "vol_low"
-            elif _sq_adx > 30:
-                _sq_fail = "adx_high"
-            elif _sq_mh <= 0:
-                _sq_fail = "macd_flat"
-            if _sq_fail:
-                log_rejection(
-                    session=session, ticker=ticker,
-                    net_score=sig.get("net_score", 0), confidence=confidence,
-                    action=action, rejection_reason=f"squeeze_quality_{_sq_fail}",
-                    bull_score=sig.get("bull_score", 0),
-                    bear_score=sig.get("bear_score", 0), strategy=strategy,
-                )
-                logger.info(
-                    f"[execute] {ticker} squeeze_breakout quality: {_sq_fail} "
-                    f"conf={confidence:.2f} vol={_sq_vol:.1f}x adx={_sq_adx:.1f} macd={_sq_mh:.3f}"
-                )
-                continue
+        # ── breakout + squeeze_breakout disabled ─────────────────────────
+        if action == "buy" and strategy in ("breakout", "squeeze_breakout"):
+            log_rejection(
+                session=session, ticker=ticker,
+                net_score=sig.get("net_score", 0), confidence=confidence,
+                action=action, rejection_reason="strategy_disabled",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0), strategy=strategy,
+            )
+            continue
 
         # ── trend_follow disabled ─────────────────────────────────────────
         if action == "buy" and strategy == "trend_follow":
@@ -1018,28 +997,6 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 continue
 
-        # ── Gap-down guard for momentum strategies ─────────────────────────
-        if action == "buy" and strategy in ("breakout", "squeeze_breakout"):
-            r1d = sig.get("return_1d")
-            if r1d is not None and r1d < 0 and entry_price > 0:
-                prev_close = entry_price / (1 + r1d)
-                if (prev_close - entry_price) > atr:
-                    log_rejection(
-                        session=session,
-                        ticker=ticker,
-                        net_score=sig.get("net_score", 0),
-                        confidence=confidence,
-                        action=action,
-                        rejection_reason="gap_down",
-                        bull_score=sig.get("bull_score", 0),
-                        bear_score=sig.get("bear_score", 0),
-                        strategy=strategy,
-                    )
-                    logger.info(
-                        f"[execute] {ticker} gap-down guard: price={entry_price:.2f} "
-                        f"prev_close={prev_close:.2f} drop={prev_close-entry_price:.2f} atr={atr:.2f}"
-                    )
-                    continue
 
         # ── Stale signal latency guard ─────────────────────────────────────
         signal_age = _time.time() - sig.get("scored_at", _time.time())
