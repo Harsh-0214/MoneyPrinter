@@ -1284,10 +1284,10 @@ def run_backtest(
                 f"max_hold={MAX_HOLD_DAYS.get(strategy, MAX_HOLD_DAYS.get(time_horizon, 7))}d"
             )
             vprint(
-                f"     ADX={ind.get('adx',0):.1f} RSI={ind.get('rsi',0):.1f} "
-                f"MACD={ind.get('macd_hist',0):.3f}↑{ind.get('macd_hist_prev1',0):.3f} "
-                f"vol={ind.get('volume_ratio',0):.1f}x "
-                f"bb%={ind.get('bb_pctb',0) or 0:.2f}"
+                f"     ADX={ind.get('adx') or 0:.1f} RSI={ind.get('rsi') or 0:.1f} "
+                f"MACD={ind.get('macd_hist') or 0:.3f}↑{ind.get('macd_hist_prev1') or 0:.3f} "
+                f"vol={ind.get('volume_ratio') or 0:.1f}x "
+                f"bb%={ind.get('bb_pctb') or 0:.2f}"
             )
             if _top_sigs:
                 vprint(f"     [dim]signals: {', '.join(_top_sigs)}[/dim]")
