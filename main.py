@@ -893,19 +893,37 @@ def execute_signals(signals: list, alpaca_client, data_client,
             except Exception as _cap_err:
                 logger.warning(f"[execute] caution cap check failed: {_cap_err}")
 
-        # ── Disabled strategies ────────────────────────────────────────────
-        # squeeze_breakout: 0% win rate even with strict filters in bear market.
-        # KC breakouts become bull traps when the broader tape is declining.
-        # Must block here AND ensure these setups don't reclassify as trend_follow.
+        # ── Squeeze breakout quality gate ─────────────────────────────────
+        # confirmed_uptrend-only already enforced above (regime_strategy_mismatch).
+        # Additional: must still be in compression (ADX<=30), volume surge >=2x,
+        # MACD hist positive, confidence >=0.72.
         if action == "buy" and strategy == "squeeze_breakout":
-            log_rejection(
-                session=session, ticker=ticker,
-                net_score=sig.get("net_score", 0), confidence=confidence,
-                action=action, rejection_reason="strategy_disabled",
-                bull_score=sig.get("bull_score", 0),
-                bear_score=sig.get("bear_score", 0), strategy=strategy,
-            )
-            continue
+            _ind_sq  = sig.get("_indicators", {})
+            _sq_vol  = float(_ind_sq.get("volume_ratio") or 0)
+            _sq_adx  = float(_ind_sq.get("adx") or 0)
+            _sq_mh   = float(_ind_sq.get("macd_hist") or 0)
+            _sq_fail = None
+            if confidence < 0.72:
+                _sq_fail = "conf_low"
+            elif _sq_vol < 2.0:
+                _sq_fail = "vol_low"
+            elif _sq_adx > 30:
+                _sq_fail = "adx_high"
+            elif _sq_mh <= 0:
+                _sq_fail = "macd_flat"
+            if _sq_fail:
+                log_rejection(
+                    session=session, ticker=ticker,
+                    net_score=sig.get("net_score", 0), confidence=confidence,
+                    action=action, rejection_reason=f"squeeze_quality_{_sq_fail}",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                logger.info(
+                    f"[execute] {ticker} squeeze_breakout quality: {_sq_fail} "
+                    f"conf={confidence:.2f} vol={_sq_vol:.1f}x adx={_sq_adx:.1f} macd={_sq_mh:.3f}"
+                )
+                continue
 
         # ── Trend_follow quality + reclassification guards ────────────────
         if action == "buy" and strategy == "trend_follow":

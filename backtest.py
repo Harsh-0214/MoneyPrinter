@@ -92,11 +92,7 @@ TREND_FOLLOW_MIN_CONFIDENCE  = 0.80        # re-enabled: strict but not zero-tra
 TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker after stop
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
-# squeeze_breakout disabled: 0% win rate even after strict momentum filtering.
-# In a declining market, KC breakouts are bull traps. These setups must not
-# bleed into trend_follow via reclassification — disable at strategy level.
-# "mixed" removed: classify_strategy already applies -0.15 conf penalty, so
-BAD_STRATEGIES         = {"squeeze_breakout", "trend_follow", "mixed"}
+BAD_STRATEGIES         = {"trend_follow", "mixed"}
 # High-volatility detection — data-driven, no hardcoded ticker list (Change 9)
 HIGH_VOL_ATR_PCT       = 0.05   # atr/price >= 5%: whippy daily range
 HIGH_VOL_PRICE_MAX     = 5.00   # price < $5: gap/slip risk
@@ -1037,7 +1033,31 @@ def run_backtest(
                 if _mr_open >= MAX_MEAN_REV_POSITIONS:
                     continue
 
-            # squeeze_breakout is in BAD_STRATEGIES — no guard needed here.
+            # ── Squeeze breakout quality guard ───────────────────────────────
+            # confirmed_uptrend-only already enforced at regime gate above.
+            # Additional filters: must still be in compression (ADX<=30),
+            # volume surge >=2x, MACD hist turning positive, high confidence.
+            if strategy == "squeeze_breakout":
+                _sq_vol  = float(ind.get("volume_ratio") or 0)
+                _sq_adx  = float(ind.get("adx") or 0)
+                _sq_mh   = float(ind.get("macd_hist") or 0)
+                _sq_skip = None
+                if confidence < 0.72:
+                    _sq_skip = f"conf={confidence:.2f} < 0.72"
+                elif _sq_vol < 2.0:
+                    _sq_skip = f"vol_ratio={_sq_vol:.2f} < 2.0x"
+                elif _sq_adx > 30:
+                    _sq_skip = f"adx={_sq_adx:.1f} > 30 (already trending, not squeezing)"
+                elif _sq_mh <= 0:
+                    _sq_skip = f"macd_hist={_sq_mh:.3f} not positive — breakout not confirmed"
+                if _sq_skip:
+                    vprint(f"  [dim]skip {ticker} | squeeze_breakout: {_sq_skip}[/dim]")
+                    _rej["squeeze_quality"] = _rej.get("squeeze_quality", 0) + 1
+                    continue
+                _sq_open = sum(1 for p in positions.values() if p.get("strategy") == "squeeze_breakout")
+                if _sq_open >= MAX_SQUEEZE_POSITIONS:
+                    vprint(f"  [dim]skip {ticker} | squeeze_breakout cap: {_sq_open}/{MAX_SQUEEZE_POSITIONS} open[/dim]")
+                    continue
 
             # ── News momentum quality guard ───────────────────────────────────
             # news_momentum has the lowest R:R (2.0x) and is news-feed dependent.
