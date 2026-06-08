@@ -88,7 +88,7 @@ MAX_HOLD_DAYS      = {
     "squeeze_breakout":10,
 }
 MIN_CONFIDENCE               = 0.60        # aligns with scorer MIN_CONFIDENCE_BUY=0.60
-TREND_FOLLOW_MIN_CONFIDENCE  = 0.80        # re-enabled: strict but not zero-trade
+
 TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker after stop
 
 # ── Improvement flags (all on by default) ─────────────────────────────────────
@@ -308,13 +308,11 @@ def run_backtest(
     filter_bad_strategies: bool = True,
     apply_vol_cap: bool = True,
     reentry_relax: bool = True,
-    adx_filter: bool = True,
     fix_sizing: bool = True,          # Change 1: size off actual stop distance
     fix_breakeven: bool = True,       # Change 2: raise trigger to 4%, lock in +0.5% not -0.2%
     fix_trail: bool = True,           # Change 3: tighten giveback 5%→3%, ratchet 50%→30%
     enable_partial: bool = True,      # Change 3: sell 1/3 at +6%
     fix_regime_deploy: bool = True,   # Change 4: downtrend→0.3 instead of 0.0
-    disable_trend_follow: bool = False, # Change 5: exclude trend_follow strategy
     verbose: bool = False,
 ) -> dict:
     """
@@ -323,8 +321,6 @@ def run_backtest(
     # ── Per-run effective constants (flags override module-level defaults) ────
     from bot.strategies import STRATEGY_CONFIGS as _SCFG, ATR_STOP_FLOOR as _SL_FLOOR, ATR_STOP_CAP as _SL_CAP
     _bad_strategies = set(BAD_STRATEGIES)
-    if disable_trend_follow:
-        _bad_strategies.add("trend_follow")
     _breakeven_trigger = BREAKEVEN_TRIGGER_PCT if fix_breakeven else 0.025
     _breakeven_lock    = BREAKEVEN_LOCK_PCT    if fix_breakeven else None  # None → old -0.2% buffer
     _trail_giveback    = TRAIL_GIVEBACK_PCT    if fix_trail     else 0.05
@@ -876,75 +872,6 @@ def run_backtest(
                 _rej["bad_strategy"] = _rej.get("bad_strategy", 0) + 1
                 continue
 
-            # ── Strategy-regime alignment ─────────────────────────────────────
-            # trend_follow guards
-            if adx_filter and strategy == "trend_follow":
-                adx_val = ind.get("adx")
-                if adx_val is not None and adx_val < ADX_TREND_MIN:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: ADX={adx_val:.1f} < {ADX_TREND_MIN}[/dim]")
-                    continue
-                # SPY must be rising — index sinking means individual trends fail
-                _spy_5d = float(_spy_ret5d.iloc[_bisect.bisect_right(_spy_dates, today) - 1]) if _spy_ret5d is not None and _spy_dates else None
-                if _spy_5d is not None and _spy_5d <= 0.005:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: SPY 5d return={_spy_5d:.2%} <= 0.5%[/dim]")
-                    continue
-                # Stock must have real recent momentum (+1.5% 5d) and confirmed medium-term trend (+2% 1m)
-                r5d = ind.get("return_5d")
-                if r5d is not None and r5d <= 0.015:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} <= 1.5%[/dim]")
-                    continue
-                # Don't enter stocks already up >12% in 5 days — overextended, late entry
-                if r5d is not None and r5d > 0.12:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: return_5d={r5d:.2%} > 12% overextended[/dim]")
-                    continue
-                r1m = ind.get("return_1m")
-                if r1m is not None and r1m <= 0.02:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: return_1m={r1m:.2%} <= 2%[/dim]")
-                    continue
-                # RSI cap: tightened to 68 — don't enter stocks already extended
-                _rsi_tf = float(ind.get("rsi") or 0)
-                if _rsi_tf > 68:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: RSI={_rsi_tf:.1f} > 68 overbought[/dim]")
-                    continue
-                # Volume confirmation: require institutional participation
-                _vol_tf = float(ind.get("volume_ratio") or 0)
-                if _vol_tf < 1.5:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: vol_ratio={_vol_tf:.2f} < 1.5[/dim]")
-                    continue
-                # MACD must be accelerating (momentum building, not fading).
-                # Use explicit None check — `or 0` treats 0.0 as missing and would
-                # always skip when MACD hist is exactly zero (crossed signal line).
-                # If either value is absent, skip the check rather than defaulting 0<=0.
-                _mh   = ind.get("macd_hist")
-                _mh_p = ind.get("macd_hist_prev1")
-                if _mh is not None and _mh_p is not None and float(_mh) <= float(_mh_p):
-                    logger.debug(f"[backtest] {ticker} trend_follow skip {today}: MACD not accelerating ({_mh:.3f} <= {_mh_p:.3f})")
-                    vprint(f"  [dim]skip {ticker} | trend_follow: MACD_hist {_mh:.3f} not > prev {_mh_p:.3f}[/dim]")
-                    continue
-                # Reclassification guard: squeeze+KC signals → not a clean trend trade
-                _sigs = set(score.get("signals_triggered", []))
-                if "bb_squeeze_detected" in _sigs and "kc_breakout_bull" in _sigs:
-                    logger.debug(f"[backtest] {ticker} trend_follow skip {today}: squeeze reclassification guard")
-                    vprint(f"  [dim]skip {ticker} | trend_follow: squeeze reclassification guard[/dim]")
-                    continue
-                # Pre-earnings guard: don't open within 5 calendar days of earnings binary event
-                _tf_earn = _earnings_map.get(ticker, set())
-                if any(1 <= (ed - today).days <= 6 for ed in _tf_earn):
-                    vprint(f"  [dim]skip {ticker} | trend_follow: earnings within 5d[/dim]")
-                    continue
-                # Signal-day momentum: stock must be going UP on signal day.
-                # Entering a stock that closed down today means we're fading immediate momentum.
-                _r1d_tf = ind.get("return_1d")
-                if _r1d_tf is not None and _r1d_tf <= 0:
-                    vprint(f"  [dim]skip {ticker} | trend_follow: return_1d={_r1d_tf:.2%} <= 0 (fading)[/dim]")
-                    continue
-                # High-conviction gate: trend_follow needs stronger confidence than baseline
-                if confidence < TREND_FOLLOW_MIN_CONFIDENCE:
-                    vprint(
-                        f"  [dim]skip {ticker} | trend_follow: conf={confidence:.2f} < "
-                        f"{TREND_FOLLOW_MIN_CONFIDENCE:.2f} (need higher conviction)[/dim]"
-                    )
-                    continue
             # ── Mean reversion guard ──────────────────────────────────────────
             # RSI<30 + BB extreme + MACD improving = reversal forming (not free-fall).
             # MACD improving filters buying into ongoing collapses — single oversold
@@ -1139,18 +1066,12 @@ def run_backtest(
                     continue
 
             # ── Gap-down guard for momentum strategies ────────────────────────
-            if strategy in ("trend_follow", "breakout", "squeeze_breakout"):
+            if strategy in ("breakout", "squeeze_breakout"):
                 if signal_day_close > 0 and (signal_day_close - entry_price) > atr:
                     logger.debug(
                         f"[backtest] {ticker} {next_day} gap-down skip: "
                         f"open={entry_price:.2f} prev_close={signal_day_close:.2f} atr={atr:.2f}"
                     )
-                    continue
-
-            # ── Max concurrent trend_follow cap ───────────────────────────────
-            if strategy == "trend_follow":
-                tf_open = sum(1 for p in positions.values() if p.get("strategy") == "trend_follow")
-                if tf_open >= MAX_TREND_FOLLOW_POSITIONS:
                     continue
 
             # ── Dynamic high-vol classification ───────────────────────────────
@@ -1425,12 +1346,10 @@ def print_report(results: dict, stats: dict, args) -> None:
     filter_bad = not getattr(args, "no_strategy_filter", False)
     vol_cap    = not getattr(args, "no_vol_cap", False)
     relax      = not getattr(args, "no_reentry_relax", False)
-    adx_filt   = not getattr(args, "no_adx_filter", False)
     flags_str  = (
         f"strat_filter={'on' if filter_bad else 'off'}  "
         f"vol_cap={'on' if vol_cap else 'off'}  "
-        f"reentry_relax={'on' if relax else 'off'}  "
-        f"adx_filter={'on' if adx_filt else 'off'}"
+        f"reentry_relax={'on' if relax else 'off'}"
     )
     console.print(Panel(
         f"[bold]MoneyPrinter Backtest Report[/bold]\n"
@@ -1645,8 +1564,6 @@ def main():
                         help="Disable reduced position sizing for high-vol tickers")
     parser.add_argument("--no-reentry-relax", action="store_true",
                         help="Disable net-score relaxation after silence period")
-    parser.add_argument("--no-adx-filter", action="store_true",
-                        help="Disable ADX > 20 confirmation gate for trend_follow entries")
     # Change-group ablation flags (all default ON)
     parser.add_argument("--no-sizing-fix", action="store_true",
                         help="Change 1: revert to ATR-mult sizing (mismatched with stop)")
@@ -1658,8 +1575,6 @@ def main():
                         help="Change 3: disable partial profit-taking at +6%")
     parser.add_argument("--no-regime-deploy", action="store_true",
                         help="Change 4: revert downtrend regime_mult to 0.0 (no new longs)")
-    parser.add_argument("--no-trend-follow", action="store_true",
-                        help="Change 5: exclude trend_follow strategy entirely")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Print detailed entry/exit/rejection reasoning per trade")
     args = parser.parse_args()
@@ -1681,13 +1596,11 @@ def main():
     filter_bad         = not args.no_strategy_filter
     vol_cap            = not args.no_vol_cap
     relax              = not args.no_reentry_relax
-    adx_filt           = not args.no_adx_filter
     fix_sizing         = not args.no_sizing_fix
     fix_breakeven      = not args.no_breakeven_fix
     fix_trail          = not args.no_trail_fix
     enable_partial     = not args.no_partial
     fix_regime_deploy  = not args.no_regime_deploy
-    disable_trend_follow = args.no_trend_follow
 
     def _on(flag): return "[green]ON[/green]" if flag else "[red]OFF[/red]"
     console.print(f"\n[bold cyan]MoneyPrinter Backtester[/bold cyan]")
@@ -1696,11 +1609,10 @@ def main():
     console.print(f"Tickers: {len(tickers)} (including SPY for regime)")
     console.print(f"Min net: {args.min_net}")
     console.print(f"Core:    strat_filter={_on(filter_bad)}  vol_cap={_on(vol_cap)}  "
-                  f"reentry_relax={_on(relax)}  adx_filter={_on(adx_filt)}")
+                  f"reentry_relax={_on(relax)}")
     console.print(f"Fixes:   sizing={_on(fix_sizing)}  breakeven={_on(fix_breakeven)}  "
                   f"trail={_on(fix_trail)}  partial={_on(enable_partial)}  "
-                  f"regime_deploy={_on(fix_regime_deploy)}  "
-                  f"trend_follow={'[red]OFF[/red]' if disable_trend_follow else '[green]ON[/green]'}\n")
+                  f"regime_deploy={_on(fix_regime_deploy)}\n")
 
     results = run_backtest(
         tickers=tickers,
@@ -1711,13 +1623,11 @@ def main():
         filter_bad_strategies=filter_bad,
         apply_vol_cap=vol_cap,
         reentry_relax=relax,
-        adx_filter=adx_filt,
         fix_sizing=fix_sizing,
         fix_breakeven=fix_breakeven,
         fix_trail=fix_trail,
         enable_partial=enable_partial,
         fix_regime_deploy=fix_regime_deploy,
-        disable_trend_follow=disable_trend_follow,
         verbose=getattr(args, "verbose", False),
     )
 

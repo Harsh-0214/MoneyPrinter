@@ -905,64 +905,16 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 continue
 
-        # ── Trend_follow quality + reclassification guards ────────────────
+        # ── trend_follow disabled ─────────────────────────────────────────
         if action == "buy" and strategy == "trend_follow":
-            _ind_tf = sig.get("_indicators", {})
-            # Block squeeze reclassification
-            _sigs_live = set(sig.get("signals_triggered", []))
-            if "bb_squeeze_detected" in _sigs_live and "kc_breakout_bull" in _sigs_live:
-                log_rejection(
-                    session=session, ticker=ticker,
-                    net_score=sig.get("net_score", 0), confidence=confidence,
-                    action=action, rejection_reason="squeeze_reclassification",
-                    bull_score=sig.get("bull_score", 0),
-                    bear_score=sig.get("bear_score", 0), strategy=strategy,
-                )
-                continue
-            # 1-month return must be positive (medium-term trend confirmed)
-            _r1m = _ind_tf.get("return_1m")
-            if _r1m is not None and _r1m <= 0:
-                log_rejection(
-                    session=session, ticker=ticker,
-                    net_score=sig.get("net_score", 0), confidence=confidence,
-                    action=action, rejection_reason="trend_follow_1m",
-                    bull_score=sig.get("bull_score", 0),
-                    bear_score=sig.get("bear_score", 0), strategy=strategy,
-                )
-                continue
-            # MACD must be accelerating (momentum building, not topping out)
-            _mh   = float(_ind_tf.get("macd_hist") or 0)
-            _mh_p = float(_ind_tf.get("macd_hist_prev1") or 0)
-            if _mh <= _mh_p:
-                log_rejection(
-                    session=session, ticker=ticker,
-                    net_score=sig.get("net_score", 0), confidence=confidence,
-                    action=action, rejection_reason="trend_follow_macd",
-                    bull_score=sig.get("bull_score", 0),
-                    bear_score=sig.get("bear_score", 0), strategy=strategy,
-                )
-                continue
-
-        # ── Max concurrent trend_follow cap ───────────────────────────────
-        if action == "buy" and strategy == "trend_follow":
-            try:
-                from bot.logger import get_open_trades as _got_tf
-                tf_open = sum(
-                    1 for t in _got_tf()
-                    if t.get("strategy") == "trend_follow"
-                    and t.get("status") in ("open", "dry_run")
-                )
-                if tf_open >= 2:
-                    log_rejection(
-                        session=session, ticker=ticker,
-                        net_score=sig.get("net_score", 0), confidence=confidence,
-                        action=action, rejection_reason="trend_follow_cap",
-                        bull_score=sig.get("bull_score", 0),
-                        bear_score=sig.get("bear_score", 0), strategy=strategy,
-                    )
-                    continue
-            except Exception as _tf_err:
-                logger.warning(f"[execute] trend_follow cap check failed: {_tf_err}")
+            log_rejection(
+                session=session, ticker=ticker,
+                net_score=sig.get("net_score", 0), confidence=confidence,
+                action=action, rejection_reason="strategy_disabled",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0), strategy=strategy,
+            )
+            continue
 
         # ── Max concurrent mean_reversion cap ─────────────────────────────
         if action == "buy" and strategy == "mean_reversion":
@@ -1067,7 +1019,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 continue
 
         # ── Gap-down guard for momentum strategies ─────────────────────────
-        if action == "buy" and strategy in ("trend_follow", "breakout", "squeeze_breakout"):
+        if action == "buy" and strategy in ("breakout", "squeeze_breakout"):
             r1d = sig.get("return_1d")
             if r1d is not None and r1d < 0 and entry_price > 0:
                 prev_close = entry_price / (1 + r1d)
