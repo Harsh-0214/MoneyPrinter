@@ -1,12 +1,43 @@
-name: Pre-Market (9:00 AM EST)
+name: Pre-Market (09:00 ET, DST-safe)
 
 on:
   schedule:
-    - cron: '0 14 * * 1-5'   # 9:00 AM EST (UTC-5)
+    - cron: "0 13 * * 1-5"    # 09:00 ET during EDT (UTC-4)
+    - cron: "0 14 * * 1-5"    # 09:00 ET during EST (UTC-5)
   workflow_dispatch:
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - id: check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Manual/dispatch run — proceeding regardless of time."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TARGET_MIN=540        # 09:00 America/New_York (minutes since midnight)
+          TOLERANCE=20          # minutes of GitHub scheduling delay to tolerate
+          H=$(TZ=America/New_York date +%-H)
+          M=$(TZ=America/New_York date +%-M)
+          NOW_MIN=$(( H * 60 + M ))
+          DIFF=$(( NOW_MIN - TARGET_MIN ))
+          printf 'Eastern now %02d:%02d | diff %d min | tolerance %d\n' "$H" "$M" "$DIFF" "$TOLERANCE"
+          if [ "$DIFF" -ge 0 ] && [ "$DIFF" -le "$TOLERANCE" ]; then
+            echo "In window — proceeding."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Out of window (wrong-season cron or delayed beyond tolerance) — skipping."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   premarket:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
