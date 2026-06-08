@@ -486,16 +486,25 @@ def run_full_scan(session: str, macro_context: dict,
         or abs(s.get("net_score", 0)) >= MIN_NET_SCORE
         or "mean_reversion_long_setup" in (s.get("signals_triggered", []) or [])
     ]
-    if signals_all:
-        console.print(
-            f"[dim]Net-score filter: {len(signals_all)} tickers sent to Claude "
-            f"(threshold ±{MIN_NET_SCORE})[/dim]"
-        )
-
     # ── Claude second-opinion pass on qualifying tickers ──────────────────
-    from bot.ai_filter import run_ai_filter_batch
-    pairs = [(s, s.get("_indicators", {})) for s in signals_all]
-    signals_all = run_ai_filter_batch(pairs)
+    # AI_FILTER_ENABLED=false (default) → bypass Claude for full backtest parity:
+    # signals pass through on the deterministic gates exactly as simulated.
+    # Set AI_FILTER_ENABLED=true to re-enable the Claude quality second opinion.
+    _ai_filter_on = os.environ.get("AI_FILTER_ENABLED", "false").lower() == "true"
+    if _ai_filter_on:
+        if signals_all:
+            console.print(
+                f"[dim]Net-score filter: {len(signals_all)} tickers sent to Claude "
+                f"(threshold ±{MIN_NET_SCORE})[/dim]"
+            )
+        from bot.ai_filter import run_ai_filter_batch
+        pairs = [(s, s.get("_indicators", {})) for s in signals_all]
+        signals_all = run_ai_filter_batch(pairs)
+    else:
+        console.print(
+            f"[dim]AI filter bypassed (backtest parity) — {len(signals_all)} "
+            f"signals on deterministic gates[/dim]"
+        )
 
     # Re-tally after AI may have upgraded/downgraded actions
     for score in signals_all:
