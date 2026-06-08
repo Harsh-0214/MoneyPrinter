@@ -95,7 +95,10 @@ TICKER_STOP_COOLDOWN         = 7           # days before re-entering same ticker
 # squeeze_breakout disabled: 0% win rate even after strict momentum filtering.
 # In a declining market, KC breakouts are bull traps. These setups must not
 # bleed into trend_follow via reclassification — disable at strategy level.
-BAD_STRATEGIES         = {"mixed", "squeeze_breakout", "trend_follow"}
+# "mixed" removed: classify_strategy already applies -0.15 conf penalty, so
+# only high-quality mixed signals (pre-penalty conf >= 0.80) survive the
+# MIN_CONFIDENCE=0.65 gate anyway — double-blocking is unnecessary.
+BAD_STRATEGIES         = {"squeeze_breakout", "trend_follow"}
 # High-volatility detection — data-driven, no hardcoded ticker list (Change 9)
 HIGH_VOL_ATR_PCT       = 0.05   # atr/price >= 5%: whippy daily range
 HIGH_VOL_PRICE_MAX     = 5.00   # price < $5: gap/slip risk
