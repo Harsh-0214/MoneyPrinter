@@ -185,6 +185,10 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
         return "breakdown"
     if trend_follow_ok and vol_conf:
         return "trend_follow"
+    # Scorer-validated oversold bounce (set in score_ticker's mean-rev override).
+    # The full setup was already checked there, so trust the flag here.
+    if "mean_reversion_long_setup" in sigs:
+        return "mean_reversion"
     if mean_rev_ok:
         return "mean_reversion"
     if news_sig and (ema_full or ema_part or vol_conf):

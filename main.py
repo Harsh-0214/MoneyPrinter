@@ -469,12 +469,15 @@ def run_full_scan(session: str, macro_context: dict,
     # ── Net-score pre-filter: only send qualifying signals to Claude ──────────
     # Held positions always pass (needed for exit/add evaluation).
     # New entries must meet MIN_NET_SCORE (75) — aligns live bot with backtest.
+    # Exception: mean-reversion oversold longs are validated by the scorer's
+    # dedicated override, not by net (a trend-following net suppresses them).
     MIN_NET_SCORE = 75
     held_tickers  = set(live_positions.keys())
     signals_all   = [
         s for s in signals_all
         if s.get("ticker") in held_tickers
         or abs(s.get("net_score", 0)) >= MIN_NET_SCORE
+        or "mean_reversion_long_setup" in (s.get("signals_triggered", []) or [])
     ]
     if signals_all:
         console.print(
@@ -917,19 +920,14 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 logger.warning(f"[execute] mean_rev cap check failed: {_mr_err}")
 
         # ── Mean reversion quality guard ──────────────────────────────────
-        # RSI<30 + bb_pctb<0.15 + MACD improving + ADX<20.
-        # MACD improving (hist > prev1) confirms the reversal has started —
-        # filters buying into ongoing collapses where oversold keeps getting worse.
+        # The scorer's mean-reversion override already validated the full
+        # oversold-bounce setup (RSI<35, %B<0.20, turning up, ADX<25, not in
+        # downtrend, not a falling knife) and flagged it. Trust that flag; any
+        # mean_reversion label without it is a legacy/overbought classification.
         if action == "buy" and strategy == "mean_reversion":
-            _ind    = sig.get("_indicators", {})
-            _rsi    = _ind.get("rsi") or 50
-            _bb_pb  = _ind.get("bb_pctb")
-            _adx    = _ind.get("adx") or 0
-            _mh     = float(_ind.get("macd_hist") or 0)
-            _mh_p   = float(_ind.get("macd_hist_prev1") or 0)
-            _rsi_ex = _rsi < 30 or _rsi > 70
-            _bb_ex  = _bb_pb is not None and (_bb_pb < 0.15 or _bb_pb > 0.85)
-            if not (_rsi_ex and _bb_ex) or _adx >= 20 or _mh <= _mh_p:
+            _mr_sigs = sig.get("signals_triggered", []) or []
+            if "mean_reversion_long_setup" not in _mr_sigs:
+                _ind = sig.get("_indicators", {})
                 log_rejection(
                     session=session, ticker=ticker,
                     net_score=sig.get("net_score", 0), confidence=confidence,
@@ -938,9 +936,8 @@ def execute_signals(signals: list, alpaca_client, data_client,
                     bear_score=sig.get("bear_score", 0), strategy=strategy,
                 )
                 logger.info(
-                    f"[execute] {ticker} mean_rev quality guard: "
-                    f"rsi={_rsi:.1f} bb_pctb={_bb_pb} adx={_adx:.1f} "
-                    f"macd={_mh:.3f} vs prev={_mh_p:.3f}"
+                    f"[execute] {ticker} mean_rev quality guard: no oversold setup flag "
+                    f"(rsi={_ind.get('rsi')} bb_pctb={_ind.get('bb_pctb')} adx={_ind.get('adx')})"
                 )
                 continue
 

@@ -132,6 +132,8 @@ MEAN_REV_MAX_ADX       = 20
 # Breakout entry quality minimums
 BREAKOUT_MIN_VOL       = 2.0   # 2x volume — breakout is already well-filtered by level + ADX
 BREAKOUT_MIN_ADX       = 25
+BREAKOUT_MAX_RANGE     = 0.25  # max 15-day prior range to still count as "coiled" before the break
+                               # (was 0.15 — too tight; rejected strong higher-beta names like INTC/FCX/NET)
 # Concentration cap for momentum strategies
 MAX_TREND_FOLLOW_POSITIONS  = 2  # max concurrent open trend_follow trades
 MAX_SQUEEZE_POSITIONS       = 2  # max concurrent open squeeze_breakout trades
@@ -885,6 +887,14 @@ def run_backtest(
             _bull_sc   = score.get("bull_score", 0)
             _bear_sc   = score.get("bear_score", 0)
 
+            # Mean-reversion oversold longs are validated by the scorer's dedicated
+            # override, not by net (a trend-following net structurally suppresses
+            # them) — exempt them from the net floor below.
+            _is_mr_setup = (
+                strategy == "mean_reversion"
+                and "mean_reversion_long_setup" in score.get("signals_triggered", [])
+            )
+
             # Apply same gates as live bot (no Claude)
             if action != "buy":
                 _rej["action_hold"] = _rej.get("action_hold", 0) + 1
@@ -893,7 +903,7 @@ def run_backtest(
                 _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
                         action, strategy, "action_hold", f"action={action}")
                 continue
-            if net < effective_min_net:
+            if net < effective_min_net and not _is_mr_setup:
                 _rej["net_score_low"] = _rej.get("net_score_low", 0) + 1
                 _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
                         action, strategy, "net_low",
@@ -925,65 +935,17 @@ def run_backtest(
                 continue
 
             # ── Mean reversion guard ──────────────────────────────────────────
-            # RSI<30 + BB extreme + MACD improving = reversal forming (not free-fall).
-            # MACD improving filters buying into ongoing collapses — single oversold
-            # readings are insufficient in trending-down markets.
+            # The scorer's mean-reversion override already validated the full
+            # oversold-bounce setup (RSI<35, %B<0.20, turning up, ADX<25, not in
+            # downtrend, not a falling knife) and flagged it. Trust that flag and
+            # only enforce the concurrent-position cap here. Any mean_reversion
+            # label WITHOUT the flag is a legacy/overbought classification — block it.
             if strategy == "mean_reversion":
-                _cp    = ind.get("current_price") or 0
-                _e50   = ind.get("ema50")   or 0
-                _e200  = ind.get("ema200")  or 0
-                _adx   = ind.get("adx")     or 0
-                _rsi   = ind.get("rsi")     or 50
-                _bb_pb = ind.get("bb_pctb")
-                _mh    = ind.get("macd_hist") or 0
-                _mh_p  = ind.get("macd_hist_prev1") or 0
-                if _cp > 0 and _e50 > 0 and _e200 > 0 and _cp < _e50 and _cp < _e200:
-                    logger.debug(f"[backtest] {ticker} mean_rev skip {today}: downtrend")
-                    _rej["mean_rev:downtrend"] = _rej.get("mean_rev:downtrend", 0) + 1
+                if "mean_reversion_long_setup" not in score.get("signals_triggered", []):
+                    _rej["mean_rev:no_setup_flag"] = _rej.get("mean_rev:no_setup_flag", 0) + 1
                     _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
-                            action, strategy, "mean_rev:downtrend",
-                            f"price={_cp:.2f} ema50={_e50:.2f} ema200={_e200:.2f}")
-                    continue
-                if _adx > MEAN_REV_MAX_ADX:
-                    logger.debug(f"[backtest] {ticker} mean_rev skip {today}: trending adx={_adx:.1f}")
-                    _rej["mean_rev:trending"] = _rej.get("mean_rev:trending", 0) + 1
-                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
-                            action, strategy, "mean_rev:trending",
-                            f"adx={_adx:.1f} > {MEAN_REV_MAX_ADX}")
-                    continue
-                _rsi_extreme = _rsi < 30 or _rsi > 70
-                _bb_extreme  = _bb_pb is not None and (_bb_pb < 0.15 or _bb_pb > 0.85)
-                if not (_rsi_extreme and _bb_extreme):
-                    logger.debug(f"[backtest] {ticker} mean_rev skip {today}: not extreme rsi={_rsi:.1f} bb={_bb_pb}")
-                    _rej["mean_rev:not_extreme"] = _rej.get("mean_rev:not_extreme", 0) + 1
-                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
-                            action, strategy, "mean_rev:not_extreme",
-                            f"rsi={_rsi:.1f} bb_pctb={_bb_pb}")
-                    continue
-                if _mh <= _mh_p:
-                    logger.debug(f"[backtest] {ticker} mean_rev skip {today}: MACD not improving ({_mh:.3f} <= {_mh_p:.3f})")
-                    _rej["mean_rev:macd_not_improving"] = _rej.get("mean_rev:macd_not_improving", 0) + 1
-                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
-                            action, strategy, "mean_rev:macd_not_improving",
-                            f"macd_hist={_mh:.3f} prev={_mh_p:.3f}")
-                    continue
-                # Long mean_reversion: RSI must be genuinely oversold, not ambiguous mid-range
-                # RSI 45-70 is "normal"; only RSI<45 represents real oversold territory
-                if action == "buy" and _rsi >= 45:
-                    vprint(f"  [dim]skip {ticker} | mean_rev long: RSI={_rsi:.1f} >= 45 not oversold[/dim]")
-                    _rej["mean_rev:rsi_not_oversold"] = _rej.get("mean_rev:rsi_not_oversold", 0) + 1
-                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
-                            action, strategy, "mean_rev:rsi_not_oversold",
-                            f"rsi={_rsi:.1f} >= 45")
-                    continue
-                # Knife-catch guard: if down >25% in 3 months it's fundamental, not technical
-                _r3m = ind.get("return_3m")
-                if _r3m is not None and _r3m < -0.25:
-                    vprint(f"  [dim]skip {ticker} | mean_rev: return_3m={_r3m:.1%} < -25% knife_catch[/dim]")
-                    _rej["mean_rev:knife_catch"] = _rej.get("mean_rev:knife_catch", 0) + 1
-                    _record(today, ticker, _bull_sc, _bear_sc, net, confidence,
-                            action, strategy, "mean_rev:knife_catch",
-                            f"return_3m={_r3m:.1%}")
+                            action, strategy, "mean_rev:no_setup_flag",
+                            f"rsi={ind.get('rsi')} bb={ind.get('bb_pctb')}")
                     continue
                 _mr_open = sum(1 for p in positions.values() if p.get("strategy") == "mean_reversion")
                 if _mr_open >= MAX_MEAN_REV_POSITIONS:
@@ -1062,9 +1024,9 @@ def run_backtest(
                 elif _e200 > 0 and _cp < _e200:
                     _skip_reason = f"price={_cp:.2f} < ema200={_e200:.2f}"
                 else:
-                    # 15-day consolidation check: range must be < 15% to confirm
-                    # the stock was coiling before the break, not already extended.
-                    # Uses preloaded OHLCV — fails open if data unavailable.
+                    # 15-day consolidation check: prior range must be < BREAKOUT_MAX_RANGE
+                    # to confirm the stock was coiling before the break, not already
+                    # extended/parabolic. Uses preloaded OHLCV — fails open if unavailable.
                     try:
                         _sd = sorted_dates_by_ticker.get(ticker, [])
                         _dm = ohlcv_by_date.get(ticker, {})
@@ -1075,8 +1037,8 @@ def run_backtest(
                             _lows  = [_dm[d]["L"] for d in _prior if d in _dm]
                             if len(_highs) >= 10 and min(_lows) > 0:
                                 _range = (max(_highs) - min(_lows)) / min(_lows)
-                                if _range >= 0.15:
-                                    _skip_reason = f"no_consolidation range={_range:.1%} >= 15%"
+                                if _range >= BREAKOUT_MAX_RANGE:
+                                    _skip_reason = f"no_consolidation range={_range:.1%} >= {BREAKOUT_MAX_RANGE:.0%}"
                     except Exception:
                         pass  # fail open — don't block on data errors
 

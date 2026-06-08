@@ -164,6 +164,15 @@ MIN_CONFIDENCE_BUY     = 0.60  # conf = net/100, matches net>=60
 MIN_NET_SCORE_SHORT    = 70    # shorts need strong conviction, especially in bull markets
 MIN_CONFIDENCE_SHORT   = 0.70  # shorts are riskier
 
+# ── Mean-reversion long setup (oversold bounce) ────────────────────────────
+# Shared definition used by the scorer override AND the strategy classifier /
+# entry guards. A trend-following net score naturally suppresses oversold
+# bounces, so these are recognised as their own entry rather than via net.
+MEAN_REV_RSI_MAX       = 35     # RSI below this = oversold enough to bounce
+MEAN_REV_BB_MAX        = 0.20   # %B below this = at/below lower Bollinger band
+MEAN_REV_ADX_MAX       = 25     # ADX below this = not strongly trending (room to revert)
+MEAN_REV_MIN_RET3M     = -0.25  # skip falling knives (>25% drop over 3 months)
+
 # High-volatility tickers that need extra stop room (4x ATR instead of strategy default)
 HIGH_VOLATILITY_TICKERS = {
     "NVDA", "TSLA", "COIN", "MSTR", "SMCI", "PLTR", "AMD", "SOFI", "LI", "MDB",
@@ -977,6 +986,37 @@ def score_ticker(
     if action == "short":
         action = "hold"
         signals_against.append("shorts_disabled")
+
+    # ── Mean-reversion long override ───────────────────────────────────────
+    # A trend-following net score suppresses oversold-bounce setups: bearish
+    # EMA/MACD/ADX drag down a washed-out name that is actually turning back up,
+    # so it never clears the buy threshold on net alone. When a high-quality
+    # oversold reversal is present, enter it as its own mean-reversion long.
+    # This ONLY upgrades holds — it never overrides an existing buy/short — so
+    # the breakout/momentum engine is left completely untouched.
+    if action == "hold" and spy_regime != "bear":
+        _mr_in_downtrend = (e50 > 0 and e200 > 0 and cp > 0
+                            and cp < e50 and cp < e200)
+        _mr_turning = (
+            macd_hist > macd_hist_prev1
+            or "stochrsi_bull_cross_below30" in signals_triggered
+            or "stochrsi_turning_up_oversold" in signals_triggered
+        )
+        _mr_setup = (
+            0 < rsi < MEAN_REV_RSI_MAX
+            and bb_pctb is not None and bb_pctb < MEAN_REV_BB_MAX
+            and _mr_turning
+            and 0 < adx < MEAN_REV_ADX_MAX
+            and not _mr_in_downtrend
+            and (r3m is None or r3m > MEAN_REV_MIN_RET3M)
+        )
+        if _mr_setup:
+            action = "buy"
+            confidence = max(confidence, MIN_CONFIDENCE_BUY)
+            signals_triggered.append("mean_reversion_long_setup")
+            reasoning_parts.append(
+                f"Mean-reversion long: RSI {rsi:.1f} oversold, %B {bb_pctb:.2f}, turning up"
+            )
 
     # ── Short-specific filters (after action is tentatively set) ───────────
     if action in ("short", "sell"):
