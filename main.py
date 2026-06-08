@@ -852,24 +852,6 @@ def execute_signals(signals: list, alpaca_client, data_client,
             )
             continue
 
-        # ── Strategy-regime alignment ─────────────────────────────────────
-        # squeeze_breakout and mean_reversion only work in confirmed uptrends.
-        # In caution/downtrend/shock they produce a high rate of false signals.
-        if action == "buy" and strategy in ("squeeze_breakout", "mean_reversion"):
-            if macro_context.get("spy_regime") != "confirmed_uptrend":
-                log_rejection(
-                    session=session,
-                    ticker=ticker,
-                    net_score=sig.get("net_score", 0),
-                    confidence=confidence,
-                    action=action,
-                    rejection_reason="regime_strategy_mismatch",
-                    bull_score=sig.get("bull_score", 0),
-                    bear_score=sig.get("bear_score", 0),
-                    strategy=strategy,
-                )
-                continue
-
         # ── Caution per-day entry cap (max 1 new long per day) ────────────
         if action == "buy" and macro_context.get("spy_regime") == "caution":
             try:

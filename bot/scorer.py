@@ -684,13 +684,6 @@ def score_ticker(
     vix        = _v(macro_context.get("vix"), default=15)
     spy_regime = macro_context.get("spy_regime", "bull")
 
-    if spy_regime == "caution":
-        bull *= 0.80
-        reasoning_parts.append("SPY in caution zone — bull signals discounted 20%")
-    elif spy_regime == "bear":
-        bull *= 0.60
-        reasoning_parts.append("SPY bear regime — bull signals discounted 40%")
-
     # In a confirmed bull market, heavily discount bear signals — shorts rarely work
     if spy_regime == "bull":
         bear *= 0.50

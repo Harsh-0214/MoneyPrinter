@@ -909,14 +909,6 @@ def run_backtest(
                 continue
 
             # ── Strategy-regime alignment ─────────────────────────────────────
-            # trend_follow, squeeze_breakout, and mean_reversion only work in a
-            # clearly trending broad market. In caution or downtrend they produce
-            # a high rate of false signals and fast stops.
-            if strategy in ("trend_follow", "squeeze_breakout", "mean_reversion") and regime != "confirmed_uptrend":
-                vprint(f"  [dim]skip {ticker} | {strategy} blocked in {regime}[/dim]")
-                _rej["strat_regime_block"] = _rej.get("strat_regime_block", 0) + 1
-                continue
-
             # trend_follow guards
             if adx_filter and strategy == "trend_follow":
                 adx_val = ind.get("adx")
@@ -985,13 +977,6 @@ def run_backtest(
                         f"{TREND_FOLLOW_MIN_CONFIDENCE:.2f} (need higher conviction)[/dim]"
                     )
                     continue
-                # Sector-regime guards: macro-sensitive sectors only trend reliably
-                # in confirmed uptrends; block them in caution/downtrend regimes.
-                _tf_sec = _SECTOR_OF.get(ticker.upper())
-                if _tf_sec in ("energy", "financials", "defense") and regime != "confirmed_uptrend":
-                    vprint(f"  [dim]skip {ticker} | trend_follow: {_tf_sec} blocked in {regime}[/dim]")
-                    continue
-
             # ── Mean reversion guard ──────────────────────────────────────────
             # RSI<30 + BB extreme + MACD improving = reversal forming (not free-fall).
             # MACD improving filters buying into ongoing collapses — single oversold
