@@ -55,6 +55,7 @@ STATIC_TICKERS = (
 MACRO_TICKERS = WATCHLIST["macro_context_only"]
 COMPANY_NAMES = WATCHLIST["company_names"]
 DRY_RUN       = os.getenv("DRY_RUN", "true").lower() == "true"
+USE_CLAUDE    = os.getenv("USE_CLAUDE", "false").lower() == "true"
 
 # ── Risk control constants ──────────────────────────────────────────────────
 MAX_DAILY_LOSS_PCT        = 0.03   # halt trading if session P&L drops 3% below open equity
@@ -434,17 +435,18 @@ def run_full_scan(session: str, macro_context: dict,
             score["_position"] = live_positions[ticker]
         signals_all.append(score)
 
-    # ── Claude second-opinion pass on every ticker ─────────────────────────
-    from bot.ai_filter import run_ai_filter_batch
-    pairs = [(s, s.get("_indicators", {})) for s in signals_all]
-    signals_all = run_ai_filter_batch(pairs)
+    # ── Claude second-opinion pass (optional) ─────────────────────────────
+    if USE_CLAUDE:
+        from bot.ai_filter import run_ai_filter_batch
+        pairs = [(s, s.get("_indicators", {})) for s in signals_all]
+        signals_all = run_ai_filter_batch(pairs)
 
-    # Re-tally after AI may have upgraded/downgraded actions
+    # Re-tally after AI may have upgraded/downgraded actions (or scorer-only)
     for score in signals_all:
         action     = score.get("action", "hold")
         confidence = score.get("confidence", 0.0)
 
-        # Re-apply strategy/confidence gates after AI changes
+        # Apply strategy/confidence gates
         if action == "buy" and (confidence < 0.65 or score.get("strategy") == "mixed"):
             action = "hold"
             score["action"] = "hold"
@@ -1021,7 +1023,7 @@ def session_continuous(alpaca_client, data_client) -> None:
     from zoneinfo import ZoneInfo
     from bot.portfolio import (check_stops, check_targets, check_time_exits,
                                get_open_positions, close_position_and_log,
-                               calculate_partial_exit)
+                               calculate_partial_exit, update_breakout_stops)
     from bot.discovery import scan_rising_movers
 
     SCAN_INTERVAL = 10          # minutes between scans
@@ -1155,6 +1157,12 @@ def session_continuous(alpaca_client, data_client) -> None:
                     f"[red]TRAILING STOP: {pos['ticker']} @ {current_price} "
                     f"(trail={updated.get('trailing_stop_price', 0):.2f})[/red]"
                 )
+
+        # ── Breakout chandelier stop updates ──────────────────────────────
+        try:
+            update_breakout_stops(alpaca_client, data_client)
+        except Exception as _bse:
+            logger.warning(f"[main] update_breakout_stops error: {_bse}")
 
         # ── Partial-exit checks ────────────────────────────────────────────
         from bot.trader import submit_order as _submit, get_latest_quote as _quote

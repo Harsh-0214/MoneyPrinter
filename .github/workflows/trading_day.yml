@@ -74,6 +74,7 @@ jobs:
           NEWS_API_KEY:      ${{ secrets.NEWS_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DRY_RUN:           ${{ vars.DRY_RUN || 'false' }}
+          USE_CLAUDE:        ${{ vars.USE_CLAUDE || 'false' }}
         run: python main.py --session continuous
 
       - name: Commit trade log

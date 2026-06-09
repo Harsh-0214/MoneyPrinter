@@ -4,7 +4,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from bot.logger import get_open_trades, get_trades_today, update_trade_exit
+import pandas as pd
+
+from bot.logger import get_open_trades, get_trades_today, update_trade_exit, update_trade_stop
 from bot.risk import record_trade_pnl
 
 # Time-based exit rules per strategy horizon.
@@ -188,6 +190,103 @@ def calculate_partial_exit(position: dict, current_price: float) -> dict:
         }
 
     return empty
+
+
+CHANDELIER_ATR_MULT     = 3.0
+BREAKOUT_SWING_LOOKBACK = 5   # bars for structure stop
+
+
+def update_breakout_stops(alpaca_client, data_client=None) -> None:
+    """
+    Ratchet stop losses upward for open breakout positions using chandelier logic.
+    Called each scan cycle so stops trail the highest price seen.
+
+    Logic (mirrors backtest breakout_let_run):
+      - chandelier = highest_price_seen - CHANDELIER_ATR_MULT * ATR(14)
+      - structure  = min(prior 5 lows) * 0.995, capped below prior close
+      - new_stop   = max(current_stop, chandelier, structure)
+      - Only raised, never lowered.
+    """
+    from bot.logger import update_trade_trailing
+
+    positions = get_open_positions(alpaca_client)
+    breakout_positions = [
+        p for p in positions
+        if p.get("strategy") == "breakout" and p.get("action", "buy") == "buy"
+    ]
+    if not breakout_positions:
+        return
+
+    try:
+        from bot.data import fetch_daily_bars
+    except ImportError:
+        logger.warning("[portfolio] fetch_daily_bars not available — skipping breakout stops")
+        return
+
+    for pos in breakout_positions:
+        ticker    = pos["ticker"]
+        trade_id  = pos.get("id")
+        entry     = float(pos.get("entry_price") or 0)
+        cur_stop  = float(pos.get("stop_loss") or 0)
+        cur_price = float(pos.get("current_price") or entry)
+        highest   = float(pos.get("highest_price_seen") or entry)
+
+        if entry <= 0 or trade_id is None:
+            continue
+
+        # Ratchet highest seen
+        new_highest = max(highest, cur_price)
+
+        try:
+            df = fetch_daily_bars(ticker, days=30)
+            if df is None or len(df) < 5:
+                continue
+
+            # ATR(14) from recent bars
+            high  = df["High"]
+            low   = df["Low"]
+            close = df["Close"]
+            prev_close = close.shift(1)
+            tr = pd.concat([
+                high - low,
+                (high - prev_close).abs(),
+                (low  - prev_close).abs(),
+            ], axis=1).max(axis=1)
+            atr = float(tr.rolling(14).mean().iloc[-1])
+            if atr <= 0:
+                atr = entry * 0.02
+
+            # Chandelier: highest_seen - 3 * ATR (uses prior data only — no look-ahead)
+            chandelier = new_highest - CHANDELIER_ATR_MULT * atr
+
+            # Structure stop from prior BREAKOUT_SWING_LOOKBACK bars (excluding current)
+            prior_bars = df.iloc[-(BREAKOUT_SWING_LOOKBACK + 1):-1]
+            if len(prior_bars) >= 1:
+                prior_close  = float(prior_bars["Close"].iloc[-1])
+                structure_lo = float(prior_bars["Low"].min()) * 0.995
+                structure    = min(structure_lo, prior_close * 0.999)
+            else:
+                structure = cur_stop
+
+            # New stop: raise-only, never push above current price
+            new_stop = max(cur_stop, chandelier, structure)
+            if new_stop >= cur_price:
+                new_stop = cur_stop   # don't set stop above current price
+
+            if new_stop > cur_stop:
+                update_trade_stop(trade_id, round(new_stop, 4))
+                update_trade_trailing(trade_id, round(new_highest, 4), round(new_stop, 4))
+                logger.info(
+                    f"[portfolio] BREAKOUT STOP RAISED: {ticker} "
+                    f"stop {cur_stop:.2f} → {new_stop:.2f} "
+                    f"(chandelier={chandelier:.2f} structure={structure:.2f} highest={new_highest:.2f})"
+                )
+            elif new_highest > highest:
+                update_trade_trailing(trade_id, round(new_highest, 4),
+                                      round(pos.get("trailing_stop_price") or cur_stop, 4))
+
+        except Exception as e:
+            logger.warning(f"[portfolio] update_breakout_stops failed for {ticker}: {e}")
 
 
 def close_position_and_log(
