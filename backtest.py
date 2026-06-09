@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta, datetime
 from math import floor
 from pathlib import Path
@@ -117,13 +118,67 @@ def get_trading_days(bars_map: dict[str, pd.DataFrame], start: date, end: date) 
 #  Indicator computation (historical, no API calls)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _fast_slice(df: pd.DataFrame, as_of: date) -> pd.DataFrame:
+    """Slice df to rows with index date <= as_of using binary search (O(log n))."""
+    cutoff = pd.Timestamp(as_of) + pd.Timedelta(days=1)
+    pos = df.index.searchsorted(cutoff, side="left")
+    return df.iloc[:pos]
+
+
+def _build_ticker_ind_cache(
+    ticker: str, df: pd.DataFrame, trading_days: list[date]
+) -> tuple[str, dict[date, dict]]:
+    """Compute indicators for all trading days for one ticker. Runs in a thread."""
+    ind_by_day: dict[date, dict] = {}
+    prev_ind: dict = {}
+    for day in trading_days:
+        sliced = _fast_slice(df, day)
+        if len(sliced) < 30:
+            ind = {"ticker": ticker, "error": "insufficient_history"}
+        else:
+            try:
+                ind = compute_indicators_from_df(ticker, sliced, intraday=None, realtime_price=False)
+            except Exception:
+                ind = {"ticker": ticker, "error": "compute_failed"}
+        if not ind.get("error"):
+            triggers = compute_entry_triggers(ind, prev_ind)
+            ind["entry_triggers"] = triggers
+            prev_ind = {k: v for k, v in ind.items() if k != "entry_triggers"}
+        ind_by_day[day] = ind
+    return ticker, ind_by_day
+
+
+def _build_indicator_cache(
+    tickers: list[str],
+    bars_map: dict[str, pd.DataFrame],
+    trading_days: list[date],
+    max_workers: int = 8,
+) -> dict[str, dict[date, dict]]:
+    """Pre-compute all (ticker, day) indicators in parallel. Returns {ticker: {day: ind}}."""
+    work = [(t, bars_map[t]) for t in tickers if bars_map.get(t) is not None]
+    cache: dict[str, dict[date, dict]] = {}
+    n_work = len(work)
+    n_comp = n_work * len(trading_days)
+    console.print(f"[cyan]Pre-computing indicators: {n_work} tickers × "
+                  f"{len(trading_days)} days = {n_comp:,} computations "
+                  f"({min(max_workers, n_work)} threads)…[/cyan]")
+    done = 0
+    with ThreadPoolExecutor(max_workers=min(max_workers, n_work)) as ex:
+        futs = {ex.submit(_build_ticker_ind_cache, t, df, trading_days): t
+                for t, df in work}
+        for f in as_completed(futs):
+            tk, ibd = f.result()
+            cache[tk] = ibd
+            done += 1
+            if done % 40 == 0 or done == n_work:
+                console.print(f"  [dim]{done}/{n_work} tickers done[/dim]")
+    console.print(f"[green]Cache ready[/green]\n")
+    return cache
+
+
 def compute_ind_for_day(ticker: str, df: pd.DataFrame, as_of: date) -> dict:
-    """
-    Slice df to [start, as_of] and compute indicators — no lookahead.
-    realtime_price=False uses the last close as current price.
-    """
-    mask = pd.Series(df.index).apply(lambda x: (x.date() if hasattr(x, "date") else x) <= as_of)
-    sliced = df.iloc[mask.values]
+    """Slice df to [start, as_of] and compute indicators — no lookahead."""
+    sliced = _fast_slice(df, as_of)
     if len(sliced) < 30:
         return {"ticker": ticker, "error": "insufficient_history"}
     return compute_indicators_from_df(ticker, sliced, intraday=None, realtime_price=False)
@@ -155,9 +210,7 @@ def run_backtest(
     min_net: int = MIN_NET_SCORE,
     breakout_let_run: bool = True,
 ) -> dict:
-    """
-    Full day-by-day simulation. Returns results dict with trades + equity curve.
-    """
+    """Full day-by-day simulation. Returns results dict with trades + equity curve."""
     bars_map     = load_all_bars(tickers, start, end)
     trading_days = get_trading_days(bars_map, start, end)
 
@@ -166,26 +219,25 @@ def run_backtest(
         return {}
 
     console.print(f"[cyan]Simulating {len(trading_days)} trading days "
-                  f"({trading_days[0]} → {trading_days[-1]})[/cyan]\n")
+                  f"({trading_days[0]} → {trading_days[-1]})[/cyan]")
+
+    # ── Pre-compute all (ticker, day) indicators in parallel ─────────────────
+    sim_tickers = [t for t in tickers if t != "SPY"]
+    ind_cache   = _build_indicator_cache(sim_tickers, bars_map, trading_days)
 
     # ── State ─────────────────────────────────────────────────────────────────
-    cash      = starting_capital
-    positions: dict[str, dict] = {}  # ticker -> position record
-    all_trades: list[dict]     = []
-    equity_curve: list[dict]   = []
-    prev_ind_map: dict[str, dict] = {}  # for entry trigger comparison
+    cash         = starting_capital
+    positions:   dict[str, dict] = {}
+    all_trades:  list[dict]      = []
+    equity_curve: list[dict]     = []
 
-    # Macro approximation: SPY above EMA50 = bull, else caution
     spy_bars = bars_map.get("SPY")
 
     def _spy_regime(as_of: date) -> str:
         if spy_bars is None:
             return "bull"
         try:
-            mask = pd.Series(spy_bars.index).apply(
-                lambda x: (x.date() if hasattr(x, "date") else x) <= as_of
-            )
-            sl = spy_bars.iloc[mask.values]
+            sl = _fast_slice(spy_bars, as_of)
             if len(sl) < 50:
                 return "bull"
             price = float(sl["Close"].iloc[-1])
@@ -197,25 +249,24 @@ def run_backtest(
     # ── Day loop ──────────────────────────────────────────────────────────────
     for day_idx, today in enumerate(trading_days):
 
+        today_ts = pd.Timestamp(today)
+        next_ts  = today_ts + pd.Timedelta(days=1)
+
         # Portfolio value = cash + mark-to-market open positions
         mkt_value = cash
         for ticker, pos in positions.items():
             df = bars_map.get(ticker)
             if df is None:
                 continue
-            mask = pd.Series(df.index).apply(
-                lambda x: (x.date() if hasattr(x, "date") else x) <= today
-            )
-            sl = df.iloc[mask.values]
+            sl = _fast_slice(df, today)
             if not sl.empty:
-                cp = float(sl["Close"].iloc[-1])
-                mkt_value += pos["shares"] * cp
+                mkt_value += pos["shares"] * float(sl["Close"].iloc[-1])
 
         equity_curve.append({"date": today, "equity": round(mkt_value, 2)})
 
         regime = _spy_regime(today)
         macro  = {
-            "vix": 18.0,           # static approximation — VIX not available in backtest
+            "vix": 18.0,
             "spy_regime": regime,
             "bearish_market": regime != "bull",
             "vix_multiplier": 1.0,
@@ -227,10 +278,10 @@ def run_backtest(
             df = bars_map.get(ticker)
             if df is None:
                 continue
-            mask = pd.Series(df.index).apply(
-                lambda x: (x.date() if hasattr(x, "date") else x) == today
-            )
-            today_bars = df.iloc[mask.values]
+            # Today's bar — O(log n) binary search
+            p0 = df.index.searchsorted(today_ts, side="left")
+            p1 = df.index.searchsorted(next_ts,  side="left")
+            today_bars = df.iloc[p0:p1]
             if today_bars.empty:
                 continue
 
@@ -239,25 +290,24 @@ def run_backtest(
             day_close = float(today_bars["Close"].iloc[-1])
             day_open  = float(today_bars["Open"].iloc[-1])
 
-            stop   = pos["stop_loss"]
-            target = pos["take_profit"]
-            entry  = pos["entry_price"]
-            shares = pos["shares"]
-            horizon = pos.get("strategy", "swing")
+            stop     = pos["stop_loss"]
+            target   = pos["take_profit"]
+            entry    = pos["entry_price"]
+            shares   = pos["shares"]
+            horizon  = pos.get("strategy", "swing")
             max_hold = MAX_HOLD_DAYS.get(horizon, 5)
             age_days = (today - pos["entry_date"]).days
 
             exit_price  = None
             exit_reason = None
 
-            # ── Breakout let-run: compute dynamic stop from PRIOR bars (no look-ahead) ──
+            # ── Breakout let-run: dynamic stop from PRIOR bars (no look-ahead) ──
             prior_bars_brk = None
             if breakout_let_run and pos.get("strategy") == "breakout":
-                max_hold = BREAKOUT_MAX_HOLD_RUN   # extend hold window
-                _prior_mask = pd.Series(df.index).apply(
-                    lambda x: (x.date() if hasattr(x, "date") else x) < today
+                max_hold       = BREAKOUT_MAX_HOLD_RUN
+                prior_bars_brk = _fast_slice(df, today - timedelta(days=1)).tail(
+                    BREAKOUT_SWING_LOOKBACK
                 )
-                prior_bars_brk = df.iloc[_prior_mask.values].tail(BREAKOUT_SWING_LOOKBACK)
                 if len(prior_bars_brk) >= 1:
                     prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
                     structure_low   = float(prior_bars_brk["Low"].min()) * 0.995
@@ -266,14 +316,14 @@ def run_backtest(
                     pos_atr         = pos.get("atr") or (entry * 0.02)
                     chandelier      = pos_highest - CHANDELIER_ATR_MULT * pos_atr
                     dyn_stop        = max(stop, structure_stop, chandelier)
-                    # Ratchet: only move stop upward, never above highest (safety)
+                    # Ratchet: only up, never above highest (safety)
                     if dyn_stop > stop and dyn_stop < pos_highest:
                         stop             = dyn_stop
                         pos["stop_loss"] = stop
 
             # Stop hit — worst case: gap down through stop uses day open
             if day_low <= stop:
-                exit_price  = max(min(stop, day_open), day_low)  # realistic fill
+                exit_price  = max(min(stop, day_open), day_low)
                 exit_reason = "stop"
             # Target hit
             elif target and day_high >= target:
@@ -283,11 +333,10 @@ def run_backtest(
             elif age_days >= max_hold:
                 if (breakout_let_run and pos.get("strategy") == "breakout"
                         and prior_bars_brk is not None and len(prior_bars_brk) >= 1):
-                    # Stale-exit suppression: skip if prior close still above pivot
                     brk_lvl         = pos.get("breakout_level", 0.0)
                     prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
                     if brk_lvl > 0 and prior_close_brk >= brk_lvl:
-                        pass  # still above pivot — let it run
+                        pass  # still above pivot — suppress time exit
                     else:
                         exit_price  = day_close
                         exit_reason = "time_exit"
@@ -295,7 +344,7 @@ def run_backtest(
                     exit_price  = day_close
                     exit_reason = "time_exit"
 
-            # Track highest seen for chandelier (used next bar; no look-ahead)
+            # Track highest for tomorrow's chandelier (no look-ahead)
             if exit_price is None and breakout_let_run and pos.get("strategy") == "breakout":
                 pos["highest"] = max(pos.get("highest", entry), day_high)
 
@@ -303,37 +352,32 @@ def run_backtest(
                 pnl_dollar = (exit_price - entry) * shares
                 pnl_pct    = (exit_price - entry) / entry * 100
                 cash      += exit_price * shares
-                trade_rec  = {
-                    "ticker":       ticker,
-                    "entry_date":   pos["entry_date"].isoformat(),
-                    "exit_date":    today.isoformat(),
-                    "entry_price":  round(entry, 2),
-                    "exit_price":   round(exit_price, 2),
-                    "shares":       shares,
-                    "stop_loss":    round(stop, 2),
-                    "take_profit":  round(target, 2) if target else None,
-                    "pnl_dollar":   round(pnl_dollar, 2),
-                    "pnl_pct":      round(pnl_pct, 2),
-                    "hold_days":    age_days,
-                    "exit_reason":  exit_reason,
-                    "strategy":     pos.get("strategy", "unknown"),
-                    "net_score":    pos.get("net_score", 0),
-                    "confidence":   pos.get("confidence", 0),
-                    "signals":      pos.get("signals", []),
-                }
-                all_trades.append(trade_rec)
+                all_trades.append({
+                    "ticker":      ticker,
+                    "entry_date":  pos["entry_date"].isoformat(),
+                    "exit_date":   today.isoformat(),
+                    "entry_price": round(entry, 2),
+                    "exit_price":  round(exit_price, 2),
+                    "shares":      shares,
+                    "stop_loss":   round(stop, 2),
+                    "take_profit": round(target, 2) if target else None,
+                    "pnl_dollar":  round(pnl_dollar, 2),
+                    "pnl_pct":     round(pnl_pct, 2),
+                    "hold_days":   age_days,
+                    "exit_reason": exit_reason,
+                    "strategy":    pos.get("strategy", "unknown"),
+                    "net_score":   pos.get("net_score", 0),
+                    "confidence":  pos.get("confidence", 0),
+                    "signals":     pos.get("signals", []),
+                })
                 closed_tickers.append(ticker)
 
         for t in closed_tickers:
             del positions[t]
 
-        # ── 2. Generate signals using today's close ───────────────────────────
-        if regime == "caution" and day_idx % 5 != 0:
-            # In caution regime, still scan but suppress buys (done in scorer filter below)
-            pass
-
+        # ── 2. Generate signals from pre-computed indicator cache ─────────────
         if len(positions) >= MAX_OPEN_POSITIONS:
-            continue   # already full
+            continue
 
         sector_counts: dict[str, int] = {}
         for held in positions:
@@ -344,26 +388,13 @@ def run_backtest(
         new_signals: list[dict] = []
 
         for ticker in tickers:
-            if ticker in positions:
-                continue
-            if ticker == "SPY":
+            if ticker in positions or ticker == "SPY":
                 continue
 
-            df = bars_map.get(ticker)
-            if df is None:
+            # Cache lookup — O(1), no indicator recomputation
+            ind = ind_cache.get(ticker, {}).get(today)
+            if not ind or ind.get("error"):
                 continue
-
-            # Compute current indicators (no lookahead)
-            ind = compute_ind_for_day(ticker, df, today)
-            if ind.get("error"):
-                continue
-
-            # Compute entry triggers vs previous cycle
-            prev_ind = prev_ind_map.get(ticker, {})
-            triggers = compute_entry_triggers(ind, prev_ind)
-            ind["entry_triggers"] = triggers
-            prev_ind_map[ticker] = {k: v for k, v in ind.items()
-                                    if k not in ("entry_triggers",)}
 
             try:
                 score = score_ticker(ticker, ind, {}, macro)
@@ -376,7 +407,6 @@ def run_backtest(
             net        = score.get("net_score", 0)
             confidence = score.get("confidence", 0.0)
 
-            # Apply same gates as live bot (no Claude)
             if action != "buy":
                 continue
             if net < min_net:
@@ -384,44 +414,42 @@ def run_backtest(
             if confidence < MIN_CONFIDENCE or score.get("strategy") == "mixed":
                 continue
             if macro["bearish_market"]:
-                continue   # suppress buys in downtrend
+                continue
 
-            # Sector cap
             sec = _SECTOR_OF.get(ticker.upper())
             if sec and sector_counts.get(sec, 0) >= MAX_PER_SECTOR:
                 continue
 
             new_signals.append(score)
 
-        # Rank by confidence, take top N to fill remaining slots
         new_signals.sort(key=lambda s: s.get("confidence", 0), reverse=True)
         slots = MAX_OPEN_POSITIONS - len(positions)
 
         for score in new_signals[:slots]:
-            ticker     = score["ticker"]
-            ind        = prev_ind_map.get(ticker, {})  # just saved current
-            atr        = score.get("atr") or ind.get("atr") or 0
-            entry_ref  = score.get("entry_price") or ind.get("current_price") or 0
-            stop_loss  = score.get("stop_loss") or 0
+            ticker      = score["ticker"]
+            ind         = ind_cache.get(ticker, {}).get(today, {})
+            atr         = score.get("atr") or ind.get("atr") or 0
+            entry_ref   = score.get("entry_price") or ind.get("current_price") or 0
+            stop_loss   = score.get("stop_loss") or 0
             take_profit = score.get("take_profit") or 0
-            confidence = score.get("confidence", 0.65)
-            net        = score.get("net_score", 0)
-            strategy   = score.get("strategy", "swing")
+            confidence  = score.get("confidence", 0.65)
+            net         = score.get("net_score", 0)
+            strategy    = score.get("strategy", "swing")
 
             if entry_ref <= 0 or atr <= 0:
                 continue
 
-            # Entry at NEXT DAY's open (realistic execution)
+            # Entry at NEXT DAY's open
             if day_idx + 1 >= len(trading_days):
                 continue
             next_day = trading_days[day_idx + 1]
             df = bars_map.get(ticker)
             if df is None:
                 continue
-            mask_next = pd.Series(df.index).apply(
-                lambda x: (x.date() if hasattr(x, "date") else x) == next_day
-            )
-            next_bars = df.iloc[mask_next.values]
+            nts  = pd.Timestamp(next_day)
+            np0  = df.index.searchsorted(nts,                           side="left")
+            np1  = df.index.searchsorted(nts + pd.Timedelta(days=1),    side="left")
+            next_bars = df.iloc[np0:np1]
             if next_bars.empty:
                 continue
 
@@ -429,7 +457,6 @@ def run_backtest(
             if entry_price <= 0:
                 continue
 
-            # Position sizing
             shares = size_position(
                 portfolio_value=cash + sum(
                     p["shares"] * entry_price for p in positions.values()
@@ -448,13 +475,11 @@ def run_backtest(
             if shares < 1:
                 continue
 
-            # Recompute stop/target relative to actual entry price
             if stop_loss <= 0 or stop_loss >= entry_price:
                 stop_loss = round(entry_price - atr * ATR_STOP_MULT, 2)
             if take_profit <= 0 or take_profit <= entry_price:
-                rr = 2.5
-                risk = entry_price - stop_loss
-                take_profit = round(entry_price + risk * rr, 2)
+                risk        = entry_price - stop_loss
+                take_profit = round(entry_price + risk * 2.5, 2)
 
             cash -= cost
 
@@ -462,7 +487,6 @@ def run_backtest(
             if sec:
                 sector_counts[sec] = sector_counts.get(sec, 0) + 1
 
-            # Breakout pivot level for stale-exit suppression
             if strategy == "breakout":
                 r1_val  = float(ind.get("R1") or 0)
                 w52_val = float(ind.get("wk52_high") or 0)
@@ -495,34 +519,31 @@ def run_backtest(
     final_day = trading_days[-1] if trading_days else end
     for ticker, pos in list(positions.items()):
         df = bars_map.get(ticker)
-        exit_price = pos["entry_price"]  # fallback
+        exit_price = pos["entry_price"]
         if df is not None:
-            mask = pd.Series(df.index).apply(
-                lambda x: (x.date() if hasattr(x, "date") else x) <= final_day
-            )
-            sl = df.iloc[mask.values]
+            sl = _fast_slice(df, final_day)
             if not sl.empty:
                 exit_price = float(sl["Close"].iloc[-1])
         pnl_dollar = (exit_price - pos["entry_price"]) * pos["shares"]
         pnl_pct    = (exit_price - pos["entry_price"]) / pos["entry_price"] * 100
         cash += exit_price * pos["shares"]
         all_trades.append({
-            "ticker":       ticker,
-            "entry_date":   pos["entry_date"].isoformat(),
-            "exit_date":    final_day.isoformat(),
-            "entry_price":  round(pos["entry_price"], 2),
-            "exit_price":   round(exit_price, 2),
-            "shares":       pos["shares"],
-            "stop_loss":    round(pos["stop_loss"], 2),
-            "take_profit":  round(pos["take_profit"], 2),
-            "pnl_dollar":   round(pnl_dollar, 2),
-            "pnl_pct":      round(pnl_pct, 2),
-            "hold_days":    (final_day - pos["entry_date"]).days,
-            "exit_reason":  "end_of_backtest",
-            "strategy":     pos.get("strategy", "unknown"),
-            "net_score":    pos.get("net_score", 0),
-            "confidence":   pos.get("confidence", 0),
-            "signals":      pos.get("signals", []),
+            "ticker":      ticker,
+            "entry_date":  pos["entry_date"].isoformat(),
+            "exit_date":   final_day.isoformat(),
+            "entry_price": round(pos["entry_price"], 2),
+            "exit_price":  round(exit_price, 2),
+            "shares":      pos["shares"],
+            "stop_loss":   round(pos["stop_loss"], 2),
+            "take_profit": round(pos["take_profit"], 2),
+            "pnl_dollar":  round(pnl_dollar, 2),
+            "pnl_pct":     round(pnl_pct, 2),
+            "hold_days":   (final_day - pos["entry_date"]).days,
+            "exit_reason": "end_of_backtest",
+            "strategy":    pos.get("strategy", "unknown"),
+            "net_score":   pos.get("net_score", 0),
+            "confidence":  pos.get("confidence", 0),
+            "signals":     pos.get("signals", []),
         })
 
     final_equity = cash
