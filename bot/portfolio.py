@@ -9,12 +9,18 @@ import pandas as pd
 from bot.logger import get_open_trades, get_trades_today, update_trade_exit, update_trade_stop
 from bot.risk import record_trade_pnl
 
-# Time-based exit rules per strategy horizon.
-# Bot is designed for short-term and swing trades only — no multi-week holds.
-# If a trade reaches this age WITHOUT hitting stop or target, close it.
+# Time-based exit rules keyed by STRATEGY (mirrors backtest MAX_HOLD_DAYS lookup).
+# Breakout positions get 21 days so the chandelier stop can do its job.
 MAX_HOLD_DAYS = {
-    "scalp": 2,   # scalp must resolve by end of next day
-    "swing": 7,   # swing trades get one calendar week max
+    "scalp":             2,
+    "swing":             7,
+    "mixed":             5,
+    "breakout":         21,
+    "squeeze_breakout": 21,
+    "trend_follow":      7,
+    "mean_reversion":    5,
+    "news_momentum":     3,
+    "breakdown":         7,
 }
 
 logger = logging.getLogger(__name__)
@@ -93,29 +99,26 @@ def check_targets(alpaca_client) -> list[dict]:
     return targets_hit
 
 
-def check_time_exits(alpaca_client=None) -> list[dict]:
+def check_time_exits(alpaca_client=None, data_client=None) -> list[dict]:
     """
     Return open positions that have exceeded their max hold period.
-    Doesn't close them — caller decides when to act (so dry-run is respected).
+    Keyed by strategy (mirrors backtest), not time_horizon.
 
-    Rules:
-      - scalp: close after 2 calendar days regardless of P&L
-      - swing: close after 10 calendar days regardless of P&L
-    Both directions: if you're profitable take the gain, if you're flat/losing
-    cut the position and redeploy capital elsewhere.
+    Breakout positions get stale-exit suppression: if prior close is still
+    above the original breakout_level pivot, the time exit is skipped —
+    the chandelier stop is managing the position.
     """
     positions = get_open_positions(alpaca_client)
     expired = []
     now = datetime.now(timezone.utc)
 
     for pos in positions:
-        horizon   = pos.get("time_horizon", "swing")
-        max_days  = MAX_HOLD_DAYS.get(horizon, 10)
+        strategy  = pos.get("strategy", "swing")
+        max_days  = MAX_HOLD_DAYS.get(strategy, MAX_HOLD_DAYS.get(pos.get("time_horizon", "swing"), 7))
         ts_raw    = pos.get("timestamp")
         if not ts_raw:
             continue
         try:
-            # timestamp stored as ISO string, may or may not have tz info
             ts = datetime.fromisoformat(ts_raw)
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
@@ -123,21 +126,41 @@ def check_time_exits(alpaca_client=None) -> list[dict]:
         except Exception:
             continue
 
-        if age_days >= max_days:
-            cp     = pos.get("current_price") or pos.get("entry_price") or 0
-            entry  = float(pos.get("entry_price") or cp)
-            action = pos.get("action", "buy")
-            if action == "buy":
-                pnl_pct = (float(cp) - entry) / entry * 100 if entry else 0
-            else:
-                pnl_pct = (entry - float(cp)) / entry * 100 if entry else 0
-            pos["age_days"] = age_days
-            pos["pnl_pct"]  = round(pnl_pct, 2)
-            expired.append(pos)
-            logger.info(
-                f"[portfolio] TIME EXIT: {pos['ticker']} age={age_days}d "
-                f"horizon={horizon} max={max_days}d pnl={pnl_pct:+.1f}%"
-            )
+        if age_days < max_days:
+            continue
+
+        # Stale-exit suppression for breakout positions (mirrors backtest)
+        if strategy in ("breakout", "squeeze_breakout"):
+            brk_lvl = float(pos.get("breakout_level") or 0)
+            if brk_lvl > 0:
+                try:
+                    from bot.data import fetch_daily_bars
+                    df = fetch_daily_bars(pos["ticker"], days=5)
+                    if df is not None and len(df) >= 2:
+                        prior_close = float(df["Close"].iloc[-2])
+                        if prior_close >= brk_lvl:
+                            logger.info(
+                                f"[portfolio] TIME EXIT suppressed: {pos['ticker']} "
+                                f"age={age_days}d prior_close={prior_close:.2f} >= pivot={brk_lvl:.2f}"
+                            )
+                            continue
+                except Exception as _e:
+                    logger.warning(f"[portfolio] stale-exit suppression check failed for {pos['ticker']}: {_e}")
+
+        cp     = pos.get("current_price") or pos.get("entry_price") or 0
+        entry  = float(pos.get("entry_price") or cp)
+        action = pos.get("action", "buy")
+        if action == "buy":
+            pnl_pct = (float(cp) - entry) / entry * 100 if entry else 0
+        else:
+            pnl_pct = (entry - float(cp)) / entry * 100 if entry else 0
+        pos["age_days"] = age_days
+        pos["pnl_pct"]  = round(pnl_pct, 2)
+        expired.append(pos)
+        logger.info(
+            f"[portfolio] TIME EXIT: {pos['ticker']} age={age_days}d "
+            f"strategy={strategy} max={max_days}d pnl={pnl_pct:+.1f}%"
+        )
     return expired
 
 
@@ -193,7 +216,7 @@ def calculate_partial_exit(position: dict, current_price: float) -> dict:
 
 
 CHANDELIER_ATR_MULT     = 3.0
-BREAKOUT_SWING_LOOKBACK = 5   # bars for structure stop
+BREAKOUT_SWING_LOOKBACK = 3   # bars for structure stop (matches backtest)
 
 
 def update_breakout_stops(alpaca_client, data_client=None) -> None:

@@ -116,6 +116,7 @@ def init_db() -> None:
         ("fundamental_score",   "INTEGER"),
         ("hype_penalty",        "REAL"),
         ("breakout_quality",    "TEXT"),
+        ("breakout_level",      "REAL"),
     ]:
         try:
             conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {col_type}")
@@ -159,6 +160,7 @@ def log_trade(
     fundamental_score: Optional[int] = None,
     hype_penalty: Optional[float] = None,
     breakout_quality: Optional[str] = None,
+    breakout_level: Optional[float] = None,
 ) -> int:
     """Insert a trade record. Returns the new row ID."""
     init_db()
@@ -174,8 +176,8 @@ def log_trade(
             macro_bias, vix_level, alpaca_order_id, status,
             ai_confirmed, ai_reasoning,
             return_5d, return_1m, return_3m, velocity_penalty,
-            fundamental_score, hype_penalty, breakout_quality
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            fundamental_score, hype_penalty, breakout_quality, breakout_level
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.utcnow().isoformat(),
             session,
@@ -209,6 +211,7 @@ def log_trade(
             fundamental_score,
             hype_penalty,
             breakout_quality,
+            breakout_level,
         ))
         conn.commit()
         row_id = cur.lastrowid

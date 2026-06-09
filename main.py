@@ -589,6 +589,20 @@ def execute_signals(signals: list, alpaca_client, data_client,
         strategy    = sig.get("strategy", "mixed")
         high_vol    = sig.get("high_vol_flag", False)
 
+        # Compute breakout_level for breakout entries (mirrors backtest logic)
+        _ind = sig.get("_indicators", {})
+        if strategy == "breakout":
+            _r1  = float(_ind.get("R1") or 0)
+            _w52 = float(_ind.get("wk52_high") or 0)
+            if _w52 > 0 and entry_price >= _w52 * 0.99:
+                breakout_level = round(_w52, 2)
+            elif _r1 > 0:
+                breakout_level = round(_r1, 2)
+            else:
+                breakout_level = round(entry_price * 0.985, 2)
+        else:
+            breakout_level = None
+
         if entry_price == 0:
             continue
 
@@ -856,6 +870,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 status=fill_status,
                 ai_confirmed=sig.get("ai_confirmed"),
                 ai_reasoning=sig.get("ai_reasoning"),
+                breakout_level=breakout_level,
             )
             executed += 1
             horizon    = sig.get("time_horizon", "swing")
@@ -1118,7 +1133,7 @@ def session_continuous(alpaca_client, data_client) -> None:
         # ── Exit checks on all open positions ─────────────────────────────
         stopped  = check_stops(alpaca_client)
         targeted = check_targets(alpaca_client)
-        timed    = check_time_exits(alpaca_client)
+        timed    = check_time_exits(alpaca_client, data_client)
 
         for pos in stopped:
             cp = pos.get("current_price") or pos.get("entry_price", 0)
