@@ -71,6 +71,11 @@ MAX_PER_SECTOR     = 2
 MAX_HOLD_DAYS      = {"scalp": 2, "swing": 7, "mixed": 5}
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
 
+# ── Breakout let-run constants ────────────────────────────────────────────────
+CHANDELIER_ATR_MULT    = 3.0   # chandelier stop: highest_seen - 3 × ATR
+BREAKOUT_SWING_LOOKBACK = 3    # prior bars used for structure stop
+BREAKOUT_MAX_HOLD_RUN  = 21    # max hold days when breakout_let_run=True
+
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
 for _sec, _tks in SECTOR_GROUPS.items():
@@ -148,6 +153,7 @@ def run_backtest(
     end:     date,
     starting_capital: float = STARTING_CAPITAL,
     min_net: int = MIN_NET_SCORE,
+    breakout_let_run: bool = True,
 ) -> dict:
     """
     Full day-by-day simulation. Returns results dict with trades + equity curve.
@@ -244,6 +250,27 @@ def run_backtest(
             exit_price  = None
             exit_reason = None
 
+            # ── Breakout let-run: compute dynamic stop from PRIOR bars (no look-ahead) ──
+            prior_bars_brk = None
+            if breakout_let_run and pos.get("strategy") == "breakout":
+                max_hold = BREAKOUT_MAX_HOLD_RUN   # extend hold window
+                _prior_mask = pd.Series(df.index).apply(
+                    lambda x: (x.date() if hasattr(x, "date") else x) < today
+                )
+                prior_bars_brk = df.iloc[_prior_mask.values].tail(BREAKOUT_SWING_LOOKBACK)
+                if len(prior_bars_brk) >= 1:
+                    prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
+                    structure_low   = float(prior_bars_brk["Low"].min()) * 0.995
+                    structure_stop  = min(structure_low, prior_close_brk * 0.999)
+                    pos_highest     = pos.get("highest", entry)
+                    pos_atr         = pos.get("atr") or (entry * 0.02)
+                    chandelier      = pos_highest - CHANDELIER_ATR_MULT * pos_atr
+                    dyn_stop        = max(stop, structure_stop, chandelier)
+                    # Ratchet: only move stop upward, never above highest (safety)
+                    if dyn_stop > stop and dyn_stop < pos_highest:
+                        stop             = dyn_stop
+                        pos["stop_loss"] = stop
+
             # Stop hit — worst case: gap down through stop uses day open
             if day_low <= stop:
                 exit_price  = max(min(stop, day_open), day_low)  # realistic fill
@@ -254,8 +281,23 @@ def run_backtest(
                 exit_reason = "target"
             # Time exit
             elif age_days >= max_hold:
-                exit_price  = day_close
-                exit_reason = "time_exit"
+                if (breakout_let_run and pos.get("strategy") == "breakout"
+                        and prior_bars_brk is not None and len(prior_bars_brk) >= 1):
+                    # Stale-exit suppression: skip if prior close still above pivot
+                    brk_lvl         = pos.get("breakout_level", 0.0)
+                    prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
+                    if brk_lvl > 0 and prior_close_brk >= brk_lvl:
+                        pass  # still above pivot — let it run
+                    else:
+                        exit_price  = day_close
+                        exit_reason = "time_exit"
+                else:
+                    exit_price  = day_close
+                    exit_reason = "time_exit"
+
+            # Track highest seen for chandelier (used next bar; no look-ahead)
+            if exit_price is None and breakout_let_run and pos.get("strategy") == "breakout":
+                pos["highest"] = max(pos.get("highest", entry), day_high)
 
             if exit_price is not None:
                 pnl_dollar = (exit_price - entry) * shares
@@ -420,17 +462,33 @@ def run_backtest(
             if sec:
                 sector_counts[sec] = sector_counts.get(sec, 0) + 1
 
+            # Breakout pivot level for stale-exit suppression
+            if strategy == "breakout":
+                r1_val  = float(ind.get("R1") or 0)
+                w52_val = float(ind.get("wk52_high") or 0)
+                if w52_val > 0 and entry_price >= w52_val * 0.99:
+                    brk_lvl_entry = round(w52_val, 2)
+                elif r1_val > 0:
+                    brk_lvl_entry = round(r1_val, 2)
+                else:
+                    brk_lvl_entry = round(entry_price * 0.985, 2)
+            else:
+                brk_lvl_entry = 0.0
+
             positions[ticker] = {
-                "ticker":      ticker,
-                "entry_date":  next_day,
-                "entry_price": entry_price,
-                "shares":      shares,
-                "stop_loss":   stop_loss,
-                "take_profit": take_profit,
-                "strategy":    strategy,
-                "net_score":   net,
-                "confidence":  confidence,
-                "signals":     score.get("signals_triggered", []),
+                "ticker":         ticker,
+                "entry_date":     next_day,
+                "entry_price":    entry_price,
+                "shares":         shares,
+                "stop_loss":      stop_loss,
+                "take_profit":    take_profit,
+                "strategy":       strategy,
+                "net_score":      net,
+                "confidence":     confidence,
+                "signals":        score.get("signals_triggered", []),
+                "breakout_level": brk_lvl_entry,
+                "atr":            atr,
+                "highest":        entry_price,
             }
 
     # ── Close any remaining open positions at end date ────────────────────────
@@ -557,7 +615,121 @@ def compute_stats(results: dict) -> dict:
     }
 
 
-def print_report(results: dict, stats: dict, args) -> None:
+def compute_strategy_stats(trades: list[dict], strategy_filter: str | None = None) -> dict:
+    """Stats for a trade list, optionally filtered to one strategy."""
+    if strategy_filter:
+        trades = [t for t in trades if t.get("strategy") == strategy_filter]
+    if not trades:
+        return {
+            "total_trades": 0, "win_rate": 0.0,
+            "avg_win_pct": 0.0, "avg_loss_pct": 0.0,
+            "profit_factor": 0.0, "expectancy": 0.0,
+            "avg_win_loss_ratio": 0.0, "total_pnl": 0.0,
+        }
+    pnls      = [t["pnl_dollar"] for t in trades]
+    wins      = [p for p in pnls if p > 0]
+    losses    = [p for p in pnls if p <= 0]
+    win_pcts  = [t["pnl_pct"] for t in trades if t["pnl_dollar"] > 0]
+    loss_pcts = [t["pnl_pct"] for t in trades if t["pnl_dollar"] <= 0]
+    n         = len(trades)
+    wr        = len(wins) / n
+    avg_win_d = float(np.mean(wins))   if wins   else 0.0
+    avg_los_d = abs(float(np.mean(losses))) if losses else 0.0
+    pf        = abs(sum(wins) / sum(losses)) if losses else float("inf")
+    exp       = (wr * avg_win_d) - ((1 - wr) * avg_los_d)
+    wl_ratio  = avg_win_d / avg_los_d if avg_los_d > 0 else float("inf")
+    return {
+        "total_trades":       n,
+        "win_rate":           wr * 100,
+        "avg_win_pct":        float(np.mean(win_pcts))  if win_pcts  else 0.0,
+        "avg_loss_pct":       float(np.mean(loss_pcts)) if loss_pcts else 0.0,
+        "profit_factor":      pf,
+        "expectancy":         exp,
+        "avg_win_loss_ratio": wl_ratio,
+        "total_pnl":          sum(pnls),
+    }
+
+
+def print_breakout_comparison(res_on: dict, res_off: dict) -> None:
+    """Side-by-side A/B table: breakout_let_run=True vs False."""
+    brk_on   = compute_strategy_stats(res_on.get("trades",  []), "breakout")
+    brk_off  = compute_strategy_stats(res_off.get("trades", []), "breakout")
+    book_on  = compute_strategy_stats(res_on.get("trades",  []))
+    book_off = compute_strategy_stats(res_off.get("trades", []))
+
+    def _f(v, is_pct=False, is_dollar=False, is_ratio=False) -> str:
+        if v == float("inf"):
+            return "∞"
+        if is_dollar:
+            return f"${v:,.0f}"
+        if is_pct:
+            return f"{v:+.1f}%"
+        if is_ratio:
+            return f"{v:.2f}×"
+        return f"{v:.2f}"
+
+    console.print()
+    console.print(Panel(
+        "[bold]Breakout Let-Run: A/B Comparison[/bold]\n"
+        "Judge by expectancy, profit factor, and avg W/L ratio — NOT win rate.",
+        style="bold yellow",
+        expand=False,
+    ))
+
+    tbl = Table(box=box.SIMPLE_HEAVY, show_header=True)
+    tbl.add_column("Metric",         style="bold", min_width=22)
+    tbl.add_column("Let-Run  ON",    justify="right", style="green", min_width=14)
+    tbl.add_column("Baseline OFF",   justify="right", style="red",   min_width=14)
+
+    tbl.add_row("[bold dim]── BREAKOUT trades ──[/bold dim]", "", "")
+    tbl.add_row("Trade count",
+                str(brk_on["total_trades"]),
+                str(brk_off["total_trades"]))
+    tbl.add_row("Win rate",
+                f"{brk_on['win_rate']:.1f}%",
+                f"{brk_off['win_rate']:.1f}%")
+    tbl.add_row("Avg win %",
+                _f(brk_on["avg_win_pct"],  is_pct=True),
+                _f(brk_off["avg_win_pct"], is_pct=True))
+    tbl.add_row("Avg loss %",
+                _f(brk_on["avg_loss_pct"],  is_pct=True),
+                _f(brk_off["avg_loss_pct"], is_pct=True))
+    tbl.add_row("Avg W/L ratio",
+                _f(brk_on["avg_win_loss_ratio"],  is_ratio=True),
+                _f(brk_off["avg_win_loss_ratio"], is_ratio=True))
+    tbl.add_row("Profit factor",
+                _f(brk_on["profit_factor"]),
+                _f(brk_off["profit_factor"]))
+    tbl.add_row("Expectancy $/trade",
+                _f(brk_on["expectancy"],  is_dollar=True),
+                _f(brk_off["expectancy"], is_dollar=True))
+    tbl.add_row("Total P&L",
+                _f(brk_on["total_pnl"],  is_dollar=True),
+                _f(brk_off["total_pnl"], is_dollar=True))
+
+    tbl.add_row("[bold dim]── WHOLE BOOK ──[/bold dim]", "", "")
+    tbl.add_row("Trade count",
+                str(book_on["total_trades"]),
+                str(book_off["total_trades"]))
+    tbl.add_row("Win rate",
+                f"{book_on['win_rate']:.1f}%",
+                f"{book_off['win_rate']:.1f}%")
+    tbl.add_row("Profit factor",
+                _f(book_on["profit_factor"]),
+                _f(book_off["profit_factor"]))
+    tbl.add_row("Expectancy $/trade",
+                _f(book_on["expectancy"],  is_dollar=True),
+                _f(book_off["expectancy"], is_dollar=True))
+    tbl.add_row("Total P&L",
+                _f(book_on["total_pnl"],  is_dollar=True),
+                _f(book_off["total_pnl"], is_dollar=True))
+
+    console.print(tbl)
+    console.print("[dim]SUCCESS criterion: expectancy rises and/or profit factor rises, "
+                  "even if win rate falls.[/dim]\n")
+
+
+def print_report(results: dict, stats: dict, args, label: str = "") -> None:
     trades = results.get("trades", [])
     start  = results["start_equity"]
     end_eq = results["final_equity"]
@@ -565,9 +737,10 @@ def print_report(results: dict, stats: dict, args) -> None:
 
     ret_color = "green" if ret >= 0 else "red"
 
+    title_extra = f"  [{label}]" if label else ""
     console.print()
     console.print(Panel(
-        f"[bold]MoneyPrinter Backtest Report[/bold]\n"
+        f"[bold]MoneyPrinter Backtest Report{title_extra}[/bold]\n"
         f"{args.start}  →  {args.end}\n"
         f"Universe: {len(args.tickers or ALL_TICKERS)} tickers  |  "
         f"Min net score: {args.min_net}",
@@ -746,6 +919,8 @@ def main():
                         help="Specific tickers to test (default: full universe)")
     parser.add_argument("--out",     default="backtest_results",
                         help="Output file prefix for CSV exports")
+    parser.add_argument("--no-breakout-run", action="store_true",
+                        help="Disable breakout let-run mode (wider stops / 21-day hold)")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start)
@@ -760,11 +935,15 @@ def main():
     if "SPY" not in tickers:
         tickers = ["SPY"] + tickers
 
+    breakout_let_run = not args.no_breakout_run
+
     console.print(f"\n[bold cyan]MoneyPrinter Backtester[/bold cyan]")
     console.print(f"Period:  {start} → {end}  ({(end-start).days} calendar days)")
     console.print(f"Capital: ${args.capital:,.0f}")
     console.print(f"Tickers: {len(tickers)} (including SPY for regime)")
-    console.print(f"Min net: {args.min_net}\n")
+    console.print(f"Min net: {args.min_net}")
+    brk_status = "[green]ON[/green]" if breakout_let_run else "[red]OFF[/red]"
+    console.print(f"Breakout let-run: {brk_status}\n")
 
     results = run_backtest(
         tickers=tickers,
@@ -772,18 +951,35 @@ def main():
         end=end,
         starting_capital=args.capital,
         min_net=args.min_net,
+        breakout_let_run=breakout_let_run,
     )
 
     if not results:
         sys.exit(1)
 
+    # ── A/B comparison when let-run is ON (run baseline for reference) ────────
+    if breakout_let_run:
+        console.print("\n[dim]Running baseline (let-run OFF) for A/B comparison…[/dim]")
+        results_baseline = run_backtest(
+            tickers=tickers,
+            start=start,
+            end=end,
+            starting_capital=args.capital,
+            min_net=args.min_net,
+            breakout_let_run=False,
+        )
+        if results_baseline:
+            print_breakout_comparison(results, results_baseline)
+
     stats = compute_stats(results)
-    print_report(results, stats, args)
+    label = "breakout let-run ON" if breakout_let_run else "breakout let-run OFF"
+    print_report(results, stats, args, label=label)
 
     # ── Export ────────────────────────────────────────────────────────────────
     out_dir = Path("backtest_output")
     out_dir.mkdir(exist_ok=True)
-    prefix  = f"{out_dir}/{args.out}_{args.start}_{args.end}"
+    suffix  = "" if breakout_let_run else "_no_letrun"
+    prefix  = f"{out_dir}/{args.out}{suffix}_{args.start}_{args.end}"
     save_csv(results["trades"], Path(f"{prefix}_trades.csv"))
     save_equity_csv(results["equity_curve"], Path(f"{prefix}_equity.csv"))
 
@@ -791,7 +987,7 @@ def main():
     summary_path = Path(f"{prefix}_summary.json")
     with open(summary_path, "w") as f:
         json.dump({
-            "args": vars(args),
+            "args": {**vars(args), "breakout_let_run": breakout_let_run},
             "stats": {k: v for k, v in stats.items()
                       if not isinstance(v, (dict,))},
             "by_strategy": stats.get("by_strategy", {}),
