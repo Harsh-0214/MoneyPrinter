@@ -20,9 +20,11 @@ Usage:
 
 import argparse
 import csv
+import hashlib
 import json
 import logging
 import os
+import pickle
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta, datetime
@@ -58,6 +60,13 @@ from bot.discovery import UNIVERSE
 from main import STATIC_TICKERS, SECTOR_GROUPS
 
 ALL_TICKERS = list(dict.fromkeys(STATIC_TICKERS + UNIVERSE))  # deduped, order preserved
+
+# Curated liquid subset for `--quick` smoke tests (~20 names, mix of sectors)
+QUICK_TICKERS = [
+    "AAPL", "MSFT", "NVDA", "AMD", "TSLA", "AMZN", "META", "GOOGL", "NFLX",
+    "JPM", "BAC", "XOM", "CVX", "UNH", "LLY", "AVGO", "MRVL", "SMCI",
+    "COIN", "PLTR",
+]
 
 # ── Backtest defaults ─────────────────────────────────────────────────────────
 DEFAULT_START      = "2024-06-01"
@@ -112,6 +121,73 @@ def get_trading_days(bars_map: dict[str, pd.DataFrame], start: date, end: date) 
             if start <= d <= end:
                 all_dates.add(d)
     return sorted(all_dates)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Disk cache — bars + indicators are identical across exit-logic test runs,
+#  so build once and reload in seconds on every subsequent run.
+# ─────────────────────────────────────────────────────────────────────────────
+
+CACHE_DIR = Path("backtest_cache")
+
+# Bump this when indicator/scorer/velocity computation changes, to invalidate
+# stale on-disk caches automatically.
+CACHE_VERSION = "v1"
+
+
+def _cache_key(tickers: list[str], start: date, end: date) -> str:
+    raw = CACHE_VERSION + "|" + ",".join(sorted(tickers)) + f"|{start}|{end}"
+    return hashlib.md5(raw.encode()).hexdigest()[:16]
+
+
+def load_or_build_cache(
+    tickers: list[str], start: date, end: date,
+    refresh: bool = False, use_cache: bool = True,
+) -> tuple[dict, dict, list[date]]:
+    """
+    Returns (bars_map, ind_cache, trading_days).
+    Reuses an on-disk pickle when available; otherwise builds and saves it.
+    """
+    CACHE_DIR.mkdir(exist_ok=True)
+    key  = _cache_key(tickers, start, end)
+    path = CACHE_DIR / f"{key}.pkl"
+
+    if use_cache and not refresh and path.exists():
+        try:
+            with open(path, "rb") as f:
+                blob = pickle.load(f)
+            built = blob.get("built_at", "?")
+            console.print(f"[green]✓ Loaded cached bars + indicators[/green] "
+                          f"[dim]({path.name}, built {built})[/dim]")
+            console.print("[dim]  Pass --refresh-cache to rebuild after indicator/scorer changes.[/dim]\n")
+            return blob["bars_map"], blob["ind_cache"], blob["trading_days"]
+        except Exception as e:
+            console.print(f"[yellow]Cache read failed ({e}); rebuilding…[/yellow]")
+
+    # Build fresh
+    bars_map     = load_all_bars(tickers, start, end)
+    trading_days = get_trading_days(bars_map, start, end)
+    if not trading_days:
+        return bars_map, {}, trading_days
+
+    sim_tickers = [t for t in tickers if t != "SPY"]
+    ind_cache   = _build_indicator_cache(sim_tickers, bars_map, trading_days)
+
+    if use_cache:
+        try:
+            with open(path, "wb") as f:
+                pickle.dump({
+                    "bars_map":      bars_map,
+                    "ind_cache":     ind_cache,
+                    "trading_days":  trading_days,
+                    "built_at":      datetime.now().isoformat(timespec="seconds"),
+                }, f, protocol=pickle.HIGHEST_PROTOCOL)
+            console.print(f"[green]✓ Cache saved → {path}[/green] "
+                          f"[dim](reused automatically on next run)[/dim]\n")
+        except Exception as e:
+            console.print(f"[yellow]Cache write failed ({e}); continuing without saving.[/yellow]")
+
+    return bars_map, ind_cache, trading_days
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -951,6 +1027,12 @@ def main():
                         help="Output file prefix for CSV exports")
     parser.add_argument("--no-breakout-run", action="store_true",
                         help="Disable breakout let-run mode (wider stops / 21-day hold)")
+    parser.add_argument("--quick", action="store_true",
+                        help="Fast smoke test: ~20 liquid tickers instead of full universe")
+    parser.add_argument("--refresh-cache", action="store_true",
+                        help="Rebuild the bars+indicator cache (use after changing indicator/scorer code)")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="Disable the on-disk bars+indicator cache entirely")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start)
@@ -960,7 +1042,11 @@ def main():
         console.print("[red]--end must be after --start[/red]")
         sys.exit(1)
 
-    tickers = args.tickers or ALL_TICKERS
+    if args.quick:
+        # Curated liquid subset for fast smoke tests
+        tickers = [t for t in QUICK_TICKERS if t in ALL_TICKERS] or QUICK_TICKERS
+    else:
+        tickers = args.tickers or ALL_TICKERS
     # Always include SPY for regime detection
     if "SPY" not in tickers:
         tickers = ["SPY"] + tickers
@@ -970,19 +1056,24 @@ def main():
     console.print(f"\n[bold cyan]MoneyPrinter Backtester[/bold cyan]")
     console.print(f"Period:  {start} → {end}  ({(end-start).days} calendar days)")
     console.print(f"Capital: ${args.capital:,.0f}")
-    console.print(f"Tickers: {len(tickers)} (including SPY for regime)")
+    qtag = "  [yellow](--quick)[/yellow]" if args.quick else ""
+    console.print(f"Tickers: {len(tickers)} (including SPY for regime){qtag}")
     console.print(f"Min net: {args.min_net}")
     brk_status = "[green]ON[/green]" if breakout_let_run else "[red]OFF[/red]"
-    console.print(f"Breakout let-run: {brk_status}\n")
+    console.print(f"Breakout let-run: {brk_status}")
+    cache_status = "[red]disabled[/red]" if args.no_cache else (
+        "[yellow]refreshing[/yellow]" if args.refresh_cache else "[green]enabled[/green]")
+    console.print(f"Disk cache: {cache_status}\n")
 
-    # ── Pre-load bars + build indicator cache once (shared across both A/B runs) ─
-    bars_map     = load_all_bars(tickers, start, end)
-    trading_days = get_trading_days(bars_map, start, end)
+    # ── Load (or build) bars + indicator cache once, shared across both A/B runs ─
+    bars_map, ind_cache, trading_days = load_or_build_cache(
+        tickers, start, end,
+        refresh=args.refresh_cache,
+        use_cache=not args.no_cache,
+    )
     if not trading_days:
         console.print("[red]No trading days found — check date range and API credentials[/red]")
         sys.exit(1)
-    sim_tickers = [t for t in tickers if t != "SPY"]
-    ind_cache   = _build_indicator_cache(sim_tickers, bars_map, trading_days)
 
     results = run_backtest(
         tickers=tickers,

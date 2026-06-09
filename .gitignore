@@ -14,3 +14,6 @@ venv/
 env/
 logs/*.log
 .claude/
+backtest_cache/
+backtest_output/
+*.pkl
