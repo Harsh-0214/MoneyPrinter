@@ -33,10 +33,10 @@ def get_velocity_returns(ticker: str, df) -> dict:
 
 
 def _fetch_velocity(ticker: str) -> dict:
-    """Fetch 90-day daily data and compute velocity returns."""
+    """Fetch daily data and compute velocity returns. 120 cal days ≈ 85 trading days — enough for return_3m (needs n≥64)."""
     try:
         from bot.data import fetch_daily_bars
-        df = fetch_daily_bars(ticker, days=90)
+        df = fetch_daily_bars(ticker, days=120)
         if df is None or df.empty:
             return {"return_1d": None, "return_5d": None, "return_1m": None, "return_3m": None}
         return get_velocity_returns(ticker, df)
