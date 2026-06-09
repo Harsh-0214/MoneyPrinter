@@ -1,16 +1,4 @@
 {
-  "tickers": [
-    "CRWD"
-  ],
-  "meta": {
-    "CRWD": {
-      "ticker": "CRWD",
-      "price": 719.21,
-      "pct_change": 3.72,
-      "vol_ratio": 2.13,
-      "near_52wk": false,
-      "claude_reasoning": "CrowdStrike's Q1 earnings beat combined with a 4-for-1 stock split announcement provides a credible fundamental catalyst, as earnings beats typically drive sustained institutional accumulation over several sessions and stock splits historically attract retail momentum in the near term.",
-      "claude_confidence": 0.72
-    }
-  }
+  "tickers": [],
+  "meta": {}
 }
