@@ -1,9 +1,9 @@
-name: Trading Day (09:30 ET, DST-safe)
+name: Trading Day (09:15 ET, DST-safe)
 
 on:
   schedule:
-    - cron: "30 13 * * 1-5"   # 09:30 ET during EDT (UTC-4)
-    - cron: "30 14 * * 1-5"   # 09:30 ET during EST (UTC-5)
+    - cron: "15 13 * * 1-5"   # 09:15 ET during EDT (UTC-4) — 15 min before open so job is warm by 9:30
+    - cron: "15 14 * * 1-5"   # 09:15 ET during EST (UTC-5)
   workflow_dispatch:
 
 jobs:
@@ -20,8 +20,8 @@ jobs:
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          TARGET_MIN=570        # 09:30 America/New_York (minutes since midnight)
-          TOLERANCE=20          # minutes of GitHub scheduling delay to tolerate
+          TARGET_MIN=555        # 09:15 America/New_York (minutes since midnight)
+          TOLERANCE=55          # tolerate up to 55 min GitHub delay; still rejects wrong-season cron (60 min off)
           H=$(TZ=America/New_York date +%-H)
           M=$(TZ=America/New_York date +%-M)
           NOW_MIN=$(( H * 60 + M ))

@@ -152,11 +152,11 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     # Require uptrend context + 2x volume + ADX ≥ 25 — consistent with backtest guards
     breakout_confirmed = r1_break and in_uptrend and vol_ratio >= 2.0 and adx >= 25
 
-    # ── Trend follow: ADX>25, volume confirmed, RSI not extended.
+    # ── Trend follow: ADX>22, volume confirmed, RSI not extended.
     # in_uptrend + MACD accelerating + vol >= 1.5x + RSI not overbought.
     ema_aligned     = "ema_full_bull_alignment" in sigs or "ema_partial_bull_alignment" in sigs
     trend_follow_ok = (ema_aligned and in_uptrend
-                       and adx > 25
+                       and adx > 22
                        and macd_hist > 0
                        and macd_hist > macd_hist_p1
                        and vol_ratio >= 1.5

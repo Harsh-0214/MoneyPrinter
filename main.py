@@ -610,9 +610,12 @@ def execute_signals(signals: list, alpaca_client, data_client,
         _daily_loss_halt = True
         logger.warning("[main] DAILY LOSS LIMIT HIT — halting new entries for this session")
 
-    # Sort by confidence descending, cap at max_trades
+    # Sort by confidence descending.
+    # Buffer beyond max_trades to absorb duplicate/held positions that will be
+    # skipped in the loop — without this, 3 open positions in the top 5 slots
+    # would leave only 2 slots for genuinely new entries.
     ranked  = sorted(signals, key=lambda s: s.get("confidence", 0), reverse=True)
-    ranked  = ranked[:max_trades]
+    ranked  = ranked[:max_trades + 6]
 
     executed = 0
     for sig in ranked:
@@ -906,16 +909,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
             )
             continue
 
-        # ── trend_follow disabled ─────────────────────────────────────────
-        if action == "buy" and strategy == "trend_follow":
-            log_rejection(
-                session=session, ticker=ticker,
-                net_score=sig.get("net_score", 0), confidence=confidence,
-                action=action, rejection_reason="strategy_disabled",
-                bull_score=sig.get("bull_score", 0),
-                bear_score=sig.get("bear_score", 0), strategy=strategy,
-            )
-            continue
+        # trend_follow is enabled — EMA-aligned uptrend buys with ADX+MACD+vol confirmation
 
         # ── Max concurrent mean_reversion cap ─────────────────────────────
         if action == "buy" and strategy == "mean_reversion":
@@ -993,10 +987,14 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 continue
 
-        # ── Gap-chase guard: skip if stock already ran > 3% past prior close ──
+        # ── Gap-chase guard: skip if stock already ran > 8% intraday from prior close ──
+        # Uses intraday_move_pct (current price vs. prev_close snapshot) — NOT return_1d
+        # which is yesterday's close-to-close and would incorrectly block every momentum
+        # stock that had a strong prior day. 8% threshold avoids chasing true gap blowouts
+        # while still allowing trend-following entries on normal trending days.
         if action == "buy":
-            r1d = sig.get("return_1d")
-            if r1d is not None and r1d > 0.03 and entry_price > 0:
+            _intra_pct = float((sig.get("_indicators") or {}).get("intraday_move_pct") or 0)
+            if _intra_pct > 8.0 and entry_price > 0:
                 log_rejection(
                     session=session,
                     ticker=ticker,
@@ -1009,7 +1007,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
                     strategy=strategy,
                 )
                 logger.info(
-                    f"[execute] {ticker} gap-chase guard: return_1d={r1d:.2%} > 3%"
+                    f"[execute] {ticker} gap-chase guard: intraday_move={_intra_pct:.1f}% > 8%"
                 )
                 continue
 
@@ -1031,11 +1029,13 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 continue
 
         # ── Gap-down guard for breakout ────────────────────────────────────
+        # Don't buy a "breakout" when the stock has actually gapped DOWN today
+        # by more than 1 ATR from yesterday's close. Uses intraday_move_pct.
         if action == "buy" and strategy == "breakout":
-            r1d = sig.get("return_1d")
-            if r1d is not None and r1d < 0 and entry_price > 0:
-                prev_close = entry_price / (1 + r1d)
-                if (prev_close - entry_price) > atr:
+            _bk_intra = float((sig.get("_indicators") or {}).get("intraday_move_pct") or 0)
+            if _bk_intra < 0 and entry_price > 0 and atr > 0:
+                gap_down_pct = abs(_bk_intra) / 100
+                if gap_down_pct > (atr / entry_price):
                     log_rejection(
                         session=session,
                         ticker=ticker,
@@ -1048,8 +1048,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
                         strategy=strategy,
                     )
                     logger.info(
-                        f"[execute] {ticker} gap-down guard: price={entry_price:.2f} "
-                        f"prev_close={prev_close:.2f} drop={prev_close-entry_price:.2f} atr={atr:.2f}"
+                        f"[execute] {ticker} gap-down guard: intraday={_bk_intra:.1f}% > 1 ATR"
                     )
                     continue
 
