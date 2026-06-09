@@ -339,7 +339,7 @@ def run_backtest(
                 continue
             if net < min_net:
                 continue
-            if confidence < MIN_CONFIDENCE:
+            if confidence < MIN_CONFIDENCE or score.get("strategy") == "mixed":
                 continue
             if macro["bearish_market"]:
                 continue   # suppress buys in downtrend
