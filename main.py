@@ -542,9 +542,12 @@ def execute_signals(signals: list, alpaca_client, data_client,
         _daily_loss_halt = True
         logger.warning("[main] DAILY LOSS LIMIT HIT — halting new entries for this session")
 
-    # Sort by confidence descending, cap at max_trades
+    # Sort by confidence descending.
+    # Buffer beyond max_trades so duplicate/held positions that get skipped in the
+    # loop don't consume all slots — without this, 3 open positions in the top 5
+    # leaves only 2 slots for genuinely new entries.
     ranked  = sorted(signals, key=lambda s: s.get("confidence", 0), reverse=True)
-    ranked  = ranked[:max_trades]
+    ranked  = ranked[:max_trades + 6]
 
     executed = 0
     for sig in ranked:

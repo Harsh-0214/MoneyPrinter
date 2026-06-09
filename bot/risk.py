@@ -14,6 +14,10 @@ DAILY_START_VALUE  = 0.0
 
 def init_daily_state(starting_portfolio_value: float) -> None:
     global KILL_SWITCH_ACTIVE, DAILY_REALIZED_PNL, DAILY_START_VALUE
+    # Only initialise once per process — subsequent calls are no-ops so the kill
+    # switch and accumulated P&L persist across all scan cycles within a session.
+    if DAILY_START_VALUE > 0:
+        return
     KILL_SWITCH_ACTIVE  = False
     DAILY_REALIZED_PNL  = 0.0
     DAILY_START_VALUE   = starting_portfolio_value
