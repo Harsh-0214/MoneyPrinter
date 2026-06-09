@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from bot.data import fetch_daily_bars_batch
 from bot.indicators import compute_indicators_from_df, compute_entry_triggers
-from bot.scorer import score_ticker
+from bot.scorer import score_ticker, get_velocity_returns
 from bot.strategies import classify_strategy
 
 # ── Universe ─────────────────────────────────────────────────────────────────
@@ -141,6 +141,9 @@ def _build_ticker_ind_cache(
             except Exception:
                 ind = {"ticker": ticker, "error": "compute_failed"}
         if not ind.get("error"):
+            # Inject historical velocity returns so score_ticker skips live API fetch
+            vel = get_velocity_returns(ticker, sliced)
+            ind.update(vel)
             triggers = compute_entry_triggers(ind, prev_ind)
             ind["entry_triggers"] = triggers
             prev_ind = {k: v for k, v in ind.items() if k != "entry_triggers"}
@@ -209,9 +212,11 @@ def run_backtest(
     starting_capital: float = STARTING_CAPITAL,
     min_net: int = MIN_NET_SCORE,
     breakout_let_run: bool = True,
+    _bars_map:  dict | None = None,  # pre-loaded bars — avoids double fetch for A/B
+    _ind_cache: dict | None = None,  # pre-built cache — avoids double compute for A/B
 ) -> dict:
     """Full day-by-day simulation. Returns results dict with trades + equity curve."""
-    bars_map     = load_all_bars(tickers, start, end)
+    bars_map     = _bars_map or load_all_bars(tickers, start, end)
     trading_days = get_trading_days(bars_map, start, end)
 
     if not trading_days:
@@ -222,8 +227,12 @@ def run_backtest(
                   f"({trading_days[0]} → {trading_days[-1]})[/cyan]")
 
     # ── Pre-compute all (ticker, day) indicators in parallel ─────────────────
-    sim_tickers = [t for t in tickers if t != "SPY"]
-    ind_cache   = _build_indicator_cache(sim_tickers, bars_map, trading_days)
+    if _ind_cache is not None:
+        ind_cache = _ind_cache
+        console.print("[dim]Using shared indicator cache[/dim]")
+    else:
+        sim_tickers = [t for t in tickers if t != "SPY"]
+        ind_cache   = _build_indicator_cache(sim_tickers, bars_map, trading_days)
 
     # ── State ─────────────────────────────────────────────────────────────────
     cash         = starting_capital
@@ -966,6 +975,15 @@ def main():
     brk_status = "[green]ON[/green]" if breakout_let_run else "[red]OFF[/red]"
     console.print(f"Breakout let-run: {brk_status}\n")
 
+    # ── Pre-load bars + build indicator cache once (shared across both A/B runs) ─
+    bars_map     = load_all_bars(tickers, start, end)
+    trading_days = get_trading_days(bars_map, start, end)
+    if not trading_days:
+        console.print("[red]No trading days found — check date range and API credentials[/red]")
+        sys.exit(1)
+    sim_tickers = [t for t in tickers if t != "SPY"]
+    ind_cache   = _build_indicator_cache(sim_tickers, bars_map, trading_days)
+
     results = run_backtest(
         tickers=tickers,
         start=start,
@@ -973,12 +991,14 @@ def main():
         starting_capital=args.capital,
         min_net=args.min_net,
         breakout_let_run=breakout_let_run,
+        _bars_map=bars_map,
+        _ind_cache=ind_cache,
     )
 
     if not results:
         sys.exit(1)
 
-    # ── A/B comparison when let-run is ON (run baseline for reference) ────────
+    # ── A/B comparison when let-run is ON (reuses shared cache — no extra fetch) ─
     if breakout_let_run:
         console.print("\n[dim]Running baseline (let-run OFF) for A/B comparison…[/dim]")
         results_baseline = run_backtest(
@@ -988,6 +1008,8 @@ def main():
             starting_capital=args.capital,
             min_net=args.min_net,
             breakout_let_run=False,
+            _bars_map=bars_map,
+            _ind_cache=ind_cache,
         )
         if results_baseline:
             print_breakout_comparison(results, results_baseline)

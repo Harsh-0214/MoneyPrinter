@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 # ── Fundamental quality cache ──────────────────────────────────────────────────
 _fund_cache: dict = {}
 
+# ── Velocity returns cache (per-ticker; avoids repeated API calls per scan) ────
+_vel_cache: dict = {}
+
 
 def get_velocity_returns(ticker: str, df) -> dict:
     """Compute multi-timeframe returns from a daily Close series."""
@@ -32,17 +35,31 @@ def get_velocity_returns(ticker: str, df) -> dict:
     return result
 
 
-def _fetch_velocity(ticker: str) -> dict:
-    """Fetch 90-day daily data and compute velocity returns."""
+def _fetch_velocity(ticker: str, precomputed: dict | None = None) -> dict:
+    """
+    Fetch velocity returns. If `precomputed` dict already contains return_1d,
+    use it directly (backtest path — avoids live API call).
+    Results are cached per ticker for the lifetime of the process so a single
+    scan cycle doesn't hit the API 40× for the same ticker.
+    """
+    _empty = {"return_1d": None, "return_5d": None, "return_1m": None, "return_3m": None}
+    # Prefer pre-computed historical values (injected by backtest)
+    if precomputed is not None and precomputed.get("return_1d") is not None:
+        return {k: precomputed.get(k) for k in _empty}
+    # Module-level cache — one real fetch per ticker per process
+    if ticker in _vel_cache:
+        return _vel_cache[ticker]
     try:
         from bot.data import fetch_daily_bars
         df = fetch_daily_bars(ticker, days=90)
         if df is None or df.empty:
-            return {"return_1d": None, "return_5d": None, "return_1m": None, "return_3m": None}
-        return get_velocity_returns(ticker, df)
+            return _empty
+        result = get_velocity_returns(ticker, df)
+        _vel_cache[ticker] = result
+        return result
     except Exception as e:
         logger.warning(f"[scorer] _fetch_velocity failed for {ticker}: {e}")
-        return {"return_1d": None, "return_5d": None, "return_1m": None, "return_3m": None}
+        return _empty
 
 
 def get_fundamental_quality(ticker: str) -> dict:
@@ -711,7 +728,7 @@ def score_ticker(
     # ──────────────────────────────────────────────────────────────
     # VELOCITY RETURNS + HYPE DETECTION
     # ──────────────────────────────────────────────────────────────
-    vel = _fetch_velocity(ticker)
+    vel = _fetch_velocity(ticker, precomputed=ind)
     r1d = vel.get("return_1d") or 0.0
     r5d = vel.get("return_5d") or 0.0
     r1m = vel.get("return_1m") or 0.0
