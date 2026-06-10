@@ -16,7 +16,11 @@
       "claude_skipped": 21,
       "sessions": [
         "premarket"
-      ]
+      ],
+      "pnl_dollar": 0,
+      "trades_executed": 0,
+      "win_rate": 0,
+      "portfolio_value": 975844.42
     },
     "2026-06-09": {
       "date": "2026-06-09",
