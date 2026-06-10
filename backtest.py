@@ -78,8 +78,29 @@ MAX_POSITION_PCT   = 0.10        # 10% of portfolio per trade
 RISK_PCT           = 0.02        # 2% portfolio risk per trade
 ATR_STOP_MULT      = 1.5         # stop = entry - atr * mult
 MAX_PER_SECTOR     = 2
-MAX_HOLD_DAYS      = {"scalp": 2, "swing": 7, "mixed": 5}
 MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
+
+# Hold-period rules. NOTE: the original code looked up the STRATEGY name in a
+# dict keyed by HORIZON ({"scalp","swing","mixed"}), so every non-breakout
+# position silently fell to the 5-day default. hold_mode="legacy" reproduces
+# that measured behavior; "strategy" and "horizon" are the explicit rules.
+HOLD_BY_STRATEGY = {
+    "trend_follow":      7,
+    "mean_reversion":    5,
+    "news_momentum":     3,
+    "breakdown":         7,
+    "mixed":             5,
+    "squeeze_breakout": 21,
+}
+HOLD_BY_HORIZON = {"scalp": 5, "swing": 20, "position": 45}
+
+
+def _max_hold_for(pos: dict, hold_mode: str) -> int:
+    if hold_mode == "legacy":
+        return 5
+    if hold_mode == "horizon":
+        return HOLD_BY_HORIZON.get(pos.get("horizon", "swing"), 20)
+    return HOLD_BY_STRATEGY.get(pos.get("strategy", "mixed"), 5)
 
 # ── Breakout let-run constants ────────────────────────────────────────────────
 CHANDELIER_ATR_MULT    = 3.0   # chandelier stop: highest_seen - 3 × ATR
@@ -268,12 +289,14 @@ def compute_ind_for_day(ticker: str, df: pd.DataFrame, as_of: date) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def size_position(portfolio_value: float, confidence: float,
-                  atr: float, price: float) -> int:
+                  atr: float, price: float,
+                  risk_pct: float = RISK_PCT,
+                  max_pos_pct: float = MAX_POSITION_PCT) -> int:
     if price <= 0 or atr <= 0:
         return 0
-    dollar_risk = portfolio_value * RISK_PCT * confidence
+    dollar_risk = portfolio_value * risk_pct * confidence
     shares      = floor(dollar_risk / (atr * ATR_STOP_MULT))
-    max_shares  = floor(portfolio_value * MAX_POSITION_PCT / price)
+    max_shares  = floor(portfolio_value * max_pos_pct / price)
     return max(0, min(shares, max_shares))
 
 
@@ -288,6 +311,12 @@ def run_backtest(
     starting_capital: float = STARTING_CAPITAL,
     min_net: int = MIN_NET_SCORE,
     breakout_let_run: bool = True,
+    max_open: int = MAX_OPEN_POSITIONS,
+    max_pos_pct: float = MAX_POSITION_PCT,
+    risk_pct: float = RISK_PCT,
+    hold_mode: str = "legacy",            # "legacy" | "strategy" | "horizon"
+    letrun_strats: tuple = ("breakout",), # strategies that get chandelier let-run
+    quiet: bool = False,
     _bars_map:  dict | None = None,  # pre-loaded bars — avoids double fetch for A/B
     _ind_cache: dict | None = None,  # pre-built cache — avoids double compute for A/B
 ) -> dict:
@@ -299,13 +328,15 @@ def run_backtest(
         console.print("[red]No trading days found — check date range and API credentials[/red]")
         return {}
 
-    console.print(f"[cyan]Simulating {len(trading_days)} trading days "
-                  f"({trading_days[0]} → {trading_days[-1]})[/cyan]")
+    if not quiet:
+        console.print(f"[cyan]Simulating {len(trading_days)} trading days "
+                      f"({trading_days[0]} → {trading_days[-1]})[/cyan]")
 
     # ── Pre-compute all (ticker, day) indicators in parallel ─────────────────
     if _ind_cache is not None:
         ind_cache = _ind_cache
-        console.print("[dim]Using shared indicator cache[/dim]")
+        if not quiet:
+            console.print("[dim]Using shared indicator cache[/dim]")
     else:
         sim_tickers = [t for t in tickers if t != "SPY"]
         ind_cache   = _build_indicator_cache(sim_tickers, bars_map, trading_days)
@@ -379,8 +410,7 @@ def run_backtest(
             target   = pos["take_profit"]
             entry    = pos["entry_price"]
             shares   = pos["shares"]
-            horizon  = pos.get("strategy", "swing")
-            max_hold = MAX_HOLD_DAYS.get(horizon, 5)
+            max_hold = _max_hold_for(pos, hold_mode)
             age_days = (today - pos["entry_date"]).days
 
             exit_price  = None
@@ -388,8 +418,8 @@ def run_backtest(
 
             # ── Breakout let-run: dynamic stop from PRIOR bars (no look-ahead) ──
             prior_bars_brk = None
-            if breakout_let_run and pos.get("strategy") == "breakout":
-                max_hold       = BREAKOUT_MAX_HOLD_RUN
+            if breakout_let_run and pos.get("strategy") in letrun_strats:
+                max_hold       = max(max_hold, BREAKOUT_MAX_HOLD_RUN)
                 prior_bars_brk = _fast_slice(df, today - timedelta(days=1)).tail(
                     BREAKOUT_SWING_LOOKBACK
                 )
@@ -416,7 +446,7 @@ def run_backtest(
                 exit_reason = "target"
             # Time exit
             elif age_days >= max_hold:
-                if (breakout_let_run and pos.get("strategy") == "breakout"
+                if (breakout_let_run and pos.get("strategy") in letrun_strats
                         and prior_bars_brk is not None and len(prior_bars_brk) >= 1):
                     brk_lvl         = pos.get("breakout_level", 0.0)
                     prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
@@ -430,7 +460,7 @@ def run_backtest(
                     exit_reason = "time_exit"
 
             # Track highest for tomorrow's chandelier (no look-ahead)
-            if exit_price is None and breakout_let_run and pos.get("strategy") == "breakout":
+            if exit_price is None and breakout_let_run and pos.get("strategy") in letrun_strats:
                 pos["highest"] = max(pos.get("highest", entry), day_high)
 
             if exit_price is not None:
@@ -461,7 +491,7 @@ def run_backtest(
             del positions[t]
 
         # ── 2. Generate signals from pre-computed indicator cache ─────────────
-        if len(positions) >= MAX_OPEN_POSITIONS:
+        if len(positions) >= max_open:
             continue
 
         sector_counts: dict[str, int] = {}
@@ -508,7 +538,7 @@ def run_backtest(
             new_signals.append(score)
 
         new_signals.sort(key=lambda s: s.get("confidence", 0), reverse=True)
-        slots = MAX_OPEN_POSITIONS - len(positions)
+        slots = max_open - len(positions)
 
         for score in new_signals[:slots]:
             ticker      = score["ticker"]
@@ -549,13 +579,15 @@ def run_backtest(
                 confidence=confidence,
                 atr=atr,
                 price=entry_price,
+                risk_pct=risk_pct,
+                max_pos_pct=max_pos_pct,
             )
             if shares < 1:
                 continue
 
             cost = shares * entry_price
             if cost > cash:
-                shares = floor(cash * MAX_POSITION_PCT / entry_price)
+                shares = floor(cash * max_pos_pct / entry_price)
                 cost   = shares * entry_price
             if shares < 1:
                 continue
@@ -592,6 +624,7 @@ def run_backtest(
                 "stop_loss":      stop_loss,
                 "take_profit":    take_profit,
                 "strategy":       strategy,
+                "horizon":        score.get("time_horizon", "swing"),
                 "net_score":      net,
                 "confidence":     confidence,
                 "signals":        score.get("signals_triggered", []),
@@ -1010,6 +1043,116 @@ def save_equity_csv(equity_curve: list[dict], path: Path) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Experiment matrix — measured A/B of candidate strategy improvements.
+#  All variants share one bars+indicator cache, so each extra variant costs
+#  only simulation time (seconds), not data/compute time.
+# ─────────────────────────────────────────────────────────────────────────────
+
+EXPERIMENTS: dict[str, dict] = {
+    # What the 15% number was actually measured on (5-day holds everywhere
+    # due to the strategy/horizon key mismatch, breakout let-run 21d)
+    "baseline_legacy": {},
+    # Explicit per-strategy holds (what the old code *intended*)
+    "hold_strategy":   {"hold_mode": "strategy"},
+    # Horizon-based holds like main.py's walk-forward (swing=20d)
+    "hold_horizon":    {"hold_mode": "horizon"},
+    # Entry quality: live bot uses 65; is 60 or 70 better?
+    "min_net_65":      {"min_net": 65},
+    "min_net_70":      {"min_net": 70},
+    # Capital utilization: 5 slots × 10% caps deployment at 50%
+    "slots8_pos15":    {"max_open": 8, "max_pos_pct": 0.15},
+    "risk3":           {"risk_pct": 0.03},
+    # Extend the chandelier let-run (the best-performing exit) beyond breakout
+    "letrun_trend":    {"letrun_strats": ("breakout", "squeeze_breakout", "trend_follow")},
+    # Combined growth candidate
+    "combo_growth":    {"max_open": 8, "max_pos_pct": 0.15,
+                        "letrun_strats": ("breakout", "squeeze_breakout", "trend_follow")},
+}
+
+
+def run_experiments(tickers: list[str], windows: list[tuple[date, date]],
+                    capital: float, refresh: bool, use_cache: bool) -> None:
+    full_start = min(w[0] for w in windows)
+    full_end   = max(w[1] for w in windows)
+
+    bars_map, ind_cache, trading_days = load_or_build_cache(
+        tickers, full_start, full_end, refresh=refresh, use_cache=use_cache)
+    if not trading_days:
+        console.print("[red]No trading days — check credentials/date range[/red]")
+        sys.exit(1)
+
+    out: dict = {"windows": {}, "experiments": {k: v for k, v in EXPERIMENTS.items()}}
+
+    for (ws, we) in windows:
+        wkey = f"{ws}→{we}"
+        console.print(Panel(f"[bold]Experiment window {wkey}[/bold]", style="bold cyan", expand=False))
+
+        # SPY buy-and-hold benchmark for the window
+        spy_ret = None
+        spy_df = bars_map.get("SPY")
+        if spy_df is not None:
+            s0 = _fast_slice(spy_df, ws)
+            s1 = _fast_slice(spy_df, we)
+            if len(s0) and len(s1):
+                spy_ret = (float(s1["Close"].iloc[-1]) - float(s0["Close"].iloc[-1])) \
+                          / float(s0["Close"].iloc[-1]) * 100
+
+        tbl = Table(box=box.SIMPLE_HEAVY)
+        for col in ["Variant", "Return %", "Trades", "Win %", "PF",
+                    "Max DD %", "Sharpe", "Avg hold"]:
+            tbl.add_column(col, justify="right" if col != "Variant" else "left")
+
+        win_rows = {}
+        for name, cfg in EXPERIMENTS.items():
+            try:
+                res = run_backtest(
+                    tickers=tickers, start=ws, end=we,
+                    starting_capital=capital, quiet=True,
+                    _bars_map=bars_map, _ind_cache=ind_cache, **cfg,
+                )
+                st = compute_stats(res)
+            except Exception as e:
+                console.print(f"[red]{name} failed: {e}[/red]")
+                continue
+            ret = st.get("total_return_pct", 0.0)
+            color = "green" if ret >= 0 else "red"
+            tbl.add_row(
+                name,
+                f"[{color}]{ret:+.2f}%[/{color}]",
+                str(st.get("total_trades", 0)),
+                f"{st.get('win_rate', 0):.1f}",
+                f"{st.get('profit_factor', 0):.2f}" if st.get("profit_factor") != float("inf") else "∞",
+                f"{st.get('max_drawdown_pct', 0):.1f}",
+                f"{st.get('sharpe', 0)}",
+                f"{st.get('avg_hold_days', 0)}d",
+            )
+            win_rows[name] = {
+                "return_pct":   round(ret, 2),
+                "trades":       st.get("total_trades", 0),
+                "win_rate":     round(st.get("win_rate", 0), 1),
+                "profit_factor": (round(st["profit_factor"], 2)
+                                  if st.get("profit_factor") not in (None, float("inf")) else None),
+                "max_dd_pct":   round(st.get("max_drawdown_pct", 0), 2),
+                "sharpe":       st.get("sharpe", 0),
+                "avg_hold":     st.get("avg_hold_days", 0),
+                "by_strategy":  st.get("by_strategy", {}),
+            }
+
+        console.print(tbl)
+        if spy_ret is not None:
+            console.print(f"[dim]SPY buy-and-hold over window: {spy_ret:+.2f}%[/dim]\n")
+        out["windows"][wkey] = {"spy_return_pct": round(spy_ret, 2) if spy_ret is not None else None,
+                                "results": win_rows}
+
+    out_dir = Path("backtest_output")
+    out_dir.mkdir(exist_ok=True)
+    path = out_dir / "experiments.json"
+    with open(path, "w") as f:
+        json.dump(out, f, indent=2, default=str)
+    console.print(f"[green]Experiment matrix exported → {path}[/green]")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  CLI
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1033,6 +1176,10 @@ def main():
                         help="Rebuild the bars+indicator cache (use after changing indicator/scorer code)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Disable the on-disk bars+indicator cache entirely")
+    parser.add_argument("--experiments", action="store_true",
+                        help="Run the variant experiment matrix instead of a single backtest")
+    parser.add_argument("--windows", default="2024-06-01:2025-06-01,2025-06-01:2026-06-01",
+                        help="Comma-separated start:end windows for --experiments")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start)
@@ -1052,6 +1199,18 @@ def main():
         tickers = ["SPY"] + tickers
 
     breakout_let_run = not args.no_breakout_run
+
+    if args.experiments:
+        windows = []
+        for w in args.windows.split(","):
+            ws, we = w.strip().split(":")
+            windows.append((date.fromisoformat(ws), date.fromisoformat(we)))
+        console.print(f"\n[bold cyan]MoneyPrinter Experiment Matrix[/bold cyan]")
+        console.print(f"Windows: {[(str(a), str(b)) for a, b in windows]}")
+        console.print(f"Tickers: {len(tickers)}  |  Variants: {len(EXPERIMENTS)}\n")
+        run_experiments(tickers, windows, args.capital,
+                        refresh=args.refresh_cache, use_cache=not args.no_cache)
+        return
 
     console.print(f"\n[bold cyan]MoneyPrinter Backtester[/bold cyan]")
     console.print(f"Period:  {start} → {end}  ({(end-start).days} calendar days)")

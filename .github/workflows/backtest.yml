@@ -23,6 +23,14 @@ on:
         description: "Space-separated tickers to test (leave blank = full universe)"
         required: false
         default: ""
+      experiments:
+        description: "Run variant experiment matrix (true/false)"
+        required: false
+        default: "false"
+      windows:
+        description: "Experiment windows, comma-separated start:end"
+        required: false
+        default: "2024-06-01:2025-06-01,2025-06-01:2026-06-01"
 
 jobs:
   backtest:
@@ -58,11 +66,16 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_BASE_URL:   https://paper-api.alpaca.markets
         run: |
-          ARGS="--start ${{ github.event.inputs.start }} \
-                --end   ${{ github.event.inputs.end }}   \
-                --capital ${{ github.event.inputs.capital }} \
-                --min-net ${{ github.event.inputs.min_net }} \
-                --out backtest"
+          if [ "${{ github.event.inputs.experiments }}" = "true" ]; then
+            ARGS="--experiments --windows ${{ github.event.inputs.windows }} \
+                  --capital ${{ github.event.inputs.capital }}"
+          else
+            ARGS="--start ${{ github.event.inputs.start }} \
+                  --end   ${{ github.event.inputs.end }}   \
+                  --capital ${{ github.event.inputs.capital }} \
+                  --min-net ${{ github.event.inputs.min_net }} \
+                  --out backtest"
+          fi
 
           if [ -n "${{ github.event.inputs.tickers }}" ]; then
             ARGS="$ARGS --tickers ${{ github.event.inputs.tickers }}"
