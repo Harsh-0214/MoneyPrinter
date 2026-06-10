@@ -57,6 +57,16 @@ COMPANY_NAMES = WATCHLIST["company_names"]
 DRY_RUN       = os.getenv("DRY_RUN", "true").lower() == "true"
 USE_CLAUDE    = os.getenv("USE_CLAUDE", "false").lower() == "true"
 
+# BACKTEST_PARITY=true (default): exits behave exactly like the walk-forward
+# backtest — bracket stop/target + horizon-based time exits + breakout
+# chandelier only. The extra live-only exits (partial exits, trailing stops,
+# signal-flip closes, thesis rescore, scale-ins) are disabled because the
+# backtest results were produced without them.
+BACKTEST_PARITY = os.getenv("BACKTEST_PARITY", "true").lower() == "true"
+
+# GitHub-hosted jobs are killed at 6h; leave room for setup + the commit step.
+SESSION_MAX_RUNTIME_MIN = int(os.getenv("SESSION_MAX_RUNTIME_MIN", "310"))
+
 # ── Risk control constants ──────────────────────────────────────────────────
 MAX_DAILY_LOSS_PCT        = 0.03   # halt trading if session P&L drops 3% below open equity
 MAX_PORTFOLIO_EXPOSURE_PCT = 0.25  # max 25% of portfolio in any single new position
@@ -638,6 +648,9 @@ def execute_signals(signals: list, alpaca_client, data_client,
                     continue
                 quote        = get_latest_quote(data_client, ticker)
                 limit_price  = compute_limit_price("sell", quote, entry_price)
+                # Bracket/OCO legs hold the shares — release them first
+                from bot.trader import cancel_open_orders as _coo
+                _coo(alpaca_client, ticker, dry_run=DRY_RUN)
                 order_id = submit_order(
                     client=alpaca_client,
                     ticker=ticker,
@@ -658,7 +671,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
         # ── Duplicate position guard (for new buys/shorts) ────────────────
         # Exception: high-confidence buy on existing position → attempt scale-in
         if action not in ("sell",) and _has_open_position(ticker, alpaca_client):
-            if action == "buy" and confidence > 0.75:
+            if action == "buy" and confidence > 0.75 and not BACKTEST_PARITY:
                 # Attempt scale-in instead of a full new entry
                 from bot.risk import calculate_scale_in as _scale_in
                 from bot.portfolio import get_open_positions as _get_op
@@ -745,12 +758,23 @@ def execute_signals(signals: list, alpaca_client, data_client,
         # ── Portfolio exposure cap ─────────────────────────────────────────
         if action == "buy":
             try:
-                from bot.logger import get_open_trades as _got
-                current_exposure = sum(
-                    float(t.get("quantity") or 0) * float(t.get("entry_price") or 0)
-                    for t in _got()
-                    if t.get("status") in ("open", "dry_run")
-                )
+                # Live Alpaca positions are ground truth; DB rows alone miss
+                # orphaned/manual positions.
+                current_exposure = 0.0
+                if alpaca_client:
+                    from bot.trader import get_positions as _gp_exp
+                    current_exposure = sum(
+                        float(p.get("qty") or 0)
+                        * float(p.get("current_price") or p.get("avg_entry_price") or 0)
+                        for p in _gp_exp(alpaca_client)
+                    )
+                else:
+                    from bot.logger import get_open_trades as _got
+                    current_exposure = sum(
+                        float(t.get("quantity") or 0) * float(t.get("entry_price") or 0)
+                        for t in _got()
+                        if t.get("status") in ("open", "dry_run")
+                    )
                 if portfolio_value > 0 and current_exposure / portfolio_value >= MAX_TOTAL_EXPOSURE_PCT:
                     log_rejection(
                         session=session,
@@ -827,6 +851,17 @@ def execute_signals(signals: list, alpaca_client, data_client,
             )
             continue
 
+        # Stop/target submitted as a GTC bracket so Alpaca enforces exits
+        # server-side even when no workflow is running (mirrors backtest
+        # stop/target behavior).
+        sig_stop   = sig.get("stop_loss")
+        sig_target = sig.get("take_profit")
+        use_bracket = (
+            action == "buy"
+            and sig_stop and sig_target
+            and float(sig_stop) < limit_price < float(sig_target)
+        )
+
         try:
             order_id = submit_order(
                 client=alpaca_client,
@@ -835,13 +870,39 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 qty=shares,
                 limit_price=limit_price,
                 dry_run=DRY_RUN,
+                stop_loss=float(sig_stop) if use_bracket else None,
+                take_profit=float(sig_target) if use_bracket else None,
             )
 
             fill_status = "dry_run" if DRY_RUN else "open"
             if not DRY_RUN:
-                fill = check_order_filled(alpaca_client, order_id, timeout=60)
-                fill_status = fill.get("status", "open")
-                # Update entry_price to actual fill if available; keep original otherwise
+                # check_order_filled cancels the order on timeout, so an
+                # unconfirmed order can never fill later as an untracked position.
+                fill = check_order_filled(alpaca_client, order_id, timeout=120)
+                status = fill.get("status", "open")
+                filled_qty = fill.get("filled_qty")
+
+                if status == "filled":
+                    fill_status = "open"
+                elif status in ("cancelled", "expired", "rejected", "timeout"):
+                    if filled_qty and filled_qty > 0:
+                        # Partial fill before the cancel — track what we actually own
+                        shares = int(filled_qty)
+                        fill_status = "open"
+                        logger.warning(f"[execute] {ticker} partial fill: {shares} shares")
+                    else:
+                        logger.warning(f"[execute] {ticker} order {status} with no fill — not tracking as position")
+                        log_rejection(
+                            session=session, ticker=ticker,
+                            net_score=sig.get("net_score", 0), confidence=confidence,
+                            action=action, rejection_reason=f"order_{status}",
+                            bull_score=sig.get("bull_score", 0),
+                            bear_score=sig.get("bear_score", 0), strategy=strategy,
+                        )
+                        continue
+                else:
+                    fill_status = "open"
+
                 if fill.get("filled_avg_price"):
                     entry_price = fill["filled_avg_price"]
 
@@ -930,7 +991,7 @@ def session_discovery() -> None:
     console.print(table)
 
 
-def session_premarket() -> None:
+def session_premarket(alpaca_client=None, data_client=None) -> None:
     """
     9:00 AM EDT — full scored dry-run scan + gap-and-go detection.
 
@@ -950,8 +1011,23 @@ def session_premarket() -> None:
         f"BearishMarket={macro['bearish_market']}[/bold]"
     )
 
-    # Full scored scan — captures indicators + news internally, no orders fired
-    all_decisions = run_full_scan("premarket", macro, alpaca_client=None, data_client=None)
+    # Full scored scan — captures indicators + news internally, no orders fired.
+    # Clients passed so holdings are factored into the evaluation.
+    all_decisions = run_full_scan("premarket", macro,
+                                  alpaca_client=alpaca_client, data_client=data_client)
+
+    # Surface current holdings vs DB before the open
+    if alpaca_client:
+        try:
+            from bot.portfolio import reconcile_positions
+            rec = reconcile_positions(alpaca_client, data_client, dry_run=DRY_RUN)
+            if rec["adopted"] or rec["closed"]:
+                console.print(
+                    f"[bold yellow]Reconciled with Alpaca — adopted: {rec['adopted'] or '—'} "
+                    f"| closed externally: {rec['closed'] or '—'}[/bold yellow]"
+                )
+        except Exception as e:
+            logger.warning(f"[premarket] reconciliation failed: {e}")
 
     # Gap detection: use Alpaca snapshots (latest_trade vs prev_close).
     # gap_pct from indicators requires the open price which doesn't exist pre-market,
@@ -962,6 +1038,15 @@ def session_premarket() -> None:
 
     NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
     all_tickers  = get_all_trade_tickers()
+
+    # Gap math (latest_trade vs prev_close) is only a real "gap" before the
+    # open — after 9:30 ET it just measures intraday movement, so skip it
+    # when this session runs late (e.g. delayed GitHub cron).
+    from zoneinfo import ZoneInfo as _ZI
+    _et_now = datetime.now(_ZI("America/New_York"))
+    if (_et_now.hour, _et_now.minute) >= (9, 28):
+        console.print("[yellow]Past 9:28 ET — skipping gap detection (no longer pre-market).[/yellow]")
+        return
 
     snapshots = fetch_snapshots_batch(all_tickers)
     news_map  = get_news_batch(all_tickers, COMPANY_NAMES, api_key=NEWS_API_KEY, max_workers=3)
@@ -1013,10 +1098,7 @@ def session_premarket() -> None:
     console.print(f"[cyan]Gap Up + News ({len(gap_ups_with_news)}): {[(t, round(g,1)) for t,g,_ in gap_ups_with_news]}[/cyan]")
     console.print(f"[dim]Gap Up plain  ({len(gap_ups_plain)}): {[(t, round(g,1)) for t,g in gap_ups_plain]}[/dim]")
     console.print(f"[bold green]Pre-open scored decisions written to live feed.[/bold green]")
-
-    from bot.logger import log_scan
-    log_scan("premarket", len(all_tickers), len(all_decisions),
-             0, len(gap_ups_with_news) + len(gap_ups_plain), 0)
+    # (scan already logged by run_full_scan — no duplicate log_scan here)
 
 
 
@@ -1038,7 +1120,8 @@ def session_continuous(alpaca_client, data_client) -> None:
     from zoneinfo import ZoneInfo
     from bot.portfolio import (check_stops, check_targets, check_time_exits,
                                get_open_positions, close_position_and_log,
-                               calculate_partial_exit, update_breakout_stops)
+                               calculate_partial_exit, update_breakout_stops,
+                               reconcile_positions)
     from bot.discovery import scan_rising_movers
 
     SCAN_INTERVAL = 10          # minutes between scans
@@ -1058,6 +1141,26 @@ def session_continuous(alpaca_client, data_client) -> None:
 
     console.rule("[bold cyan]CONTINUOUS TRADING SESSION[/bold cyan]")
     console.print(f"[dim]Scanning every {SCAN_INTERVAL} min from 9:30 AM to 4:00 PM ET[/dim]")
+    if BACKTEST_PARITY:
+        console.print("[dim]BACKTEST_PARITY on — exits: bracket stop/target + time exits + breakout chandelier[/dim]")
+
+    # Hard wall-clock deadline: GitHub kills hosted jobs at 6h. Stop in time
+    # for the workflow's commit step to run — bracket orders protect positions
+    # between sessions.
+    session_deadline = datetime.now(ZoneInfo("UTC")) + timedelta(minutes=SESSION_MAX_RUNTIME_MIN)
+
+    # ── Reconcile DB with Alpaca (ground truth) before doing anything ──────
+    # Adopts orphaned positions (order timeouts, lost commits, manual buys)
+    # with ATR stops/targets + OCO exits; closes DB rows whose positions are gone.
+    try:
+        rec = reconcile_positions(alpaca_client, data_client, dry_run=DRY_RUN)
+        if rec["adopted"] or rec["closed"]:
+            console.print(
+                f"[bold yellow]Reconciled with Alpaca — adopted: {rec['adopted'] or '—'} "
+                f"| closed externally: {rec['closed'] or '—'}[/bold yellow]"
+            )
+    except Exception as _rec_err:
+        logger.warning(f"[main] reconciliation failed: {_rec_err}")
 
     # Load gap-catalyst tickers flagged by premarket session
     from bot.discovery import _load_discovered
@@ -1085,6 +1188,14 @@ def session_continuous(alpaca_client, data_client) -> None:
     extra_tickers: list[str] = []   # rising movers appended each mover-scan cycle
     while True:
         now_hm = _et_hm()
+
+        # Runner deadline — exit cleanly so the workflow commits the trade log
+        if datetime.now(ZoneInfo("UTC")) >= session_deadline:
+            console.print(
+                "[bold yellow]Runtime budget reached — ending session "
+                "(bracket orders keep positions protected).[/bold yellow]"
+            )
+            break
 
         # Wait for market open
         if now_hm < MARKET_OPEN_ET:
@@ -1130,6 +1241,13 @@ def session_continuous(alpaca_client, data_client) -> None:
         except Exception as _earn_err:
             logger.warning(f"[main] earnings proximity check error: {_earn_err}")
 
+        # ── Reconcile with Alpaca each cycle (bracket legs may have fired) ─
+        if cycle > 1:
+            try:
+                reconcile_positions(alpaca_client, data_client, dry_run=DRY_RUN)
+            except Exception as _rec_err:
+                logger.warning(f"[main] cycle reconcile failed: {_rec_err}")
+
         # ── Exit checks on all open positions ─────────────────────────────
         stopped  = check_stops(alpaca_client)
         targeted = check_targets(alpaca_client)
@@ -1137,41 +1255,45 @@ def session_continuous(alpaca_client, data_client) -> None:
 
         for pos in stopped:
             cp = pos.get("current_price") or pos.get("entry_price", 0)
-            close_position_and_log(alpaca_client, pos, cp, "continuous", status="stopped")
+            close_position_and_log(alpaca_client, pos, cp, "continuous", status="stopped",
+                                   dry_run=DRY_RUN)
             console.print(f"[red]STOP: {pos['ticker']} @ {cp}[/red]")
 
         for pos in targeted:
             cp = pos.get("current_price") or pos.get("entry_price", 0)
-            close_position_and_log(alpaca_client, pos, cp, "continuous", status="target_hit")
+            close_position_and_log(alpaca_client, pos, cp, "continuous", status="target_hit",
+                                   dry_run=DRY_RUN)
             console.print(f"[green]TARGET: {pos['ticker']} @ {cp}[/green]")
 
         for pos in timed:
             cp = pos.get("current_price") or pos.get("entry_price", 0)
             pnl = pos.get("pnl_pct", 0)
-            close_position_and_log(alpaca_client, pos, cp, "continuous", status="time_exit")
+            close_position_and_log(alpaca_client, pos, cp, "continuous", status="time_exit",
+                                   dry_run=DRY_RUN)
             console.print(f"[yellow]TIME EXIT: {pos['ticker']} age={pos.get('age_days')}d pnl={pnl:+.1f}%[/yellow]")
 
-        # ── Trailing stop checks ───────────────────────────────────────────
-        from bot.risk import update_trailing_stop
-        from bot.logger import update_trade_trailing
-        for pos in get_open_positions(alpaca_client):
-            current_price = pos.get("current_price") or pos.get("entry_price")
-            if not current_price:
-                continue
-            updated = update_trailing_stop(pos, current_price)
-            if updated.get("trailing_stop_updated") and pos.get("id"):
-                update_trade_trailing(
-                    pos["id"],
-                    updated["highest_price_seen"],
-                    updated.get("trailing_stop_price") or 0,
-                )
-            if updated.get("trailing_stop_triggered"):
-                close_position_and_log(alpaca_client, pos, current_price, "continuous",
-                                       status="trailing_stop")
-                console.print(
-                    f"[red]TRAILING STOP: {pos['ticker']} @ {current_price} "
-                    f"(trail={updated.get('trailing_stop_price', 0):.2f})[/red]"
-                )
+        # ── Trailing stop checks (live-only — not part of backtest parity) ─
+        if not BACKTEST_PARITY:
+            from bot.risk import update_trailing_stop
+            from bot.logger import update_trade_trailing
+            for pos in get_open_positions(alpaca_client):
+                current_price = pos.get("current_price") or pos.get("entry_price")
+                if not current_price:
+                    continue
+                updated = update_trailing_stop(pos, current_price)
+                if updated.get("trailing_stop_updated") and pos.get("id"):
+                    update_trade_trailing(
+                        pos["id"],
+                        updated["highest_price_seen"],
+                        updated.get("trailing_stop_price") or 0,
+                    )
+                if updated.get("trailing_stop_triggered"):
+                    close_position_and_log(alpaca_client, pos, current_price, "continuous",
+                                           status="trailing_stop", dry_run=DRY_RUN)
+                    console.print(
+                        f"[red]TRAILING STOP: {pos['ticker']} @ {current_price} "
+                        f"(trail={updated.get('trailing_stop_price', 0):.2f})[/red]"
+                    )
 
         # ── Breakout chandelier stop updates ──────────────────────────────
         try:
@@ -1179,42 +1301,53 @@ def session_continuous(alpaca_client, data_client) -> None:
         except Exception as _bse:
             logger.warning(f"[main] update_breakout_stops error: {_bse}")
 
-        # ── Partial-exit checks ────────────────────────────────────────────
-        from bot.trader import submit_order as _submit, get_latest_quote as _quote
-        from bot.logger import update_trade_stop as _upd_stop
-        for pos in get_open_positions(alpaca_client):
-            if pos.get("action", "buy") != "buy":
-                continue
-            cp = pos.get("current_price") or pos.get("entry_price")
-            if not cp:
-                continue
-            partial = calculate_partial_exit(pos, float(cp))
-            if partial["close_pct"] <= 0:
-                continue
-            shares_to_close = partial["shares_to_close"]
-            reason          = partial["reason"]
-            try:
-                q  = _quote(data_client, pos["ticker"])
-                lp = float(q.get("ask_price") or q.get("bid_price") or cp) * 0.999
-                _submit(
-                    client=alpaca_client,
-                    ticker=pos["ticker"],
-                    side="sell",
-                    qty=shares_to_close,
-                    limit_price=round(lp, 2),
-                    dry_run=DRY_RUN,
-                )
-                console.print(
-                    f"[cyan]PARTIAL EXIT ({reason}): {shares_to_close}x {pos['ticker']} "
-                    f"@ ${float(cp):.2f} ({partial['close_pct']*100:.0f}%)[/cyan]"
-                )
-                if partial["new_stop"] and pos.get("id"):
-                    try:
-                        _upd_stop(pos["id"], partial["new_stop"])
-                    except Exception:
-                        pass
-            except Exception as _pe:
-                logger.warning(f"[continuous] partial exit failed for {pos['ticker']}: {_pe}")
+        # ── Partial-exit checks (live-only — not part of backtest parity) ──
+        if not BACKTEST_PARITY:
+            from bot.trader import (submit_order as _submit, get_latest_quote as _quote,
+                                    cancel_open_orders as _cancel_orders)
+            from bot.logger import update_trade_stop as _upd_stop, update_trade_quantity as _upd_qty
+            for pos in get_open_positions(alpaca_client):
+                if pos.get("action", "buy") != "buy":
+                    continue
+                cp = pos.get("current_price") or pos.get("entry_price")
+                if not cp:
+                    continue
+                partial = calculate_partial_exit(pos, float(cp))
+                if partial["close_pct"] <= 0:
+                    continue
+                shares_to_close = partial["shares_to_close"]
+                reason          = partial["reason"]
+                try:
+                    q  = _quote(data_client, pos["ticker"])
+                    lp = float(q.get("ask_price") or q.get("bid_price") or cp) * 0.999
+                    # Bracket legs hold the shares — release them before selling
+                    _cancel_orders(alpaca_client, pos["ticker"], dry_run=DRY_RUN)
+                    _submit(
+                        client=alpaca_client,
+                        ticker=pos["ticker"],
+                        side="sell",
+                        qty=shares_to_close,
+                        limit_price=round(lp, 2),
+                        dry_run=DRY_RUN,
+                    )
+                    console.print(
+                        f"[cyan]PARTIAL EXIT ({reason}): {shares_to_close}x {pos['ticker']} "
+                        f"@ ${float(cp):.2f} ({partial['close_pct']*100:.0f}%)[/cyan]"
+                    )
+                    if pos.get("id"):
+                        # Track remaining shares so the next cycle doesn't re-sell
+                        remaining = max(0, int(pos.get("quantity") or 0) - shares_to_close)
+                        try:
+                            _upd_qty(pos["id"], remaining)
+                        except Exception:
+                            pass
+                        if partial["new_stop"]:
+                            try:
+                                _upd_stop(pos["id"], partial["new_stop"])
+                            except Exception:
+                                pass
+                except Exception as _pe:
+                    logger.warning(f"[continuous] partial exit failed for {pos['ticker']}: {_pe}")
 
         # ── Scalp close at 3:45 PM ─────────────────────────────────────────
         if now_hm >= SCALP_CLOSE_ET:
@@ -1222,16 +1355,18 @@ def session_continuous(alpaca_client, data_client) -> None:
             for pos in open_pos:
                 if pos.get("time_horizon") == "scalp":
                     cp = pos.get("current_price") or pos.get("entry_price", 0)
-                    close_position_and_log(alpaca_client, pos, cp, "continuous", status="closed")
+                    close_position_and_log(alpaca_client, pos, cp, "continuous",
+                                           status="closed", dry_run=DRY_RUN)
                     console.print(f"[yellow]EOD scalp close: {pos['ticker']} @ {cp}[/yellow]")
 
-        # ── Re-score open positions for thesis check ──────────────────────
-        _rescore_open_positions(
-            tickers=get_all_trade_tickers(),
-            alpaca_client=alpaca_client,
-            data_client=data_client,
-            dry_run=DRY_RUN,
-        )
+        # ── Re-score open positions for thesis check (live-only) ──────────
+        if not BACKTEST_PARITY:
+            _rescore_open_positions(
+                tickers=get_all_trade_tickers(),
+                alpaca_client=alpaca_client,
+                data_client=data_client,
+                dry_run=DRY_RUN,
+            )
 
         # ── Scan for new signals ───────────────────────────────────────────
         session_label = "market_open" if cycle == 1 else "continuous"
@@ -1241,17 +1376,19 @@ def session_continuous(alpaca_client, data_client) -> None:
             execute_signals(signals, alpaca_client, data_client, macro,
                             session_label, max_trades=MAX_TRADES_PER_SESSION)
 
-        # ── Signal flip closes ─────────────────────────────────────────────
-        open_pos   = get_open_positions(alpaca_client)
-        scored_map = {s["ticker"]: s for s in signals}
-        for pos in open_pos:
-            ticker = pos["ticker"]
-            if ticker in scored_map:
-                s = scored_map[ticker]
-                if pos.get("action") == "buy" and s.get("action") in ("short", "sell"):
-                    cp = pos.get("current_price") or pos.get("entry_price", 0)
-                    close_position_and_log(alpaca_client, pos, cp, "continuous", status="closed")
-                    console.print(f"[red]Signal flip: {ticker}[/red]")
+        # ── Signal flip closes (live-only — not part of backtest parity) ──
+        if not BACKTEST_PARITY:
+            open_pos   = get_open_positions(alpaca_client)
+            scored_map = {s["ticker"]: s for s in signals}
+            for pos in open_pos:
+                ticker = pos["ticker"]
+                if ticker in scored_map:
+                    s = scored_map[ticker]
+                    if pos.get("action") == "buy" and s.get("action") in ("short", "sell"):
+                        cp = pos.get("current_price") or pos.get("entry_price", 0)
+                        close_position_and_log(alpaca_client, pos, cp, "continuous",
+                                               status="closed", dry_run=DRY_RUN)
+                        console.print(f"[red]Signal flip: {ticker}[/red]")
 
         # Sleep until next scan (loop exits at LOOP_END_ET = 4:00 PM)
 
@@ -1938,7 +2075,7 @@ def main() -> None:
 
     try:
         if session == "premarket":
-            session_premarket()
+            session_premarket(alpaca_client, data_client)
         elif session == "eod_summary":
             session_eod_summary(alpaca_client)
         elif session == "continuous":

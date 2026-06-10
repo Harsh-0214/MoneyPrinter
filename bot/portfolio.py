@@ -9,18 +9,18 @@ import pandas as pd
 from bot.logger import get_open_trades, get_trades_today, update_trade_exit, update_trade_stop
 from bot.risk import record_trade_pnl
 
-# Time-based exit rules keyed by STRATEGY (mirrors backtest MAX_HOLD_DAYS lookup).
-# Breakout positions get 21 days so the chandelier stop can do its job.
-MAX_HOLD_DAYS = {
-    "scalp":             2,
-    "swing":             7,
-    "mixed":             5,
+# Time-based exit rules in TRADING days, keyed by time_horizon — exactly the
+# mapping the walk-forward backtest uses (scalp 5 / swing 20 / position 45).
+# Breakout strategies override to 21 so the chandelier stop can do its job
+# (with stale-exit suppression below).
+HORIZON_MAX_HOLD = {
+    "scalp":    5,
+    "swing":   20,
+    "position": 45,
+}
+STRATEGY_MAX_HOLD_OVERRIDE = {
     "breakout":         21,
     "squeeze_breakout": 21,
-    "trend_follow":      7,
-    "mean_reversion":    5,
-    "news_momentum":     3,
-    "breakdown":         7,
 }
 
 logger = logging.getLogger(__name__)
@@ -108,13 +108,16 @@ def check_time_exits(alpaca_client=None, data_client=None) -> list[dict]:
     above the original breakout_level pivot, the time exit is skipped —
     the chandelier stop is managing the position.
     """
+    import numpy as np
+
     positions = get_open_positions(alpaca_client)
     expired = []
     now = datetime.now(timezone.utc)
 
     for pos in positions:
         strategy  = pos.get("strategy", "swing")
-        max_days  = MAX_HOLD_DAYS.get(strategy, MAX_HOLD_DAYS.get(pos.get("time_horizon", "swing"), 7))
+        horizon   = pos.get("time_horizon", "swing")
+        max_days  = STRATEGY_MAX_HOLD_OVERRIDE.get(strategy) or HORIZON_MAX_HOLD.get(horizon, 20)
         ts_raw    = pos.get("timestamp")
         if not ts_raw:
             continue
@@ -122,7 +125,8 @@ def check_time_exits(alpaca_client=None, data_client=None) -> list[dict]:
             ts = datetime.fromisoformat(ts_raw)
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
-            age_days = (now - ts).days
+            # Trading days, like the backtest counts bars — not calendar days
+            age_days = int(np.busday_count(ts.date(), now.date()))
         except Exception:
             continue
 
@@ -204,6 +208,11 @@ def calculate_partial_exit(position: dict, current_price: float) -> dict:
         }
 
     if progress >= 0.60:
+        # Breakeven stop means a partial was already taken — don't sell half
+        # of the remainder again every cycle.
+        sl = float(position.get("stop_loss") or 0)
+        if sl >= entry:
+            return empty
         shares_to_close = max(1, qty // 2)
         return {
             "close_pct":       0.5,
@@ -318,6 +327,7 @@ def close_position_and_log(
     current_price: float,
     session: str,
     status: str = "closed",
+    dry_run: bool = False,
 ) -> None:
     """Close a position on Alpaca and update the DB record."""
     from bot.trader import close_position
@@ -327,10 +337,16 @@ def close_position_and_log(
     action   = trade.get("action", "buy")
 
     try:
-        close_position(alpaca_client, ticker)
+        close_position(alpaca_client, ticker, dry_run=dry_run)
     except Exception as e:
-        logger.error(f"[portfolio] Failed to close {ticker} on Alpaca: {e}")
-        return
+        # Position already gone on Alpaca (bracket fired, manual close, never
+        # filled): still close the DB record so it isn't retried forever.
+        msg = str(e).lower()
+        if "does not exist" in msg or "not found" in msg or "404" in msg:
+            logger.warning(f"[portfolio] {ticker} not on Alpaca — closing DB record only")
+        else:
+            logger.error(f"[portfolio] Failed to close {ticker} on Alpaca: {e}")
+            return
 
     if action == "buy":
         pnl_dollar = (current_price - entry) * qty
@@ -349,3 +365,164 @@ def close_position_and_log(
     logger.info(
         f"[portfolio] Closed {ticker}: pnl=${pnl_dollar:.2f} ({pnl_pct*100:.2f}%) status={status}"
     )
+
+
+# ── Alpaca ⇄ DB reconciliation ────────────────────────────────────────────────
+
+ADOPT_STOP_ATR_MULT = 3.0   # stop = entry − 3×ATR (matches live entry sizing)
+ADOPT_RISK_REWARD   = 2.0   # target = entry + 2×(entry − stop)
+
+
+def reconcile_positions(alpaca_client, data_client=None, dry_run: bool = False,
+                        attach_exits: bool = True) -> dict:
+    """
+    Make the trades DB agree with Alpaca, which is the ground truth.
+
+      1. DB rows marked open whose position no longer exists on Alpaca
+         → close the row (exit price from the last sell fill when available).
+      2. Alpaca positions with no open DB row (orphans from order timeouts,
+         lost commits, manual buys) → adopt: insert an open row with an
+         ATR-based stop/target and the real entry time from order history,
+         and attach a GTC OCO exit on Alpaca if none is working.
+
+    Returns {"adopted": [...], "closed": [...]}.
+    """
+    from bot.trader import (get_positions, get_entry_fill_info,
+                            get_last_sell_fill_price, has_open_exit_order,
+                            submit_oco_exit)
+    from bot.logger import log_trade
+
+    summary = {"adopted": [], "closed": []}
+    if alpaca_client is None:
+        return summary
+
+    try:
+        live = {p["symbol"]: p for p in get_positions(alpaca_client)}
+    except Exception as e:
+        logger.warning(f"[reconcile] could not fetch live positions: {e}")
+        return summary
+
+    db_open = get_open_trades()
+    db_open_tickers = {t.get("ticker") for t in db_open}
+
+    # ── 1. DB-open rows with no live position → close out ────────────────────
+    for trade in db_open:
+        ticker = trade.get("ticker")
+        if not ticker or ticker in live:
+            continue
+        entry = float(trade.get("entry_price") or 0)
+        qty   = int(trade.get("quantity") or 0)
+        exit_price = None
+        try:
+            exit_price = get_last_sell_fill_price(alpaca_client, ticker)
+        except Exception:
+            pass
+        if not exit_price:
+            exit_price = entry
+        pnl_dollar = (exit_price - entry) * qty if trade.get("action", "buy") == "buy" else (entry - exit_price) * qty
+        pnl_pct    = (pnl_dollar / (entry * qty)) if entry and qty else 0.0
+        update_trade_exit(
+            trade_id=trade["id"],
+            exit_price=exit_price,
+            status="closed_external",
+            pnl_dollar=round(pnl_dollar, 2),
+            pnl_pct=round(pnl_pct, 4),
+        )
+        record_trade_pnl(pnl_dollar)
+        summary["closed"].append(ticker)
+        logger.warning(
+            f"[reconcile] {ticker} open in DB but gone on Alpaca — "
+            f"closed as closed_external @ {exit_price:.2f}"
+        )
+
+    # ── 2. Live positions with no open DB row → adopt ─────────────────────────
+    for ticker, p in live.items():
+        if ticker in db_open_tickers:
+            continue
+        if str(p.get("side", "")).lower().endswith("short"):
+            logger.warning(f"[reconcile] {ticker} is a SHORT position — not adopting (manual review)")
+            continue
+
+        qty   = int(float(p.get("qty") or 0))
+        entry = float(p.get("avg_entry_price") or 0)
+        if qty <= 0 or entry <= 0:
+            continue
+
+        # ATR for stop/target
+        atr = entry * 0.02
+        try:
+            from bot.data import fetch_daily_bars
+            df = fetch_daily_bars(ticker, days=40)
+            if df is not None and len(df) >= 15:
+                high, low, close = df["High"], df["Low"], df["Close"]
+                prev_close = close.shift(1)
+                tr = pd.concat([high - low, (high - prev_close).abs(),
+                                (low - prev_close).abs()], axis=1).max(axis=1)
+                atr_val = float(tr.rolling(14).mean().iloc[-1])
+                if atr_val > 0:
+                    atr = atr_val
+        except Exception as e:
+            logger.warning(f"[reconcile] ATR fetch failed for {ticker}: {e}")
+
+        stop   = round(entry - ADOPT_STOP_ATR_MULT * atr, 2)
+        target = round(entry + ADOPT_RISK_REWARD * (entry - stop), 2)
+
+        # Real entry time from order history when available
+        entry_ts = None
+        fill = get_entry_fill_info(alpaca_client, ticker)
+        if fill and fill.get("filled_at"):
+            entry_ts = fill["filled_at"]
+
+        trade_id = log_trade(
+            session="reconcile",
+            ticker=ticker,
+            action="buy",
+            strategy="swing",
+            time_horizon="swing",
+            quantity=qty,
+            entry_price=entry,
+            limit_price=entry,
+            stop_loss=stop,
+            take_profit=target,
+            confidence=0.0,
+            net_score=0,
+            bull_score=0,
+            bear_score=0,
+            signals_triggered=[],
+            signals_against=[],
+            reasoning="Adopted from Alpaca — position existed without a DB record",
+            risk_reward=ADOPT_RISK_REWARD,
+            macro_bias="unknown",
+            vix_level=0,
+            alpaca_order_id="adopted",
+            status="open",
+        )
+        # Backdate to the real fill time so time exits count from actual entry
+        if entry_ts:
+            try:
+                import sqlite3
+                from bot.logger import DB_PATH
+                conn = sqlite3.connect(str(DB_PATH))
+                conn.execute("UPDATE trades SET timestamp = ? WHERE id = ?", (entry_ts, trade_id))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.warning(f"[reconcile] backdate failed for {ticker}: {e}")
+
+        # Protect it server-side if no sell order is already working
+        if attach_exits:
+            try:
+                if not has_open_exit_order(alpaca_client, ticker):
+                    submit_oco_exit(alpaca_client, ticker, qty, target, stop, dry_run=dry_run)
+            except Exception as e:
+                logger.warning(f"[reconcile] OCO attach failed for {ticker}: {e}")
+
+        summary["adopted"].append(ticker)
+        logger.warning(
+            f"[reconcile] ADOPTED {ticker}: {qty} sh @ {entry:.2f} "
+            f"stop={stop:.2f} target={target:.2f} entered={entry_ts or 'unknown'}"
+        )
+
+    if summary["adopted"] or summary["closed"]:
+        logger.info(f"[reconcile] adopted={summary['adopted']} closed={summary['closed']}")
+    return summary

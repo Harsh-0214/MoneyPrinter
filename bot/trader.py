@@ -165,11 +165,13 @@ def submit_order(
         if stop_loss and take_profit and side.lower() == "buy":
             from alpaca.trading.requests import TakeProfitRequest, StopLossRequest
             from alpaca.trading.enums import OrderClass
+            # GTC so the stop/target legs survive across days — positions stay
+            # protected even when no workflow is running.
             req = LimitOrderRequest(
                 symbol=ticker,
                 qty=qty,
                 side=OrderSide.BUY,
-                time_in_force=TimeInForce.DAY,
+                time_in_force=TimeInForce.GTC,
                 limit_price=round(limit_price, 2),
                 order_class=OrderClass.BRACKET,
                 take_profit=TakeProfitRequest(limit_price=round(take_profit, 2)),
@@ -198,11 +200,157 @@ def submit_order(
         raise
 
 
+def cancel_open_orders(client, ticker: str, dry_run: bool = False) -> int:
+    """Cancel all open orders for a ticker (e.g. bracket/OCO legs before a close).
+    Returns the number of orders cancelled."""
+    if dry_run:
+        logger.info(f"[trader] DRY_RUN: would cancel open orders for {ticker}")
+        return 0
+
+    from alpaca.trading.requests import GetOrdersRequest
+    from alpaca.trading.enums import QueryOrderStatus
+
+    cancelled = 0
+    try:
+        req = GetOrdersRequest(status=QueryOrderStatus.OPEN, symbols=[ticker])
+        orders = _retry(client.get_orders, req)
+        for o in orders:
+            try:
+                _retry(client.cancel_order_by_id, str(o.id))
+                cancelled += 1
+            except Exception as e:
+                logger.warning(f"[trader] cancel order {o.id} for {ticker} failed: {e}")
+    except Exception as e:
+        logger.warning(f"[trader] cancel_open_orders failed for {ticker}: {e}")
+    if cancelled:
+        logger.info(f"[trader] Cancelled {cancelled} open order(s) for {ticker}")
+    return cancelled
+
+
+def has_open_exit_order(client, ticker: str) -> bool:
+    """True if the ticker already has an open sell order (stop/target leg) working."""
+    from alpaca.trading.requests import GetOrdersRequest
+    from alpaca.trading.enums import QueryOrderStatus
+
+    try:
+        req = GetOrdersRequest(status=QueryOrderStatus.OPEN, symbols=[ticker])
+        orders = _retry(client.get_orders, req)
+        return any(str(o.side).lower().endswith("sell") for o in orders)
+    except Exception as e:
+        logger.warning(f"[trader] has_open_exit_order failed for {ticker}: {e}")
+        return False
+
+
+def submit_oco_exit(client, ticker: str, qty: int, take_profit: float,
+                    stop_loss: float, dry_run: bool = False) -> Optional[str]:
+    """
+    Attach a GTC OCO exit (take-profit limit + stop-loss) to an existing long
+    position so it stays protected when the bot isn't running.
+    Returns order ID or None on failure.
+    """
+    if dry_run:
+        logger.info(
+            f"[trader] DRY_RUN: would submit OCO exit {qty} {ticker} "
+            f"tp={take_profit:.2f} sl={stop_loss:.2f}"
+        )
+        return None
+
+    from alpaca.trading.requests import (LimitOrderRequest, TakeProfitRequest,
+                                         StopLossRequest)
+    from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass
+
+    def _submit():
+        req = LimitOrderRequest(
+            symbol=ticker,
+            qty=qty,
+            side=OrderSide.SELL,
+            time_in_force=TimeInForce.GTC,
+            limit_price=round(take_profit, 2),
+            order_class=OrderClass.OCO,
+            take_profit=TakeProfitRequest(limit_price=round(take_profit, 2)),
+            stop_loss=StopLossRequest(
+                stop_price=round(stop_loss, 2),
+                limit_price=round(stop_loss * 0.995, 2),
+            ),
+        )
+        order = client.submit_order(req)
+        return str(order.id)
+
+    try:
+        order_id = _retry(_submit)
+        logger.info(
+            f"[trader] OCO exit submitted: {qty} {ticker} "
+            f"tp={take_profit:.2f} sl={stop_loss:.2f} id={order_id}"
+        )
+        return order_id
+    except Exception as e:
+        logger.error(f"[trader] submit_oco_exit failed for {ticker}: {e}")
+        return None
+
+
+def get_entry_fill_info(client, ticker: str) -> Optional[dict]:
+    """
+    Return {'filled_at': iso str, 'filled_avg_price': float, 'filled_qty': float}
+    for the most recent filled BUY order on a ticker. Used to adopt positions
+    that exist on Alpaca but are missing from the trades DB.
+    """
+    from alpaca.trading.requests import GetOrdersRequest
+    from alpaca.trading.enums import QueryOrderStatus, OrderSide
+
+    try:
+        req = GetOrdersRequest(
+            status=QueryOrderStatus.CLOSED,
+            symbols=[ticker],
+            side=OrderSide.BUY,
+            limit=50,
+        )
+        orders = _retry(client.get_orders, req)
+        fills = [o for o in orders if str(o.status).lower().endswith("filled") and o.filled_at]
+        if not fills:
+            return None
+        latest = max(fills, key=lambda o: o.filled_at)
+        return {
+            "filled_at":        latest.filled_at.isoformat(),
+            "filled_avg_price": float(latest.filled_avg_price) if latest.filled_avg_price else None,
+            "filled_qty":       float(latest.filled_qty) if latest.filled_qty else None,
+        }
+    except Exception as e:
+        logger.warning(f"[trader] get_entry_fill_info failed for {ticker}: {e}")
+        return None
+
+
+def get_last_sell_fill_price(client, ticker: str) -> Optional[float]:
+    """Return fill price of the most recent filled SELL order, if any."""
+    from alpaca.trading.requests import GetOrdersRequest
+    from alpaca.trading.enums import QueryOrderStatus, OrderSide
+
+    try:
+        req = GetOrdersRequest(
+            status=QueryOrderStatus.CLOSED,
+            symbols=[ticker],
+            side=OrderSide.SELL,
+            limit=50,
+        )
+        orders = _retry(client.get_orders, req)
+        fills = [o for o in orders if str(o.status).lower().endswith("filled") and o.filled_at]
+        if not fills:
+            return None
+        latest = max(fills, key=lambda o: o.filled_at)
+        return float(latest.filled_avg_price) if latest.filled_avg_price else None
+    except Exception as e:
+        logger.warning(f"[trader] get_last_sell_fill_price failed for {ticker}: {e}")
+        return None
+
+
 def close_position(client, ticker: str, dry_run: bool = False) -> None:
-    """Market-order close the full position for a ticker."""
+    """Market-order close the full position for a ticker.
+    Cancels open orders first — Alpaca rejects closes while shares are held
+    by working bracket/OCO legs."""
     if dry_run:
         logger.info(f"[trader] DRY_RUN: would close position {ticker}")
         return
+
+    cancel_open_orders(client, ticker)
 
     def _close():
         client.close_position(ticker)
@@ -215,27 +363,57 @@ def close_position(client, ticker: str, dry_run: bool = False) -> None:
         raise
 
 
+def _order_snapshot(order, order_id: str) -> dict:
+    return {
+        "status": str(order.status).split(".")[-1].lower(),
+        "filled_avg_price": float(order.filled_avg_price) if order.filled_avg_price else None,
+        "filled_qty": float(order.filled_qty) if order.filled_qty else 0.0,
+        "order_id": order_id,
+    }
+
+
 def check_order_filled(client, order_id: str, timeout: int = 60) -> dict:
-    """Poll for order fill status. Returns status dict."""
+    """
+    Poll for order fill status. If still unfilled at timeout, CANCEL the order
+    so it can never fill later as an untracked position, then report the final
+    state (cancelling may race a fill — the post-cancel poll catches that).
+    Returns dict with status / filled_avg_price / filled_qty / order_id.
+    """
     if order_id.startswith("dry-"):
-        return {"status": "filled", "filled_avg_price": None, "order_id": order_id}
+        return {"status": "filled", "filled_avg_price": None, "filled_qty": None,
+                "order_id": order_id}
 
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             order = client.get_order_by_id(order_id)
-            status = str(order.status)
-            if status in ("filled", "partially_filled", "cancelled", "expired", "rejected"):
-                return {
-                    "status": status,
-                    "filled_avg_price": float(order.filled_avg_price) if order.filled_avg_price else None,
-                    "order_id": order_id,
-                }
+            snap = _order_snapshot(order, order_id)
+            if snap["status"] in ("filled", "cancelled", "expired", "rejected"):
+                return snap
         except Exception as e:
             logger.warning(f"[trader] order status check failed: {e}")
         time.sleep(5)
 
-    return {"status": "timeout", "filled_avg_price": None, "order_id": order_id}
+    # Timeout: cancel so the order can't fill later untracked
+    logger.warning(f"[trader] order {order_id} unfilled after {timeout}s — cancelling")
+    try:
+        client.cancel_order_by_id(order_id)
+    except Exception as e:
+        logger.warning(f"[trader] cancel after timeout failed: {e}")
+
+    # Final state — the cancel may have raced a (partial) fill
+    for _ in range(6):
+        try:
+            order = client.get_order_by_id(order_id)
+            snap = _order_snapshot(order, order_id)
+            if snap["status"] in ("filled", "cancelled", "expired", "rejected"):
+                return snap
+        except Exception as e:
+            logger.warning(f"[trader] post-cancel status check failed: {e}")
+        time.sleep(5)
+
+    return {"status": "timeout", "filled_avg_price": None, "filled_qty": 0.0,
+            "order_id": order_id}
 
 
 def compute_limit_price(side: str, quote: dict, current_price: float) -> float:

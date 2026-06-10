@@ -1,14 +1,20 @@
-name: End of Day Summary (4:15 PM EST)
+name: End of Day Summary (16:15 ET, waits in-job)
 
+# Scheduled early because GitHub cron is best-effort; the job waits until
+# exactly 16:15 ET. 18:07 UTC = 14:07 ET in EDT / 13:07 ET in EST.
 on:
   schedule:
-    - cron: '15 21 * * 1-5'  # 4:15 PM EST (UTC-5)
+    - cron: "7 18 * * 1-5"
   workflow_dispatch:
+
+concurrency:
+  group: eod-summary
+  cancel-in-progress: false
 
 jobs:
   eod_summary:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 300
 
     steps:
       - name: Checkout repo
@@ -19,7 +25,7 @@ jobs:
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
           cache: pip
 
       - name: Install dependencies
@@ -34,10 +40,32 @@ jobs:
               except: pass
           "
 
+      - name: Wait until 16:15 ET
+        id: wait
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Manual dispatch — running immediately."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TARGET_MIN=$(( 16 * 60 + 15 ))   # 16:15 ET
+          while :; do
+            H=$(TZ=America/New_York date +%-H); M=$(TZ=America/New_York date +%-M)
+            NOW=$(( H * 60 + M ))
+            if [ "$NOW" -ge "$TARGET_MIN" ]; then
+              printf 'Target reached: %02d:%02d ET — proceeding.\n' "$H" "$M"
+              echo "proceed=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            sleep 30
+          done
+
       - name: Create data directory
+        if: steps.wait.outputs.proceed == 'true'
         run: mkdir -p data logs
 
       - name: Run EOD summary session
+        if: steps.wait.outputs.proceed == 'true'
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
@@ -48,11 +76,30 @@ jobs:
         run: python main.py --session eod_summary
 
       - name: Commit trade log and reports
+        if: steps.wait.outputs.proceed == 'true'
+        shell: bash
         run: |
           git config user.name "trading-bot"
           git config user.email "bot@trading.local"
-          git pull --rebase origin main || true
-          git add data/trades.db data/live_feed.json || true
-          git add reports/*.html || true
-          git diff --staged --quiet || git commit -m "bot: eod_summary trade log + daily report [skip ci]"
-          git push || true
+          mkdir -p /tmp/botstate
+          for f in data/trades.db data/live_feed.json; do
+            [ -f "$f" ] && cp "$f" "/tmp/botstate/$(basename "$f")"
+          done
+          if [ -d reports ]; then cp -r reports /tmp/botstate/reports; fi
+          for i in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            for f in data/trades.db data/live_feed.json; do
+              b="/tmp/botstate/$(basename "$f")"
+              [ -f "$b" ] && cp "$b" "$f"
+            done
+            if [ -d /tmp/botstate/reports ]; then cp -r /tmp/botstate/reports .; fi
+            git add data/trades.db data/live_feed.json || true
+            git add reports/*.html 2>/dev/null || true
+            if git diff --staged --quiet; then echo "No changes."; exit 0; fi
+            git commit -m "bot: eod_summary trade log + daily report [skip ci]"
+            if git push origin HEAD:main; then echo "Pushed."; exit 0; fi
+            echo "Push failed — retry $i"; sleep $(( i * 5 ))
+          done
+          echo "::error::Failed to push EOD state after 5 attempts"
+          exit 1

@@ -370,6 +370,17 @@ def update_trade_trailing(trade_id: int, highest_price_seen: float, trailing_sto
 
 
 
+def update_trade_quantity(trade_id: int, new_qty: int) -> None:
+    """Update remaining quantity for an open trade (e.g. after a partial exit)."""
+    init_db()
+    conn = _connect()
+    try:
+        conn.execute("UPDATE trades SET quantity = ? WHERE id = ?", (new_qty, trade_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def update_trade_stop(trade_id: int, new_stop: float) -> None:
     """Update the stop_loss for an open trade (e.g. move to breakeven after partial exit)."""
     init_db()
