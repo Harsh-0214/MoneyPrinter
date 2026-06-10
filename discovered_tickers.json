@@ -1,16 +1,4 @@
 {
-  "tickers": [
-    "ENPH"
-  ],
-  "meta": {
-    "ENPH": {
-      "ticker": "ENPH",
-      "price": 53.52,
-      "pct_change": 5.9,
-      "vol_ratio": 1.77,
-      "near_52wk": false,
-      "claude_reasoning": "TD Cowen doubling its price target on ENPH represents a credible fundamental catalyst (likely tied to improved solar demand outlook or company-specific developments) that justifies the volume-backed move, though the 1.8x volume ratio is modest and the broader clean energy sector tailwind (PBW headline) adds macro support without being the primary driver.",
-      "claude_confidence": 0.62
-    }
-  }
+  "tickers": [],
+  "meta": {}
 }
