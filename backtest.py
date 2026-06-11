@@ -314,7 +314,7 @@ def run_backtest(
     max_open: int = MAX_OPEN_POSITIONS,
     max_pos_pct: float = MAX_POSITION_PCT,
     risk_pct: float = RISK_PCT,
-    hold_mode: str = "legacy",            # "legacy" | "strategy" | "horizon"
+    hold_mode: str = "strategy",          # "strategy" (live default) | "legacy" | "horizon"
     letrun_strats: tuple = ("breakout",), # strategies that get chandelier let-run
     quiet: bool = False,
     _bars_map:  dict | None = None,  # pre-loaded bars — avoids double fetch for A/B
@@ -1062,10 +1062,11 @@ def save_equity_csv(equity_curve: list[dict], path: Path) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXPERIMENTS: dict[str, dict] = {
-    # What the 15% number was actually measured on (5-day holds everywhere
-    # due to the strategy/horizon key mismatch, breakout let-run 21d)
-    "baseline_legacy": {},
-    # Explicit per-strategy holds (what the old code *intended*)
+    # The pre-fix behavior (5-day holds everywhere due to the
+    # strategy/horizon key mismatch, breakout let-run 21d)
+    "baseline_legacy": {"hold_mode": "legacy"},
+    # Explicit per-strategy holds — measured winner across both windows,
+    # now the live + backtest default
     "hold_strategy":   {"hold_mode": "strategy"},
     # Horizon-based holds like main.py's walk-forward (swing=20d)
     "hold_horizon":    {"hold_mode": "horizon"},

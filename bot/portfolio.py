@@ -9,16 +9,18 @@ import pandas as pd
 from bot.logger import get_open_trades, get_trades_today, update_trade_exit, update_trade_stop
 from bot.risk import record_trade_pnl
 
-# Time-based exit rules in TRADING days, keyed by time_horizon — exactly the
-# mapping the walk-forward backtest uses (scalp 5 / swing 20 / position 45).
-# Breakout strategies override to 21 so the chandelier stop can do its job
-# (with stale-exit suppression below).
-HORIZON_MAX_HOLD = {
-    "scalp":    5,
-    "swing":   20,
-    "position": 45,
-}
-STRATEGY_MAX_HOLD_OVERRIDE = {
+# Time-based exit rules in CALENDAR days, keyed by strategy — exactly the
+# backtest's measured "hold_strategy" variant, the only configuration that
+# was profitable across both the 2024-25 and 2025-26 test windows
+# (+5.9% / +2.5% vs baseline -6.7% / +3.6%). Breakout strategies get 21 days
+# so the chandelier stop can do its job (with stale-exit suppression below).
+HOLD_BY_STRATEGY = {
+    "trend_follow":      7,
+    "mean_reversion":    5,
+    "news_momentum":     3,
+    "breakdown":         7,
+    "mixed":             5,
+    "swing":             7,   # adopted/reconciled positions default
     "breakout":         21,
     "squeeze_breakout": 21,
 }
@@ -108,16 +110,13 @@ def check_time_exits(alpaca_client=None, data_client=None) -> list[dict]:
     above the original breakout_level pivot, the time exit is skipped —
     the chandelier stop is managing the position.
     """
-    import numpy as np
-
     positions = get_open_positions(alpaca_client)
     expired = []
     now = datetime.now(timezone.utc)
 
     for pos in positions:
         strategy  = pos.get("strategy", "swing")
-        horizon   = pos.get("time_horizon", "swing")
-        max_days  = STRATEGY_MAX_HOLD_OVERRIDE.get(strategy) or HORIZON_MAX_HOLD.get(horizon, 20)
+        max_days  = HOLD_BY_STRATEGY.get(strategy, 5)
         ts_raw    = pos.get("timestamp")
         if not ts_raw:
             continue
@@ -125,8 +124,8 @@ def check_time_exits(alpaca_client=None, data_client=None) -> list[dict]:
             ts = datetime.fromisoformat(ts_raw)
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
-            # Trading days, like the backtest counts bars — not calendar days
-            age_days = int(np.busday_count(ts.date(), now.date()))
+            # Calendar days — matches how the backtest variant was measured
+            age_days = (now - ts).days
         except Exception:
             continue
 
