@@ -1028,6 +1028,12 @@ def session_premarket(alpaca_client=None, data_client=None) -> None:
                 )
         except Exception as e:
             logger.warning(f"[premarket] reconciliation failed: {e}")
+        try:
+            from bot.live_feed import write_portfolio_snapshot, write_trades_snapshot
+            write_portfolio_snapshot(alpaca_client)
+            write_trades_snapshot()
+        except Exception as e:
+            logger.warning(f"[premarket] dashboard snapshot failed: {e}")
 
     # Gap detection: use Alpaca snapshots (latest_trade vs prev_close).
     # gap_pct from indicators requires the open price which doesn't exist pre-market,
@@ -1390,10 +1396,15 @@ def session_continuous(alpaca_client, data_client) -> None:
                                                status="closed", dry_run=DRY_RUN)
                         console.print(f"[red]Signal flip: {ticker}[/red]")
 
+        # ── Publish portfolio + trades snapshots for the dashboard ────────
+        try:
+            from bot.live_feed import write_portfolio_snapshot, write_trades_snapshot
+            write_portfolio_snapshot(alpaca_client)
+            write_trades_snapshot()
+        except Exception as _fe:
+            logger.warning(f"[main] dashboard snapshot failed: {_fe}")
+
         # Sleep until next scan (loop exits at LOOP_END_ET = 4:00 PM)
-
-
-        # Sleep until next scan
         _time.sleep(SCAN_INTERVAL * 60)
 
 
@@ -1478,8 +1489,11 @@ def session_eod_summary(alpaca_client) -> None:
 
     # Patch live feed with EOD P&L so dashboard shows daily totals
     try:
-        from bot.live_feed import write_eod_summary
+        from bot.live_feed import (write_eod_summary, write_portfolio_snapshot,
+                                   write_trades_snapshot)
         write_eod_summary(today, gross_pnl, len(closed), win_rate, portfolio_value)
+        write_portfolio_snapshot(alpaca_client)
+        write_trades_snapshot()
     except Exception as e:
         logger.warning(f"[eod] live feed EOD patch failed: {e}")
 

@@ -422,3 +422,16 @@ def log_rejection(
         logger.warning(f"[logger] log_rejection failed for {ticker}: {e}")
     finally:
         conn.close()
+
+
+def get_recent_trades(limit: int = 200) -> list[dict]:
+    """Return the most recent trades (any status), newest first."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()

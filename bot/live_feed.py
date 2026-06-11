@@ -202,3 +202,91 @@ def write_eod_summary(date_str: str, pnl: float, trades: int,
     feed["daily_history"] = daily
     _save(feed)
     logger.info(f"[live_feed] EOD summary patched for {date_str}")
+
+
+def write_portfolio_snapshot(alpaca_client) -> None:
+    """
+    Write current account + positions into feed["portfolio"] so the dashboard
+    can show holdings. Positions merge live Alpaca data (ground truth) with
+    DB stop/target/strategy context.
+    """
+    if alpaca_client is None:
+        return
+    try:
+        from bot.trader import get_account, get_positions
+        from bot.logger import get_open_trades
+
+        account = get_account(alpaca_client)
+        live    = get_positions(alpaca_client)
+        db_open = {t.get("ticker"): t for t in get_open_trades()}
+
+        positions = []
+        for p in live:
+            sym = p["symbol"]
+            db  = db_open.get(sym, {})
+            qty = float(p.get("qty") or 0)
+            cur = p.get("current_price")
+            positions.append({
+                "ticker":           sym,
+                "qty":              qty,
+                "side":             str(p.get("side", "")).split(".")[-1].lower(),
+                "avg_entry":        p.get("avg_entry_price"),
+                "current":          cur,
+                "market_value":     round(qty * cur, 2) if cur else None,
+                "unrealized_pl":    p.get("unrealized_pl"),
+                "unrealized_plpc":  p.get("unrealized_plpc"),
+                "stop_loss":        db.get("stop_loss"),
+                "take_profit":      db.get("take_profit"),
+                "strategy":         db.get("strategy"),
+                "time_horizon":     db.get("time_horizon"),
+                "entered":          db.get("timestamp"),
+            })
+
+        feed = _load()
+        feed["portfolio"] = {
+            "updated":      datetime.now(timezone.utc).isoformat(),
+            "equity":       account.get("equity"),
+            "cash":         account.get("cash"),
+            "buying_power": account.get("buying_power"),
+            "positions":    positions,
+        }
+        _save(feed)
+        logger.info(f"[live_feed] portfolio snapshot written — {len(positions)} positions")
+    except Exception as e:
+        logger.warning(f"[live_feed] portfolio snapshot failed: {e}")
+
+
+def write_trades_snapshot(limit: int = 200) -> None:
+    """Write recent trade rows (open + closed) into feed["trades"]."""
+    try:
+        from bot.logger import get_recent_trades
+        rows = get_recent_trades(limit)
+        slim = []
+        for t in rows:
+            slim.append({
+                "id":             t.get("id"),
+                "timestamp":      t.get("timestamp"),
+                "exit_timestamp": t.get("exit_timestamp"),
+                "session":        t.get("session"),
+                "ticker":         t.get("ticker"),
+                "action":         t.get("action"),
+                "strategy":       t.get("strategy"),
+                "time_horizon":   t.get("time_horizon"),
+                "quantity":       t.get("quantity"),
+                "entry_price":    t.get("entry_price"),
+                "exit_price":     t.get("exit_price"),
+                "stop_loss":      t.get("stop_loss"),
+                "take_profit":    t.get("take_profit"),
+                "status":         t.get("status"),
+                "pnl_dollar":     t.get("pnl_dollar"),
+                "pnl_pct":        t.get("pnl_pct"),
+                "confidence":     t.get("confidence"),
+                "net_score":      t.get("net_score"),
+                "reasoning":      (t.get("reasoning") or "")[:300],
+            })
+        feed = _load()
+        feed["trades"] = slim
+        _save(feed)
+        logger.info(f"[live_feed] trades snapshot written — {len(slim)} rows")
+    except Exception as e:
+        logger.warning(f"[live_feed] trades snapshot failed: {e}")
