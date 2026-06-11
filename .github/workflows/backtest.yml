@@ -60,6 +60,16 @@ jobs:
       - name: Create output directories
         run: mkdir -p data logs backtest_output
 
+      # The bars+indicator cache takes ~2h to build for a 2-year window;
+      # persist it across runs. backtest.py validates entries by its own
+      # key (tickers+dates+version), so a stale dir is harmless.
+      - name: Restore backtest cache
+        uses: actions/cache@v4
+        with:
+          path: backtest_cache
+          key: backtest-cache-${{ hashFiles('bot/indicators.py', 'bot/data.py') }}
+          restore-keys: backtest-cache-
+
       - name: Run backtest
         env:
           ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}

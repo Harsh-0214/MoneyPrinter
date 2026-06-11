@@ -316,6 +316,9 @@ def run_backtest(
     risk_pct: float = RISK_PCT,
     hold_mode: str = "strategy",          # "strategy" (live default) | "legacy" | "horizon"
     letrun_strats: tuple = ("breakout",), # strategies that get chandelier let-run
+    regime_adaptive: bool = False,        # bull regime → aggressive letrun (+optional sizing)
+    max_open_bull: int | None = None,     # regime_adaptive: slots when SPY is bull
+    pos_pct_bull: float | None = None,    # regime_adaptive: per-position cap when bull
     quiet: bool = False,
     _bars_map:  dict | None = None,  # pre-loaded bars — avoids double fetch for A/B
     _ind_cache: dict | None = None,  # pre-built cache — avoids double compute for A/B
@@ -382,6 +385,17 @@ def run_backtest(
         equity_curve.append({"date": today, "equity": round(mkt_value, 2)})
 
         regime = _spy_regime(today)
+        bull_today = regime == "bull"
+        # Regime-adaptive: aggressive exits/sizing only while SPY is in a bull
+        # regime; entries made today remember their let-run rules for life.
+        if regime_adaptive and bull_today:
+            entry_letrun = ("breakout", "squeeze_breakout", "trend_follow")
+            day_max_open = max_open_bull or max_open
+            day_pos_pct  = pos_pct_bull or max_pos_pct
+        else:
+            entry_letrun = letrun_strats
+            day_max_open = max_open
+            day_pos_pct  = max_pos_pct
         macro  = {
             "vix": 18.0,
             "spy_regime": regime,
@@ -419,7 +433,8 @@ def run_backtest(
 
             # ── Breakout let-run: dynamic stop from PRIOR bars (no look-ahead) ──
             prior_bars_brk = None
-            if breakout_let_run and pos.get("strategy") in letrun_strats:
+            pos_letrun = pos.get("letrun_set") or letrun_strats
+            if breakout_let_run and pos.get("strategy") in pos_letrun:
                 max_hold       = max(max_hold, BREAKOUT_MAX_HOLD_RUN)
                 prior_bars_brk = _fast_slice(df, today - timedelta(days=1)).tail(
                     BREAKOUT_SWING_LOOKBACK
@@ -447,7 +462,7 @@ def run_backtest(
                 exit_reason = "target"
             # Time exit
             elif age_days >= max_hold:
-                if (breakout_let_run and pos.get("strategy") in letrun_strats
+                if (breakout_let_run and pos.get("strategy") in pos_letrun
                         and prior_bars_brk is not None and len(prior_bars_brk) >= 1):
                     brk_lvl         = pos.get("breakout_level", 0.0)
                     prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
@@ -461,7 +476,7 @@ def run_backtest(
                     exit_reason = "time_exit"
 
             # Track highest for tomorrow's chandelier (no look-ahead)
-            if exit_price is None and breakout_let_run and pos.get("strategy") in letrun_strats:
+            if exit_price is None and breakout_let_run and pos.get("strategy") in pos_letrun:
                 pos["highest"] = max(pos.get("highest", entry), day_high)
 
             if exit_price is not None:
@@ -492,7 +507,7 @@ def run_backtest(
             del positions[t]
 
         # ── 2. Generate signals from pre-computed indicator cache ─────────────
-        if len(positions) >= max_open:
+        if len(positions) >= day_max_open:
             continue
 
         sector_counts: dict[str, int] = {}
@@ -551,7 +566,7 @@ def run_backtest(
             new_signals.append(score)
 
         new_signals.sort(key=lambda s: s.get("confidence", 0), reverse=True)
-        slots = max_open - len(positions)
+        slots = day_max_open - len(positions)
 
         for score in new_signals[:slots]:
             ticker      = score["ticker"]
@@ -593,14 +608,14 @@ def run_backtest(
                 atr=atr,
                 price=entry_price,
                 risk_pct=risk_pct,
-                max_pos_pct=max_pos_pct,
+                max_pos_pct=day_pos_pct,
             )
             if shares < 1:
                 continue
 
             cost = shares * entry_price
             if cost > cash:
-                shares = floor(cash * max_pos_pct / entry_price)
+                shares = floor(cash * day_pos_pct / entry_price)
                 cost   = shares * entry_price
             if shares < 1:
                 continue
@@ -642,6 +657,7 @@ def run_backtest(
                 "confidence":     confidence,
                 "signals":        score.get("signals_triggered", []),
                 "breakout_level": brk_lvl_entry,
+                "letrun_set":     entry_letrun,
                 "atr":            atr,
                 "highest":        entry_price,
             }
@@ -1070,18 +1086,21 @@ EXPERIMENTS: dict[str, dict] = {
     "hold_strategy":   {"hold_mode": "strategy"},
     # Horizon-based holds like main.py's walk-forward (swing=20d)
     "hold_horizon":    {"hold_mode": "horizon"},
-    # Entry quality: live bot uses 65; is 60 or 70 better?
-    "min_net_65":      {"min_net": 65},
-    "min_net_70":      {"min_net": 70},
     # Capital utilization: 5 slots × 10% caps deployment at 50%
     "slots8_pos15":    {"max_open": 8, "max_pos_pct": 0.15},
-    "risk3":           {"risk_pct": 0.03},
     # Extend the chandelier let-run (the best-performing exit) beyond breakout
     "letrun_trend":    {"letrun_strats": ("breakout", "squeeze_breakout", "trend_follow")},
     # Combined growth candidate
     "combo_growth":    {"max_open": 8, "max_pos_pct": 0.15,
                         "letrun_strats": ("breakout", "squeeze_breakout", "trend_follow")},
+    # Regime-gated: aggressive exits only while SPY is in a bull regime
+    # (letrun_trend made +16.6% in trending 2025-26 but -9.7% in choppy
+    # 2024-25 — gate it by the regime the bot already computes)
+    "regime_letrun":   {"regime_adaptive": True},
+    "regime_combo":    {"regime_adaptive": True, "max_open_bull": 8, "pos_pct_bull": 0.15},
 }
+# (min_net and risk_pct variants removed — measured as non-binding: the scorer
+#  gates net>=65 internally and the position cap dominates risk-based sizing.)
 
 
 def run_experiments(tickers: list[str], windows: list[tuple[date, date]],
