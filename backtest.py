@@ -319,6 +319,7 @@ def run_backtest(
     quiet: bool = False,
     _bars_map:  dict | None = None,  # pre-loaded bars — avoids double fetch for A/B
     _ind_cache: dict | None = None,  # pre-built cache — avoids double compute for A/B
+    _score_cache: dict | None = None, # shared {(ticker, day): classified score} across variants
 ) -> dict:
     """Full day-by-day simulation. Returns results dict with trades + equity curve."""
     bars_map     = _bars_map or load_all_bars(tickers, start, end)
@@ -511,12 +512,24 @@ def run_backtest(
             if not ind or ind.get("error"):
                 continue
 
-            try:
-                score = score_ticker(ticker, ind, {}, macro)
-                score = classify_strategy(score, ind)
-            except Exception as e:
-                logger.debug(f"[backtest] scorer failed {ticker} on {today}: {e}")
-                continue
+            # Scoring is variant-independent (same indicators/regime/news), so
+            # experiment runs share one score cache — only gates/exits differ.
+            _sc_key = (ticker, today)
+            if _score_cache is not None and _sc_key in _score_cache:
+                score = _score_cache[_sc_key]
+                if score is None:
+                    continue
+            else:
+                try:
+                    score = score_ticker(ticker, ind, {}, macro)
+                    score = classify_strategy(score, ind)
+                except Exception as e:
+                    logger.debug(f"[backtest] scorer failed {ticker} on {today}: {e}")
+                    score = None
+                if _score_cache is not None:
+                    _score_cache[_sc_key] = score
+                if score is None:
+                    continue
 
             action     = score.get("action", "hold")
             net        = score.get("net_score", 0)
@@ -1102,15 +1115,19 @@ def run_experiments(tickers: list[str], windows: list[tuple[date, date]],
                     "Max DD %", "Sharpe", "Avg hold"]:
             tbl.add_column(col, justify="right" if col != "Variant" else "left")
 
+        score_cache: dict = {}   # shared across variants within this window
         win_rows = {}
         for name, cfg in EXPERIMENTS.items():
             try:
                 res = run_backtest(
                     tickers=tickers, start=ws, end=we,
                     starting_capital=capital, quiet=True,
-                    _bars_map=bars_map, _ind_cache=ind_cache, **cfg,
+                    _bars_map=bars_map, _ind_cache=ind_cache,
+                    _score_cache=score_cache, **cfg,
                 )
                 st = compute_stats(res)
+                console.print(f"[dim]  {name} done — {st.get('total_trades',0)} trades, "
+                              f"{st.get('total_return_pct',0):+.2f}%[/dim]")
             except Exception as e:
                 console.print(f"[red]{name} failed: {e}[/red]")
                 continue
