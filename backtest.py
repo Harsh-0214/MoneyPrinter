@@ -386,8 +386,10 @@ def run_backtest(
 
         regime = _spy_regime(today)
         bull_today = regime == "bull"
-        # Regime-adaptive: aggressive exits/sizing only while SPY is in a bull
-        # regime; entries made today remember their let-run rules for life.
+        # Regime-adaptive: the aggressive let-run applies DAY-BY-DAY — bull
+        # days let winners run on the chandelier; the day SPY drops to
+        # caution, positions revert to the conservative hold limits.
+        # (Entry-time gating is a no-op: entries only happen on bull days.)
         if regime_adaptive and bull_today:
             entry_letrun = ("breakout", "squeeze_breakout", "trend_follow")
             day_max_open = max_open_bull or max_open
@@ -433,7 +435,10 @@ def run_backtest(
 
             # ── Breakout let-run: dynamic stop from PRIOR bars (no look-ahead) ──
             prior_bars_brk = None
-            pos_letrun = pos.get("letrun_set") or letrun_strats
+            if regime_adaptive:
+                pos_letrun = entry_letrun   # today's regime decides, not entry day's
+            else:
+                pos_letrun = pos.get("letrun_set") or letrun_strats
             if breakout_let_run and pos.get("strategy") in pos_letrun:
                 max_hold       = max(max_hold, BREAKOUT_MAX_HOLD_RUN)
                 prior_bars_brk = _fast_slice(df, today - timedelta(days=1)).tail(
