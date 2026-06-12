@@ -380,6 +380,9 @@ def run_backtest(
     quality_filter: bool = False,      # stricter breakout entry gate (volume, close, gap)
     max_daily_entries: int = 2,        # FIX 3a: cap NEW entries per trading day
     squeeze_mode: str = "current",     # FIX 4: off | chandelier | short_hold | current
+    squeeze_low_vol: bool = False,     # A4: admit squeeze_breakout only when atr/close < 0.025
+    no_mean_reversion: bool = False,   # C1: skip mean_reversion signals entirely
+    mr_mean_target: bool = False,      # C2: exit mean_reversion when close crosses 20-day SMA
     earnings_filter: bool = True,      # FIX 5: skip entries within 1 day before / 2 after earnings
     max_stop_width_pct: float = 7.0,   # skip longs whose initial stop sits more than this % below entry
     _earnings_map: dict | None = None, # FIX 5: ticker -> [earnings dates]
@@ -575,6 +578,17 @@ def run_backtest(
                     and day_close < pos["breakout_level"] * BREAKOUT_FAIL_BUFFER):
                 exit_price  = day_close
                 exit_reason = "failed_breakout"
+            # C2: mean_reversion SMA-cross exit. When the day's close crosses above
+            # the 20-day SMA recorded at entry, take profit at the close. Keeps the
+            # stop and the 5-day time exit unchanged; only replaces the fixed 2.5R
+            # target which never triggers on typical reversion bounces.
+            elif (mr_mean_target
+                    and pos.get("strategy") == "mean_reversion"
+                    and pos.get("mr_sma_target", 0) > 0
+                    and exit_price is None
+                    and day_close >= pos["mr_sma_target"]):
+                exit_price  = day_close
+                exit_reason = "mr_sma_cross"
             # Target hit. Skipped for let-run breakouts when breakout_no_target
             # is on, so the chandelier trailing stop (not the fixed 2.5R cap)
             # governs the exit and winners are free to run.
@@ -682,6 +696,17 @@ def run_backtest(
             # FIX 4 off mode: do not trade squeeze_breakout at all (baseline ref).
             if squeeze_mode == "off" and score.get("strategy") == "squeeze_breakout":
                 continue
+            # C1: skip mean_reversion signals when the flag is on.
+            if no_mean_reversion and score.get("strategy") == "mean_reversion":
+                continue
+            # A4: only allow squeeze_breakout when volatility is low (atr/price < 2.5%).
+            # Evidence: all squeeze winners in 2026 H1 were low-vol names; all losers
+            # were high-beta names with atr/close above 2.5%.
+            if (squeeze_low_vol and score.get("strategy") == "squeeze_breakout"):
+                _atr  = float(score.get("atr") or ind.get("atr") or 0)
+                _cp   = float(ind.get("current_price") or score.get("entry_price") or 0)
+                if _cp > 0 and _atr / _cp >= 0.025:
+                    continue
             if macro["bearish_market"]:
                 continue
 
@@ -835,7 +860,12 @@ def run_backtest(
                     f"({cost / portfolio_value * 100:.1f}% of ${portfolio_value:,.0f})"
                 )
 
-            if take_profit <= 0 or take_profit <= entry_price:
+            # C2: use the 20-day SMA as the take_profit for mean_reversion entries
+            # so the CSV reflects the real exit target.
+            if (mr_mean_target and strategy == "mean_reversion"):
+                _bb = float(ind.get("bb_mid") or 0)
+                take_profit = round(_bb, 2) if _bb > entry_price else round(entry_price + (entry_price - stop_loss) * 2.5, 2)
+            elif take_profit <= 0 or take_profit <= entry_price:
                 risk        = entry_price - stop_loss
                 take_profit = round(entry_price + risk * 2.5, 2)
 
@@ -862,6 +892,10 @@ def run_backtest(
                 "atr":            atr,
                 "highest":        entry_price,
                 "initial_stop":   stop_loss,
+                # C2: for mean_reversion positions record the 20-day SMA at entry
+                # (bb_mid) so the exit logic can compare it each day.
+                "mr_sma_target":  (float(ind.get("bb_mid") or 0)
+                                   if (mr_mean_target and strategy == "mean_reversion") else 0),
                 # Fingerprint for post-run assertions: position cost as a percent
                 # of the correctly valued book at entry time.
                 "entry_pct_pv":   round(cost / portfolio_value * 100, 2) if portfolio_value > 0 else 0,
@@ -1339,18 +1373,52 @@ EXPERIMENTS: dict[str, dict] = {
     "brk_all":         {"breakout_no_target": True, "failed_brk_exit": True,
                         "structure_stop": True, "breakeven_ratchet": True,
                         "quality_filter": True},
-    # FIX 4: squeeze_breakout handling, run all three against current behavior
+    # GRID A: squeeze_breakout variants (one change vs baseline each)
+    # A1: disable squeeze entirely (reference floor)
     "sqz_off":         {"squeeze_mode": "off"},
+    # A2: manage squeeze with a chandelier trailing stop like breakouts
     "sqz_chandelier":  {"squeeze_mode": "chandelier"},
+    # A3: keep static stop but cap hold at 7 days (cut the long losers)
     "sqz_short_hold":  {"squeeze_mode": "short_hold"},
-    # Extend the chandelier let-run (the best-performing exit) beyond breakout
+    # A4: admit squeeze only when ATR/close < 2.5% (low-vol filter)
+    # Evidence: all 6 squeeze winners in 2026 H1 were low-vol names;
+    # all high-beta losers (TSM, NFLX, BA, ASML) had ATR/close above 2.5%.
+    "sqz_low_vol":     {"squeeze_low_vol": True},
+    # A5: best single squeeze variant + low-vol filter (filled in after grid run)
+    "sqz_chandelier_lv": {"squeeze_mode": "chandelier", "squeeze_low_vol": True},
+    "sqz_short_hold_lv": {"squeeze_mode": "short_hold", "squeeze_low_vol": True},
+
+    # GRID B: breakout improvements (cumulative)
+    # B1: quality filter only
+    "brk_b1_quality":  {"quality_filter": True},
+    # B2: quality filter + let winners run past the 2.5R cap
+    "brk_b2_no_target": {"quality_filter": True, "breakout_no_target": True},
+    # B3: all five breakout changes together
+    "brk_b3_all":      {"quality_filter": True, "breakout_no_target": True,
+                        "structure_stop": True, "breakeven_ratchet": True,
+                        "failed_brk_exit": True},
+
+    # GRID C: mean_reversion variants
+    # C1: disable mean_reversion entirely
+    "mr_off":          {"no_mean_reversion": True},
+    # C2: replace fixed 2.5R target with SMA-cross exit (20-day bb_mid)
+    "mr_sma_target":   {"mr_mean_target": True},
+
+    # Previous individual flags kept for reference
+    "brk_no_target":   {"breakout_no_target": True},
+    "brk_failexit":    {"failed_brk_exit": True},
+    "brk_structstop":  {"structure_stop": True},
+    "brk_breakeven":   {"breakeven_ratchet": True},
+    "brk_quality":     {"quality_filter": True},
+    "brk_all":         {"breakout_no_target": True, "failed_brk_exit": True,
+                        "structure_stop": True, "breakeven_ratchet": True,
+                        "quality_filter": True},
+    # Extend the chandelier let-run beyond breakout
     "letrun_trend":    {"letrun_strats": ("breakout", "squeeze_breakout", "trend_follow")},
     # Combined growth candidate
     "combo_growth":    {"max_open": 8, "max_pos_pct": 0.15,
                         "letrun_strats": ("breakout", "squeeze_breakout", "trend_follow")},
     # Regime-gated: aggressive exits only while SPY is in a bull regime
-    # (letrun_trend made +16.6% in trending 2025-26 but -9.7% in choppy
-    # 2024-25 — gate it by the regime the bot already computes)
     "regime_letrun":   {"regime_adaptive": True},
     "regime_combo":    {"regime_adaptive": True, "max_open_bull": 8, "pos_pct_bull": 0.15},
 }
@@ -1389,7 +1457,8 @@ def run_experiments(tickers: list[str], windows: list[tuple[date, date]],
 
         tbl = Table(box=box.SIMPLE_HEAVY)
         for col in ["Variant", "Return %", "Trades", "Win %", "PF",
-                    "Max DD %", "Sharpe", "Avg hold"]:
+                    "Max DD %", "Sharpe", "Avg hold",
+                    "brk P&L", "sqz P&L", "mr P&L", "trend P&L"]:
             tbl.add_column(col, justify="right" if col != "Variant" else "left")
 
         score_cache: dict = {}   # shared across variants within this window
@@ -1405,33 +1474,45 @@ def run_experiments(tickers: list[str], windows: list[tuple[date, date]],
                     **cfg,
                 )
                 st = compute_stats(res)
-                console.print(f"[dim]  {name} done — {st.get('total_trades',0)} trades, "
+                console.print(f"[dim]  {name} done -- {st.get('total_trades',0)} trades, "
                               f"{st.get('total_return_pct',0):+.2f}%[/dim]")
             except Exception as e:
                 console.print(f"[red]{name} failed: {e}[/red]")
                 continue
-            ret = st.get("total_return_pct", 0.0)
-            color = "green" if ret >= 0 else "red"
+            ret    = st.get("total_return_pct", 0.0)
+            by_s   = st.get("by_strategy", {})
+            color  = "green" if ret >= 0 else "red"
+
+            def _spnl(strat: str) -> str:
+                d = by_s.get(strat, {})
+                v = d.get("total_pnl", 0) if d else 0
+                c = "green" if v >= 0 else "red"
+                return f"[{c}]${v:+,.0f}[/{c}]"
+
             tbl.add_row(
                 name,
                 f"[{color}]{ret:+.2f}%[/{color}]",
                 str(st.get("total_trades", 0)),
                 f"{st.get('win_rate', 0):.1f}",
-                f"{st.get('profit_factor', 0):.2f}" if st.get("profit_factor") != float("inf") else "∞",
+                f"{st.get('profit_factor', 0):.2f}" if st.get("profit_factor") != float("inf") else "inf",
                 f"{st.get('max_drawdown_pct', 0):.1f}",
                 f"{st.get('sharpe', 0)}",
                 f"{st.get('avg_hold_days', 0)}d",
+                _spnl("breakout"),
+                _spnl("squeeze_breakout"),
+                _spnl("mean_reversion"),
+                _spnl("trend_follow"),
             )
             win_rows[name] = {
-                "return_pct":   round(ret, 2),
-                "trades":       st.get("total_trades", 0),
-                "win_rate":     round(st.get("win_rate", 0), 1),
+                "return_pct":    round(ret, 2),
+                "trades":        st.get("total_trades", 0),
+                "win_rate":      round(st.get("win_rate", 0), 1),
                 "profit_factor": (round(st["profit_factor"], 2)
                                   if st.get("profit_factor") not in (None, float("inf")) else None),
-                "max_dd_pct":   round(st.get("max_drawdown_pct", 0), 2),
-                "sharpe":       st.get("sharpe", 0),
-                "avg_hold":     st.get("avg_hold_days", 0),
-                "by_strategy":  st.get("by_strategy", {}),
+                "max_dd_pct":    round(st.get("max_drawdown_pct", 0), 2),
+                "sharpe":        st.get("sharpe", 0),
+                "avg_hold":      st.get("avg_hold_days", 0),
+                "by_strategy":   by_s,
             }
 
         console.print(tbl)
@@ -1439,6 +1520,62 @@ def run_experiments(tickers: list[str], windows: list[tuple[date, date]],
             console.print(f"[dim]SPY buy-and-hold over window: {spy_ret:+.2f}%[/dim]\n")
         out["windows"][wkey] = {"spy_return_pct": round(spy_ret, 2) if spy_ret is not None else None,
                                 "results": win_rows}
+
+    # ── Best-combo validation table ───────────────────────────────────────────
+    # A variant survives only if it does NOT lose money on any window where
+    # the baseline was profitable. Print the final baseline vs best-combo table.
+    all_wkeys  = list(out["windows"].keys())
+    all_vnames = list(next(iter(out["windows"].values()), {}).get("results", {}).keys())
+
+    # Baseline return per window
+    baseline_rets: dict[str, float] = {}
+    for wk in all_wkeys:
+        baseline_rets[wk] = out["windows"][wk]["results"].get(
+            "hold_strategy", {}).get("return_pct", 0.0)
+
+    # Score each variant: sum of returns across windows, disqualified if it
+    # loses on a window where baseline was profitable.
+    def _variant_ok(vname: str) -> bool:
+        for wk in all_wkeys:
+            v_ret   = out["windows"][wk]["results"].get(vname, {}).get("return_pct", 0.0)
+            b_ret   = baseline_rets[wk]
+            if b_ret > 0 and v_ret < 0:
+                return False
+        return True
+
+    def _variant_total(vname: str) -> float:
+        return sum(out["windows"][wk]["results"].get(vname, {}).get("return_pct", 0.0)
+                   for wk in all_wkeys)
+
+    survivors = [v for v in all_vnames if _variant_ok(v)]
+    survivors.sort(key=_variant_total, reverse=True)
+    best = survivors[:5] if survivors else all_vnames[:5]
+
+    console.print(Panel("[bold]Baseline vs Best-Combo Across All Windows[/bold]",
+                        style="bold cyan", expand=False))
+    final_tbl = Table(box=box.SIMPLE_HEAVY)
+    final_tbl.add_column("Variant", justify="left")
+    for wk in all_wkeys:
+        final_tbl.add_column(wk, justify="right")
+    final_tbl.add_column("Sum %", justify="right")
+
+    show_variants = ["hold_strategy"] + [v for v in best if v != "hold_strategy"]
+    for vname in show_variants:
+        row = [vname]
+        total = 0.0
+        for wk in all_wkeys:
+            ret = out["windows"][wk]["results"].get(vname, {}).get("return_pct", 0.0)
+            total += ret
+            c   = "green" if ret >= 0 else "red"
+            row.append(f"[{c}]{ret:+.2f}%[/{c}]")
+        tc = "green" if total >= 0 else "red"
+        row.append(f"[{tc}]{total:+.2f}%[/{tc}]")
+        final_tbl.add_row(*row)
+
+    console.print(final_tbl)
+    if not survivors:
+        console.print("[yellow]No variant passed the do-not-regress filter "
+                      "on all windows. Showing top 5 by return.[/yellow]")
 
     out_dir = Path("backtest_output")
     out_dir.mkdir(exist_ok=True)
@@ -1484,6 +1621,12 @@ def main():
     parser.add_argument("--max-stop-width-pct", type=float, default=7.0,
                         help="Skip long entries whose initial stop is more than this %% "
                              "below entry price (0 disables, default 7)")
+    parser.add_argument("--squeeze-low-vol", action="store_true",
+                        help="A4: admit squeeze_breakout only when ATR/close < 2.5%%")
+    parser.add_argument("--no-mean-reversion", action="store_true",
+                        help="C1: skip all mean_reversion signals")
+    parser.add_argument("--mr-mean-target", action="store_true",
+                        help="C2: exit mean_reversion when close crosses the 20-day SMA at entry")
     parser.add_argument("--no-earnings-filter", action="store_true",
                         help="FIX 5: disable the earnings blackout filter on backtest entries")
     parser.add_argument("--quick", action="store_true",
@@ -1575,6 +1718,9 @@ def main():
         breakout_let_run=breakout_let_run,
         max_daily_entries=args.max_daily_entries,
         squeeze_mode=args.squeeze_mode,
+        squeeze_low_vol=args.squeeze_low_vol,
+        no_mean_reversion=args.no_mean_reversion,
+        mr_mean_target=args.mr_mean_target,
         earnings_filter=earnings_filter,
         max_stop_width_pct=args.max_stop_width_pct,
         _earnings_map=earnings_map,
@@ -1598,6 +1744,9 @@ def main():
             breakout_let_run=False,
             max_daily_entries=args.max_daily_entries,
             squeeze_mode=args.squeeze_mode,
+            squeeze_low_vol=args.squeeze_low_vol,
+            no_mean_reversion=args.no_mean_reversion,
+            mr_mean_target=args.mr_mean_target,
             earnings_filter=earnings_filter,
             max_stop_width_pct=args.max_stop_width_pct,
             _earnings_map=earnings_map,
