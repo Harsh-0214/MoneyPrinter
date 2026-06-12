@@ -539,10 +539,27 @@ def compute_indicators_from_df(ticker: str, df: pd.DataFrame,
         kc_ind = ta_volatility.KeltnerChannel(high=high, low=low, close=close,
                                                window=20, window_atr=10,
                                                multiplier=2, fillna=False)
-        result["kc_upper"] = _safe(kc_ind.keltner_channel_hband().iloc[-1])
+        kc_hband = kc_ind.keltner_channel_hband()
+        result["kc_upper"] = _safe(kc_hband.iloc[-1])
         result["kc_lower"] = _safe(kc_ind.keltner_channel_lband().iloc[-1])
+        # Prior day's upper band: needed by the squeeze two-close confirmation
+        # (yesterday's close must also have been above yesterday's band).
+        result["kc_upper_prev"] = _safe(kc_hband.iloc[-2]) if len(kc_hband) >= 2 else None
     except Exception:
-        result["kc_upper"] = result["kc_lower"] = None
+        result["kc_upper"] = result["kc_lower"] = result["kc_upper_prev"] = None
+
+    # ── Structure levels used by entry gates and stops ─────────────────────
+    try:
+        # 50-day simple MA: mean reversion only buys dips above it
+        result["sma50"] = _safe(close.rolling(50).mean().iloc[-1]) if len(close) >= 50 else None
+        # 10-day low: consolidation floor for the managed squeeze stop
+        result["low_10d"]  = _safe(low.tail(10).min())
+        # Signal-day range for the breakout close-strength gate
+        result["day_high"] = _safe(high.iloc[-1])
+        result["day_low"]  = _safe(low.iloc[-1])
+    except Exception:
+        result["sma50"] = result["low_10d"] = None
+        result["day_high"] = result["day_low"] = None
 
     # ── VOLUME: VWAP ───────────────────────────────────────────────────────
     result["vwap"] = (

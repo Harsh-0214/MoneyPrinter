@@ -4,6 +4,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Set True (main.py --legacy-strategies) to restore the pre-router behavior:
+# no squeeze confirmation/low-vol gates, ATR-multiple stops everywhere, and
+# the fixed 2.5R mean reversion target instead of the 20-day SMA.
+LEGACY_STRATEGIES = False
+
 STRATEGY_CONFIGS = {
     "trend_follow": {
         "description": "EMA9>EMA21>EMA50 + ADX>22 + MACD hist positive + volume confirm — 2-5 day swing",
@@ -74,6 +79,22 @@ def classify_strategy(score_result: dict, indicators: dict) -> dict:
     if action == "buy" and cp:
         stop_loss   = round(cp - atr * sl_mult, 2)
         take_profit = round(cp + atr * sl_mult * rr, 2)
+        if not LEGACY_STRATEGIES:
+            if strategy == "squeeze_breakout":
+                # Stop at the consolidation low (10-day low with a small
+                # buffer), never tighter than half an ATR below entry.
+                low10 = float(indicators.get("low_10d") or 0)
+                half  = cp - atr * 0.5
+                sq_stop = min(low10 * 0.995, half) if low10 > 0 else half
+                if 0 < sq_stop < cp:
+                    stop_loss   = round(sq_stop, 2)
+                    take_profit = round(cp + (cp - sq_stop) * rr, 2)
+            elif strategy == "mean_reversion":
+                # Target the 20-day SMA (Bollinger middle): reversion bounces
+                # revert to the mean, not to a 2.5R momentum target.
+                bb_mid = float(indicators.get("bb_mid") or 0)
+                if bb_mid > cp:
+                    take_profit = round(bb_mid, 2)
     elif action in ("short", "sell") and cp:
         stop_loss   = round(cp + atr * sl_mult, 2)
         take_profit = round(cp - atr * sl_mult * rr, 2)
@@ -143,9 +164,27 @@ def _classify(sigs: set, ind: dict, score: dict) -> str:
     bb_extreme  = bb_pctb is not None and (bb_pctb < 0.15 or bb_pctb > 0.85)
     rsi_extreme = rsi < 38 or rsi > 68
     mean_rev_ok = (rsi_extreme or bb_extreme) and not ema_full_bull
+    if not LEGACY_STRATEGIES:
+        # New MR default: only buy dips that are still in an uptrend
+        # (price above the 50-day SMA).
+        sma50 = float(ind.get("sma50") or 0)
+        mean_rev_ok = mean_rev_ok and sma50 > 0 and cp > sma50
+
+    # New squeeze defaults: entry confirmed by two consecutive closes above
+    # the Keltner upper band, and only in low-volatility names (atr/close < 3%).
+    sqz_confirmed = True
+    if not LEGACY_STRATEGIES:
+        atr_v   = float(score.get("atr") or ind.get("atr") or 0)
+        band    = float(ind.get("kc_upper") or 0)
+        band_p  = float(ind.get("kc_upper_prev") or 0)
+        prev_cp = float(ind.get("prev_close") or 0)
+        low_vol = cp > 0 and atr_v > 0 and atr_v / cp < 0.03
+        two_closes = (band > 0 and cp > band
+                      and band_p > 0 and prev_cp > band_p)
+        sqz_confirmed = low_vol and two_closes
 
     # Classify
-    if squeeze and kc_break:
+    if squeeze and kc_break and sqz_confirmed:
         return "squeeze_breakout"
     if r1_break:
         return "breakout"

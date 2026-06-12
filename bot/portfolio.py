@@ -168,6 +168,31 @@ def check_time_exits(alpaca_client=None, data_client=None) -> list[dict]:
 
 
 
+def check_mr_exits(alpaca_client) -> list[dict]:
+    """
+    Mean reversion exit check: the bounce is done when RSI(14) reaches 55.
+    The 20-day SMA target is enforced by the bracket TP leg; this catches the
+    momentum-recovered case where price stalls just under the SMA.
+    Returns positions to close.
+    """
+    from bot.indicators import get_indicators
+
+    out = []
+    for pos in get_open_positions(alpaca_client):
+        if pos.get("strategy") != "mean_reversion" or pos.get("action", "buy") != "buy":
+            continue
+        try:
+            ind = get_indicators(pos["ticker"])
+            rsi = float(ind.get("rsi") or 0)
+        except Exception as e:
+            logger.warning(f"[portfolio] MR exit RSI check failed for {pos['ticker']}: {e}")
+            continue
+        if rsi >= 55:
+            logger.info(f"[portfolio] MR EXIT: {pos['ticker']} RSI={rsi:.0f} >= 55")
+            out.append(pos)
+    return out
+
+
 def calculate_partial_exit(position: dict, current_price: float) -> dict:
     """
     Determine whether to partially or fully exit a profitable position.
@@ -243,7 +268,8 @@ def update_breakout_stops(alpaca_client, data_client=None) -> None:
     positions = get_open_positions(alpaca_client)
     breakout_positions = [
         p for p in positions
-        if p.get("strategy") == "breakout" and p.get("action", "buy") == "buy"
+        if p.get("strategy") in ("breakout", "squeeze_breakout")
+        and p.get("action", "buy") == "buy"
     ]
     if not breakout_positions:
         return
@@ -299,8 +325,18 @@ def update_breakout_stops(alpaca_client, data_client=None) -> None:
             else:
                 structure = cur_stop
 
+            # Breakeven ratchet: once price has reached +1R (one stop-distance
+            # above entry), the stop never sits below entry again. The current
+            # stop only ever rises, so entry - cur_stop is at most the original
+            # risk; the ratchet can only fire earlier, never later.
+            breakeven = cur_stop
+            if cur_stop < entry:
+                one_r = entry + (entry - cur_stop)
+                if new_highest >= one_r:
+                    breakeven = entry
+
             # New stop: raise-only, never push above current price
-            new_stop = max(cur_stop, chandelier, structure)
+            new_stop = max(cur_stop, chandelier, structure, breakeven)
             if new_stop >= cur_price:
                 new_stop = cur_stop   # don't set stop above current price
 
@@ -310,8 +346,19 @@ def update_breakout_stops(alpaca_client, data_client=None) -> None:
                 logger.info(
                     f"[portfolio] BREAKOUT STOP RAISED: {ticker} "
                     f"stop {cur_stop:.2f} → {new_stop:.2f} "
-                    f"(chandelier={chandelier:.2f} structure={structure:.2f} highest={new_highest:.2f})"
+                    f"(chandelier={chandelier:.2f} structure={structure:.2f} "
+                    f"breakeven={breakeven:.2f} highest={new_highest:.2f})"
                 )
+                # Replace the working server-side stop so Alpaca enforces the
+                # raised level even when no workflow is running.
+                try:
+                    from bot.trader import cancel_open_orders, submit_stop_only
+                    qty = int(float(pos.get("quantity") or 0))
+                    if qty > 0:
+                        cancel_open_orders(alpaca_client, ticker)
+                        submit_stop_only(alpaca_client, ticker, qty, round(new_stop, 2))
+                except Exception as _ro_err:
+                    logger.warning(f"[portfolio] stop replace failed for {ticker}: {_ro_err}")
             elif new_highest > highest:
                 update_trade_trailing(trade_id, round(new_highest, 4),
                                       round(pos.get("trailing_stop_price") or cur_stop, 4))

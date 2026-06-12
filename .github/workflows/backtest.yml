@@ -31,6 +31,10 @@ on:
         description: "Experiment windows, comma-separated start:end"
         required: false
         default: "2024-06-01:2025-06-01,2025-06-01:2026-06-01"
+      extra_args:
+        description: "Extra backtest.py flags (e.g. --legacy-strategies)"
+        required: false
+        default: ""
 
 jobs:
   backtest:
@@ -89,6 +93,10 @@ jobs:
 
           if [ -n "${{ github.event.inputs.tickers }}" ]; then
             ARGS="$ARGS --tickers ${{ github.event.inputs.tickers }}"
+          fi
+
+          if [ -n "${{ github.event.inputs.extra_args }}" ]; then
+            ARGS="$ARGS ${{ github.event.inputs.extra_args }}"
           fi
 
           python backtest.py $ARGS 2>&1 | tee backtest_output/backtest_log.txt

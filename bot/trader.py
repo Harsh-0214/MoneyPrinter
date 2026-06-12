@@ -274,6 +274,44 @@ def has_open_exit_order(client, ticker: str) -> bool:
         return False
 
 
+def submit_stop_only(client, ticker: str, qty: int, stop_loss: float,
+                     dry_run: bool = False) -> Optional[str]:
+    """
+    Attach a GTC stop-loss sell (no take-profit leg) to an existing long
+    position. Used for breakout-style strategies where the chandelier trail
+    manages the upside and a fixed TP would cap the winners.
+    Returns order ID or None on failure.
+    """
+    if dry_run:
+        logger.info(f"[trader] DRY_RUN: would submit stop-only sell {qty} {ticker} "
+                    f"stop={stop_loss:.2f}")
+        return f"dry-{uuid.uuid4().hex[:8]}"
+
+    from alpaca.trading.requests import StopLimitOrderRequest
+    from alpaca.trading.enums import OrderSide, TimeInForce
+
+    def _submit():
+        req = StopLimitOrderRequest(
+            symbol=ticker,
+            qty=qty,
+            side=OrderSide.SELL,
+            time_in_force=TimeInForce.GTC,
+            stop_price=round(stop_loss, 2),
+            limit_price=round(stop_loss * 0.995, 2),
+        )
+        order = client.submit_order(req)
+        return str(order.id)
+
+    try:
+        order_id = _retry(_submit)
+        logger.info(f"[trader] Stop-only exit submitted: {qty} {ticker} "
+                    f"stop={stop_loss:.2f} id={order_id}")
+        return order_id
+    except Exception as e:
+        logger.error(f"[trader] submit_stop_only failed for {ticker}: {e}")
+        return None
+
+
 def submit_oco_exit(client, ticker: str, qty: int, take_profit: float,
                     stop_loss: float, dry_run: bool = False) -> Optional[str]:
     """

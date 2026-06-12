@@ -81,6 +81,10 @@ EXT_EMA21_MULT    = 1.04
 # Stop-width gate: skip longs whose initial stop sits more than this percent
 # below entry. Wide stops produced outsized losses when hit.
 MAX_STOP_WIDTH_PCT = 7.0
+# Set by --legacy-strategies: restores pre-router behavior (old squeeze/MR/
+# breakout handling, fixed TP brackets, no regime routing). Mirrors
+# bot.strategies.LEGACY_STRATEGIES, which the flag also sets.
+LEGACY_STRATEGIES = False
 
 # ── Session-level state ─────────────────────────────────────────────────────
 _session_start_equity: Optional[float] = None
@@ -368,9 +372,32 @@ def get_macro_context() -> dict:
     except Exception as e:
         logger.warning(f"SPY regime check failed: {e}")
 
+    # Regime router classification (mirrors backtest _spy_regime3):
+    # TRENDING: SPY close > EMA21 > SMA50 and EMA21 rising over 10 days.
+    # BEAR: existing bearish_market logic. CHOP: everything else.
+    macro["regime3"] = "chop"
+    if macro["bearish_market"]:
+        macro["regime3"] = "bear"
+    else:
+        try:
+            from bot.data import fetch_daily_bars
+            spy_df = fetch_daily_bars("SPY", days=90)
+            if spy_df is not None and len(spy_df) >= 60:
+                close  = spy_df["Close"]
+                price  = float(close.iloc[-1])
+                ema21  = close.ewm(span=21, adjust=False).mean()
+                sma50  = float(close.rolling(50).mean().iloc[-1])
+                e_now  = float(ema21.iloc[-1])
+                e_then = float(ema21.iloc[-11])
+                if price > e_now > sma50 and e_now > e_then:
+                    macro["regime3"] = "trending"
+        except Exception as e:
+            logger.warning(f"regime3 classification failed: {e}")
+
     macro["vix_multiplier"] = get_vix_multiplier(macro["vix"])
     logger.info(
         f"[macro] VIX={macro['vix']:.1f} regime={macro['spy_regime']} "
+        f"regime3={macro['regime3']} "
         f"bearish_market={macro['bearish_market']} "
         f"size_mult={macro['vix_multiplier']:.2f}"
     )
@@ -694,6 +721,41 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 )
                 continue
 
+        # ── Regime router: TRENDING disables mean_reversion entries ───────
+        if (not LEGACY_STRATEGIES and action == "buy"
+                and strategy == "mean_reversion"
+                and macro_context.get("regime3") == "trending"):
+            log_rejection(
+                session=session, ticker=ticker, net_score=sig.get("net_score", 0),
+                confidence=confidence, action=action,
+                rejection_reason="regime_trending_no_mr",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0), strategy=strategy,
+            )
+            continue
+
+        # ── Breakout entry quality gate ────────────────────────────────────
+        # Volume surge plus a close in the top 40 percent of the day's range.
+        # The backtest's third condition (next-open no more than 2 percent
+        # above signal close) is automatic live: entry happens at the signal
+        # close itself, so there is no overnight gap to chase.
+        if (not LEGACY_STRATEGIES and action == "buy" and strategy == "breakout"):
+            _ind   = sig.get("_indicators", {})
+            _vr    = float(_ind.get("volume_ratio") or 0)
+            _dh    = float(_ind.get("day_high") or 0)
+            _dl    = float(_ind.get("day_low") or 0)
+            _cp    = float(_ind.get("current_price") or entry_price or 0)
+            _rng   = _dh - _dl
+            if _vr < 1.5 or (_rng > 0 and _cp < _dl + 0.6 * _rng):
+                log_rejection(
+                    session=session, ticker=ticker, net_score=sig.get("net_score", 0),
+                    confidence=confidence, action=action,
+                    rejection_reason="breakout_quality_gate",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                continue
+
         # ── Daily loss halt: skip new buys/shorts ─────────────────────────
         if _daily_loss_halt and action in ("buy", "short"):
             log_rejection(
@@ -881,6 +943,16 @@ def execute_signals(signals: list, alpaca_client, data_client,
 
         shares = pos["shares"]
 
+        # Regime router: in CHOP, breakout-style entries get half size since
+        # follow-through is unreliable.
+        if (not LEGACY_STRATEGIES and action == "buy"
+                and strategy in ("breakout", "squeeze_breakout")
+                and macro_context.get("regime3") == "chop"):
+            shares = shares // 2
+            if shares < 1:
+                logger.info(f"[execute] {ticker}: chop half-sizing left 0 shares - skipping")
+                continue
+
         # Cap position dollar value at MAX_PORTFOLIO_EXPOSURE_PCT of portfolio
         if action == "buy" and portfolio_value > 0 and entry_price > 0:
             max_shares = int((portfolio_value * MAX_PORTFOLIO_EXPOSURE_PCT) / entry_price)
@@ -932,11 +1004,20 @@ def execute_signals(signals: list, alpaca_client, data_client,
 
         # Stop/target submitted as a GTC bracket so Alpaca enforces exits
         # server-side even when no workflow is running (mirrors backtest
-        # stop/target behavior).
+        # stop/target behavior). Breakout-style positions get a stop-only
+        # exit instead: the chandelier manages the upside, so a fixed TP leg
+        # would cap exactly the winners the strategy depends on.
         sig_stop   = sig.get("stop_loss")
         sig_target = sig.get("take_profit")
+        stop_only  = (
+            not LEGACY_STRATEGIES
+            and strategy in ("breakout", "squeeze_breakout")
+            and action == "buy"
+            and sig_stop and float(sig_stop) < limit_price
+        )
         use_bracket = (
-            action == "buy"
+            not stop_only
+            and action == "buy"
             and sig_stop and sig_target
             and float(sig_stop) < limit_price < float(sig_target)
         )
@@ -984,6 +1065,16 @@ def execute_signals(signals: list, alpaca_client, data_client,
 
                 if fill.get("filled_avg_price"):
                     entry_price = fill["filled_avg_price"]
+
+            # Breakout-style: protect the fill with a stop-only GTC exit
+            # (no TP leg; the chandelier ratchet raises this stop over time).
+            if stop_only and fill_status == "open":
+                try:
+                    from bot.trader import submit_stop_only
+                    submit_stop_only(alpaca_client, ticker, shares,
+                                     float(sig_stop), dry_run=DRY_RUN)
+                except Exception as _so_err:
+                    logger.error(f"[execute] stop-only attach failed for {ticker}: {_so_err}")
 
             log_trade(
                 session=session,
@@ -1358,6 +1449,18 @@ def session_continuous(alpaca_client, data_client) -> None:
             close_position_and_log(alpaca_client, pos, cp, "continuous", status="time_exit",
                                    dry_run=DRY_RUN)
             console.print(f"[yellow]TIME EXIT: {pos['ticker']} age={pos.get('age_days')}d pnl={pnl:+.1f}%[/yellow]")
+
+        # ── Mean reversion RSI exits (new defaults only) ───────────────────
+        if not LEGACY_STRATEGIES:
+            try:
+                from bot.portfolio import check_mr_exits
+                for pos in check_mr_exits(alpaca_client):
+                    cp = pos.get("current_price") or pos.get("entry_price", 0)
+                    close_position_and_log(alpaca_client, pos, cp, "continuous",
+                                           status="mr_rsi_exit", dry_run=DRY_RUN)
+                    console.print(f"[green]MR RSI EXIT: {pos['ticker']} @ {cp}[/green]")
+            except Exception as _mr_err:
+                logger.warning(f"[main] check_mr_exits error: {_mr_err}")
 
         # ── Trailing stop checks (live-only — not part of backtest parity) ─
         if not BACKTEST_PARITY:
@@ -2116,8 +2219,21 @@ def main() -> None:
         default=False,
         help="Backtest only: lower thresholds to net>=40/conf>=0.60 to surface more signals",
     )
+    parser.add_argument(
+        "--legacy-strategies",
+        action="store_true",
+        default=False,
+        help="Restore pre-router strategy behavior (old squeeze/MR/breakout defaults, no regime router)",
+    )
     args    = parser.parse_args()
     session = args.session
+
+    if args.legacy_strategies:
+        global LEGACY_STRATEGIES
+        LEGACY_STRATEGIES = True
+        import bot.strategies as _strats
+        _strats.LEGACY_STRATEGIES = True
+        console.print("[yellow]--legacy-strategies: pre-router behavior active[/yellow]")
 
     # Discovery and backtest skip market-open check and Alpaca setup
     if session == "discovery":

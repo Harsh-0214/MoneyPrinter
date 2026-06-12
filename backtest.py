@@ -161,7 +161,7 @@ CACHE_DIR = Path("backtest_cache")
 
 # Bump this when indicator/scorer/velocity computation changes, to invalidate
 # stale on-disk caches automatically.
-CACHE_VERSION = "v1"
+CACHE_VERSION = "v2"
 
 
 def _cache_key(tickers: list[str], start: date, end: date) -> str:
@@ -170,6 +170,9 @@ def _cache_key(tickers: list[str], start: date, end: date) -> str:
 
 
 EARNINGS_CACHE = CACHE_DIR / "earnings_dates.pkl"
+
+# Filled by load_earnings_dates so the report can surface fetch failures.
+EARNINGS_FETCH_STATS: dict[str, int] = {"failed": 0, "empty": 0, "total": 0}
 
 
 def load_earnings_dates(tickers: list[str], refresh: bool = False) -> dict[str, list[date]]:
@@ -200,12 +203,17 @@ def load_earnings_dates(tickers: list[str], refresh: bool = False) -> dict[str, 
                     logger.info(f"[backtest] no earnings dates for {t} — entries allowed")
             except Exception as e:
                 cache[t] = []
+                EARNINGS_FETCH_STATS["failed"] += 1
                 logger.warning(f"[backtest] earnings fetch failed for {t}: {e} — entries allowed")
         try:
             with open(EARNINGS_CACHE, "wb") as f:
                 pickle.dump(cache, f)
         except Exception as e:
             logger.warning(f"[backtest] could not write earnings cache: {e}")
+    # Track coverage so the final report can flag a quietly broken filter:
+    # an empty list means no blackout protection for that ticker.
+    EARNINGS_FETCH_STATS["total"]  = len(tickers)
+    EARNINGS_FETCH_STATS["empty"]  = sum(1 for t in tickers if not cache.get(t))
     return cache
 
 
@@ -373,16 +381,18 @@ def run_backtest(
     starting_capital: float = STARTING_CAPITAL,
     min_net: int = MIN_NET_SCORE,
     breakout_let_run: bool = True,
-    breakout_no_target: bool = False,  # let-run breakouts ignore the fixed 2.5R target
-    failed_brk_exit: bool = False,     # cut breakouts that lose the pivot in the first N days
-    structure_stop: bool = False,      # pivot-based initial stop + risk-true sizing for breakouts
-    breakeven_ratchet: bool = False,   # raise breakout stop to entry once +1R is reached
-    quality_filter: bool = False,      # stricter breakout entry gate (volume, close, gap)
+    legacy_strategies: bool = False,   # restore the pre-router strategy behavior wholesale
+    breakout_no_target: bool | None = None,  # let-run breakouts ignore the fixed 2.5R target
+    failed_brk_exit: bool | None = None,     # cut breakouts that lose the pivot in the first N days
+    structure_stop: bool | None = None,      # pivot-based initial stop + risk-true sizing for breakouts
+    breakeven_ratchet: bool | None = None,   # raise breakout stop to entry once +1R is reached
+    quality_filter: bool | None = None,      # stricter breakout entry gate (volume, close, gap)
     max_daily_entries: int = 2,        # FIX 3a: cap NEW entries per trading day
-    squeeze_mode: str = "current",     # FIX 4: off | chandelier | short_hold | current
+    squeeze_mode: str | None = None,   # managed | off | chandelier | short_hold | current
     squeeze_low_vol: bool = False,     # A4: admit squeeze_breakout only when atr/close < 0.025
     no_mean_reversion: bool = False,   # C1: skip mean_reversion signals entirely
-    mr_mean_target: bool = False,      # C2: exit mean_reversion when close crosses 20-day SMA
+    mr_mean_target: bool | None = None,      # C2: exit mean_reversion on SMA cross or RSI > 55
+    regime_router: bool | None = None,       # route strategies by daily TRENDING/CHOP/BEAR regime
     earnings_filter: bool = True,      # FIX 5: skip entries within 1 day before / 2 after earnings
     max_stop_width_pct: float = 7.0,   # skip longs whose initial stop sits more than this % below entry
     _earnings_map: dict | None = None, # FIX 5: ticker -> [earnings dates]
@@ -400,6 +410,31 @@ def run_backtest(
     _score_cache: dict | None = None, # shared {(ticker, day): classified score} across variants
 ) -> dict:
     """Full day-by-day simulation. Returns results dict with trades + equity curve."""
+    # New-default resolution. Options left as None take the new defaults;
+    # explicit True/False (CLI flags, experiment configs) always win; and
+    # legacy_strategies=True restores the old behavior for every unset option.
+    def _dflt(v, new_default):
+        if v is not None:
+            return v
+        return new_default if not legacy_strategies else False
+    breakout_no_target = _dflt(breakout_no_target, True)
+    failed_brk_exit    = _dflt(failed_brk_exit,    True)
+    structure_stop     = _dflt(structure_stop,     True)
+    breakeven_ratchet  = _dflt(breakeven_ratchet,  True)
+    quality_filter     = _dflt(quality_filter,     True)
+    mr_mean_target     = _dflt(mr_mean_target,     True)
+    regime_router      = _dflt(regime_router,      True)
+    if squeeze_mode is None:
+        # "managed" is the new default: confirmed entry, consolidation-low stop,
+        # low-vol gate, chandelier let-run with breakeven ratchet.
+        squeeze_mode = "current" if legacy_strategies else "managed"
+
+    # classify_strategy reads bot.strategies.LEGACY_STRATEGIES at call time,
+    # so sync the module flag with this run. The score cache key includes the
+    # flag because legacy and new classifications differ.
+    import bot.strategies as _strategies_mod
+    _strategies_mod.LEGACY_STRATEGIES = legacy_strategies
+
     bars_map     = _bars_map or load_all_bars(tickers, start, end)
     trading_days = get_trading_days(bars_map, start, end)
 
@@ -456,6 +491,35 @@ def run_backtest(
         except Exception:
             return "bull"
 
+    _regime3_cache: dict[date, str] = {}
+
+    def _spy_regime3(as_of: date) -> str:
+        """Regime router classification.
+        TRENDING: SPY close > EMA21 > SMA50 and EMA21 rising over 10 days.
+        BEAR: the existing regime logic says not-bull (close below EMA50).
+        CHOP: everything else."""
+        if as_of in _regime3_cache:
+            return _regime3_cache[as_of]
+        out = "chop"
+        if _spy_regime(as_of) != "bull":
+            out = "bear"
+        elif spy_bars is not None:
+            try:
+                sl = _fast_slice(spy_bars, as_of)
+                if len(sl) >= 60:
+                    close  = sl["Close"]
+                    price  = float(close.iloc[-1])
+                    ema21  = close.ewm(span=21, adjust=False).mean()
+                    sma50  = float(close.rolling(50).mean().iloc[-1])
+                    e_now  = float(ema21.iloc[-1])
+                    e_then = float(ema21.iloc[-11])
+                    if price > e_now > sma50 and e_now > e_then:
+                        out = "trending"
+            except Exception:
+                pass
+        _regime3_cache[as_of] = out
+        return out
+
     # ── Day loop ──────────────────────────────────────────────────────────────
     for day_idx, today in enumerate(trading_days):
 
@@ -472,7 +536,11 @@ def run_backtest(
             if not sl.empty:
                 mkt_value += pos["shares"] * float(sl["Close"].iloc[-1])
 
-        equity_curve.append({"date": today, "equity": round(mkt_value, 2)})
+        day_regime3 = _spy_regime3(today) if regime_router else "off"
+        equity_curve.append({"date": today, "equity": round(mkt_value, 2),
+                             "regime": day_regime3})
+        if regime_router and not quiet:
+            logger.info(f"[backtest] {today} regime={day_regime3}")
 
         regime = _spy_regime(today)
         bull_today = regime == "bull"
@@ -533,7 +601,7 @@ def run_backtest(
             # FIX 4: in chandelier mode squeeze_breakout is managed exactly like
             # breakout; in short_hold mode it keeps its static stop but exits at
             # 7 days instead of sitting for the full 21.
-            squeeze_letrun = (squeeze_mode == "chandelier" and _strat == "squeeze_breakout")
+            squeeze_letrun = (squeeze_mode in ("chandelier", "managed") and _strat == "squeeze_breakout")
             if squeeze_mode == "short_hold" and _strat == "squeeze_breakout":
                 max_hold = min(max_hold, 7)
             is_letrun_brk = breakout_let_run and (_strat in pos_letrun or squeeze_letrun)
@@ -545,11 +613,11 @@ def run_backtest(
                 if len(prior_bars_brk) >= 1:
                     prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
                     structure_low   = float(prior_bars_brk["Low"].min()) * 0.995
-                    structure_stop  = min(structure_low, prior_close_brk * 0.999)
+                    struct_stop_lvl = min(structure_low, prior_close_brk * 0.999)
                     pos_highest     = pos.get("highest", entry)
                     pos_atr         = pos.get("atr") or (entry * 0.02)
                     chandelier      = pos_highest - CHANDELIER_ATR_MULT * pos_atr
-                    dyn_stop        = max(stop, structure_stop, chandelier)
+                    dyn_stop        = max(stop, struct_stop_lvl, chandelier)
                     # Ratchet: only up, never above highest (safety)
                     if dyn_stop > stop and dyn_stop < pos_highest:
                         stop             = dyn_stop
@@ -578,15 +646,18 @@ def run_backtest(
                     and day_close < pos["breakout_level"] * BREAKOUT_FAIL_BUFFER):
                 exit_price  = day_close
                 exit_reason = "failed_breakout"
-            # C2: mean_reversion SMA-cross exit. When the day's close crosses above
-            # the 20-day SMA recorded at entry, take profit at the close. Keeps the
-            # stop and the 5-day time exit unchanged; only replaces the fixed 2.5R
-            # target which never triggers on typical reversion bounces.
+            # Mean reversion exit: take profit at the close when it crosses above
+            # the 20-day SMA recorded at entry OR when RSI(14) reaches 55 (the
+            # bounce has played out). Keeps the stop and the 5-day time exit;
+            # only replaces the fixed 2.5R target which never triggers on
+            # typical reversion bounces.
             elif (mr_mean_target
                     and pos.get("strategy") == "mean_reversion"
-                    and pos.get("mr_sma_target", 0) > 0
                     and exit_price is None
-                    and day_close >= pos["mr_sma_target"]):
+                    and ((pos.get("mr_sma_target", 0) > 0
+                          and day_close >= pos["mr_sma_target"])
+                         or float((ind_cache.get(ticker, {}).get(today) or {})
+                                  .get("rsi") or 0) >= 55)):
                 exit_price  = day_close
                 exit_reason = "mr_sma_cross"
             # Target hit. Skipped for let-run breakouts when breakout_no_target
@@ -636,6 +707,7 @@ def run_backtest(
                     "net_score":   pos.get("net_score", 0),
                     "confidence":  pos.get("confidence", 0),
                     "signals":     pos.get("signals", []),
+                    "regime":      pos.get("regime", "off"),
                     "entry_pct_pv": pos.get("entry_pct_pv", 0),
                 })
                 closed_tickers.append(ticker)
@@ -666,7 +738,7 @@ def run_backtest(
 
             # Scoring is variant-independent (same indicators/regime/news), so
             # experiment runs share one score cache — only gates/exits differ.
-            _sc_key = (ticker, today)
+            _sc_key = (ticker, today, legacy_strategies)
             if _score_cache is not None and _sc_key in _score_cache:
                 score = _score_cache[_sc_key]
                 if score is None:
@@ -699,6 +771,12 @@ def run_backtest(
             # C1: skip mean_reversion signals when the flag is on.
             if no_mean_reversion and score.get("strategy") == "mean_reversion":
                 continue
+            # Regime router: in a TRENDING tape mean_reversion fades strength
+            # into a trend, so its entries are disabled. CHOP sizing for
+            # breakout/squeeze is applied at the sizing step below.
+            if (regime_router and day_regime3 == "trending"
+                    and score.get("strategy") == "mean_reversion"):
+                continue
             # A4: only allow squeeze_breakout when volatility is low (atr/price < 2.5%).
             # Evidence: all squeeze winners in 2026 H1 were low-vol names; all losers
             # were high-beta names with atr/close above 2.5%.
@@ -706,6 +784,39 @@ def run_backtest(
                 _atr  = float(score.get("atr") or ind.get("atr") or 0)
                 _cp   = float(ind.get("current_price") or score.get("entry_price") or 0)
                 if _cp > 0 and _atr / _cp >= 0.025:
+                    continue
+            # Managed squeeze entry gates:
+            #   1. low volatility only (atr/close < 3%)
+            #   2. two consecutive daily closes above the band that defines the
+            #      breakout (Keltner upper, Bollinger upper as fallback), so the
+            #      second close confirms the move before capital is committed.
+            if (squeeze_mode == "managed" and score.get("strategy") == "squeeze_breakout"):
+                _atr = float(score.get("atr") or ind.get("atr") or 0)
+                _cp  = float(ind.get("current_price") or score.get("entry_price") or 0)
+                if _cp <= 0 or _atr / _cp >= 0.03:
+                    continue
+                _band = float(ind.get("kc_upper") or ind.get("bb_upper") or 0)
+                if _band <= 0 or _cp <= _band:
+                    continue
+                if day_idx < 1:
+                    continue
+                _prev_ind = ind_cache.get(ticker, {}).get(trading_days[day_idx - 1]) or {}
+                _pband = float(_prev_ind.get("kc_upper") or _prev_ind.get("bb_upper") or 0)
+                _pcp   = float(_prev_ind.get("current_price") or 0)
+                if _pband <= 0 or _pcp <= _pband:
+                    continue
+            # New MR default: only buy dips that are still in an uptrend
+            # (close above the 50-day SMA), computed straight from the bars.
+            if mr_mean_target and score.get("strategy") == "mean_reversion":
+                _df_mr = bars_map.get(ticker)
+                if _df_mr is None:
+                    continue
+                _sl_mr = _fast_slice(_df_mr, today)
+                if len(_sl_mr) < 50:
+                    continue
+                _sma50 = float(_sl_mr["Close"].tail(50).mean())
+                _cp    = float(ind.get("current_price") or _sl_mr["Close"].iloc[-1])
+                if _cp <= _sma50:
                     continue
             if macro["bearish_market"]:
                 continue
@@ -778,7 +889,7 @@ def run_backtest(
                     brk_lvl_entry = round(r1_val, 2)
                 else:
                     brk_lvl_entry = round(entry_price * 0.985, 2)
-            elif squeeze_mode == "chandelier" and strategy == "squeeze_breakout":
+            elif squeeze_mode in ("chandelier", "managed") and strategy == "squeeze_breakout":
                 # FIX 4: pivot for a managed squeeze is the upper band at signal,
                 # falling back to a small buffer below entry.
                 band = float(ind.get("kc_upper") or ind.get("bb_upper") or 0)
@@ -816,6 +927,17 @@ def run_backtest(
                 if struct >= entry_price:
                     struct = entry_price - atr * ATR_STOP_MULT
                 stop_loss = round(struct, 2)
+            elif squeeze_mode == "managed" and strategy == "squeeze_breakout":
+                # Managed squeeze stop: the consolidation low (10-day low with a
+                # small buffer), never tighter than half an ATR below entry. The
+                # 7 percent stop-width gate below still rejects anything wider.
+                _sl10  = _fast_slice(df, today).tail(10)
+                _low10 = float(_sl10["Low"].min()) if len(_sl10) else 0.0
+                _half  = entry_price - atr * 0.5
+                _stop  = min(_low10 * 0.995, _half) if _low10 > 0 else _half
+                if _stop >= entry_price or _stop <= 0:
+                    _stop = entry_price - atr * ATR_STOP_MULT
+                stop_loss = round(_stop, 2)
             elif stop_loss <= 0 or stop_loss >= entry_price:
                 stop_loss = round(entry_price - atr * ATR_STOP_MULT, 2)
 
@@ -843,6 +965,15 @@ def run_backtest(
             )
             if shares < 1:
                 continue
+
+            # Regime router: in CHOP, breakout-style entries get half size since
+            # follow-through is unreliable; trend_follow and mean_reversion keep
+            # full size.
+            if (regime_router and day_regime3 == "chop"
+                    and strategy in ("breakout", "squeeze_breakout")):
+                shares = floor(shares * 0.5)
+                if shares < 1:
+                    continue
 
             cost = shares * entry_price
             if cost > cash:
@@ -883,6 +1014,7 @@ def run_backtest(
                 "stop_loss":      stop_loss,
                 "take_profit":    take_profit,
                 "strategy":       strategy,
+                "regime":         day_regime3,
                 "horizon":        score.get("time_horizon", "swing"),
                 "net_score":      net,
                 "confidence":     confidence,
@@ -930,6 +1062,7 @@ def run_backtest(
             "net_score":   pos.get("net_score", 0),
             "confidence":  pos.get("confidence", 0),
             "signals":     pos.get("signals", []),
+            "regime":      pos.get("regime", "off"),
             "entry_pct_pv": pos.get("entry_pct_pv", 0),
         })
 
@@ -995,6 +1128,12 @@ def compute_stats(results: dict) -> dict:
         s = t.get("strategy", "unknown")
         by_strategy.setdefault(s, []).append(t["pnl_dollar"])
 
+    # Regime breakdown (regime recorded at entry by the router)
+    by_regime: dict[str, list] = {}
+    for t in trades:
+        r = t.get("regime", "off")
+        by_regime.setdefault(r, []).append(t["pnl_dollar"])
+
     # Monthly P&L
     monthly: dict[str, float] = {}
     for t in trades:
@@ -1019,6 +1158,9 @@ def compute_stats(results: dict) -> dict:
         "by_strategy":    {s: {"trades": len(v), "total_pnl": round(sum(v), 2),
                                "win_rate": round(len([x for x in v if x > 0]) / len(v) * 100, 1)}
                            for s, v in by_strategy.items()},
+        "by_regime":      {r: {"trades": len(v), "total_pnl": round(sum(v), 2),
+                               "win_rate": round(len([x for x in v if x > 0]) / len(v) * 100, 1)}
+                           for r, v in by_regime.items()},
         "monthly_pnl":    {k: round(v, 2) for k, v in sorted(monthly.items())},
     }
 
@@ -1228,6 +1370,40 @@ def print_report(results: dict, stats: dict, args, label: str = "") -> None:
             )
         console.print(st)
 
+    # ── Regime breakdown ──────────────────────────────────────────────────────
+    by_r = stats.get("by_regime", {})
+    if by_r and set(by_r) != {"off"}:
+        rt = Table(title="By Regime (at entry)", box=box.SIMPLE)
+        rt.add_column("Regime")
+        rt.add_column("Trades", justify="right")
+        rt.add_column("Win %",  justify="right")
+        rt.add_column("Total P&L", justify="right")
+        for regime, data in sorted(by_r.items(), key=lambda x: -x[1]["total_pnl"]):
+            color = "green" if data["total_pnl"] >= 0 else "red"
+            rt.add_row(
+                regime,
+                str(data["trades"]),
+                f"{data['win_rate']}%",
+                f"[{color}]{_usd(data['total_pnl'])}[/{color}]",
+            )
+        console.print(rt)
+
+    # ── Earnings filter health ────────────────────────────────────────────────
+    # An empty earnings list means that ticker has NO blackout protection, so a
+    # high failure or empty rate means the filter is quietly not working.
+    ef = EARNINGS_FETCH_STATS
+    if ef.get("total"):
+        miss_pct = ef["empty"] / ef["total"] * 100
+        color = "green" if miss_pct < 10 else ("yellow" if miss_pct < 30 else "red")
+        console.print(f"[{color}]Earnings filter coverage: {ef['total'] - ef['empty']}"
+                      f"/{ef['total']} tickers have dates "
+                      f"({ef['empty']} missing = {miss_pct:.0f}%, "
+                      f"{ef['failed']} fetch failures this run)[/{color}]")
+        if miss_pct >= 30:
+            console.print("[bold red]EARNINGS FILTER DEGRADED: over 30% of tickers "
+                          "have no earnings dates. Check yfinance/lxml install or "
+                          "refresh the cache with --refresh-cache.[/bold red]")
+
     # ── Monthly P&L ───────────────────────────────────────────────────────────
     monthly = stats.get("monthly_pnl", {})
     if monthly:
@@ -1323,6 +1499,7 @@ def save_csv(trades: list[dict], path: Path) -> None:
         "ticker", "entry_date", "exit_date", "entry_price", "exit_price",
         "shares", "stop_loss", "take_profit", "pnl_dollar", "pnl_pct",
         "hold_days", "exit_reason", "strategy", "net_score", "confidence",
+        "regime",
     ]
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -1335,7 +1512,7 @@ def save_equity_csv(equity_curve: list[dict], path: Path) -> None:
     if not equity_curve:
         return
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["date", "equity"])
+        writer = csv.DictWriter(f, fieldnames=["date", "equity", "regime"], extrasaction="ignore")
         writer.writeheader()
         writer.writerows(equity_curve)
     console.print(f"[green]Equity curve exported → {path}[/green]")
@@ -1348,6 +1525,10 @@ def save_equity_csv(equity_curve: list[dict], path: Path) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXPERIMENTS: dict[str, dict] = {
+    # Old behavior wholesale, for before/after comparison against new defaults
+    "legacy":          {"legacy_strategies": True},
+    # New defaults exactly as a single run would use them
+    "new_defaults":    {},
     # The pre-fix behavior (5-day holds everywhere due to the
     # strategy/horizon key mismatch, breakout let-run 21d)
     "baseline_legacy": {"hold_mode": "legacy"},
@@ -1603,21 +1784,24 @@ def main():
                         help="Output file prefix for CSV exports")
     parser.add_argument("--no-breakout-run", action="store_true",
                         help="Disable breakout let-run mode (wider stops / 21-day hold)")
-    parser.add_argument("--no-target", action="store_true",
+    parser.add_argument("--no-target", action="store_true", default=None,
                         help="CHANGE 1: drop the fixed 2.5R target on let-run breakouts")
-    parser.add_argument("--failed-brk-exit", action="store_true",
+    parser.add_argument("--failed-brk-exit", action="store_true", default=None,
                         help="CHANGE 2: exit breakouts that lose the pivot in the first 3 days")
-    parser.add_argument("--structure-stop", action="store_true",
+    parser.add_argument("--structure-stop", action="store_true", default=None,
                         help="CHANGE 3: pivot-based initial stop + risk-true sizing for breakouts")
-    parser.add_argument("--breakeven", action="store_true",
+    parser.add_argument("--breakeven", action="store_true", default=None,
                         help="CHANGE 4: raise breakout stop to entry once +1R is reached")
-    parser.add_argument("--quality-filter", action="store_true",
+    parser.add_argument("--quality-filter", action="store_true", default=None,
                         help="CHANGE 5: stricter breakout entry gate (volume / close / gap)")
     parser.add_argument("--max-daily-entries", type=int, default=2,
                         help="FIX 3a: max NEW entries admitted per trading day (default 2)")
-    parser.add_argument("--squeeze-mode", choices=["off", "chandelier", "short_hold", "current"],
-                        default="current",
-                        help="FIX 4: squeeze_breakout handling (default current behavior)")
+    parser.add_argument("--squeeze-mode",
+                        choices=["managed", "off", "chandelier", "short_hold", "current"],
+                        default=None,
+                        help="squeeze_breakout handling (default: managed unless --legacy-strategies)")
+    parser.add_argument("--legacy-strategies", action="store_true",
+                        help="Restore pre-router strategy behavior (old squeeze/MR/breakout defaults, no regime router)")
     parser.add_argument("--max-stop-width-pct", type=float, default=7.0,
                         help="Skip long entries whose initial stop is more than this %% "
                              "below entry price (0 disables, default 7)")
@@ -1625,7 +1809,7 @@ def main():
                         help="A4: admit squeeze_breakout only when ATR/close < 2.5%%")
     parser.add_argument("--no-mean-reversion", action="store_true",
                         help="C1: skip all mean_reversion signals")
-    parser.add_argument("--mr-mean-target", action="store_true",
+    parser.add_argument("--mr-mean-target", action="store_true", default=None,
                         help="C2: exit mean_reversion when close crosses the 20-day SMA at entry")
     parser.add_argument("--no-earnings-filter", action="store_true",
                         help="FIX 5: disable the earnings blackout filter on backtest entries")
@@ -1716,6 +1900,7 @@ def main():
         starting_capital=args.capital,
         min_net=args.min_net,
         breakout_let_run=breakout_let_run,
+        legacy_strategies=args.legacy_strategies,
         max_daily_entries=args.max_daily_entries,
         squeeze_mode=args.squeeze_mode,
         squeeze_low_vol=args.squeeze_low_vol,
@@ -1742,6 +1927,7 @@ def main():
             starting_capital=args.capital,
             min_net=args.min_net,
             breakout_let_run=False,
+            legacy_strategies=args.legacy_strategies,
             max_daily_entries=args.max_daily_entries,
             squeeze_mode=args.squeeze_mode,
             squeeze_low_vol=args.squeeze_low_vol,
@@ -1776,6 +1962,7 @@ def main():
             "stats": {k: v for k, v in stats.items()
                       if not isinstance(v, (dict,))},
             "by_strategy": stats.get("by_strategy", {}),
+            "by_regime": stats.get("by_regime", {}),
             "monthly_pnl": stats.get("monthly_pnl", {}),
         }, f, indent=2)
     console.print(f"[green]Summary exported → {summary_path}[/green]")
