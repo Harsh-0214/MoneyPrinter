@@ -368,8 +368,11 @@ def close_position_and_log(
 
 # ── Alpaca ⇄ DB reconciliation ────────────────────────────────────────────────
 
-ADOPT_STOP_ATR_MULT = 3.0   # stop = entry − 3×ATR (matches live entry sizing)
-ADOPT_RISK_REWARD   = 2.0   # target = entry + 2×(entry − stop)
+ADOPT_STOP_ATR_MULT = 3.0    # stop = entry − 3×ATR (matches live entry sizing)
+ADOPT_RISK_REWARD   = 2.0    # target = entry + 2×(entry − stop)
+ADOPT_MAX_STOP_PCT  = 0.10   # stop never more than 10% below entry — an inflated
+                             # ATR (earnings gap, bad bars) must not produce a
+                             # −37%-style bracket like MRVL trade #24 got
 
 
 def reconcile_positions(alpaca_client, data_client=None, dry_run: bool = False,
@@ -395,10 +398,17 @@ def reconcile_positions(alpaca_client, data_client=None, dry_run: bool = False,
     if alpaca_client is None:
         return summary
 
+    # Fail-safe: get_positions must RAISE on API failure here. The default
+    # behaviour (return [] on error) once made an Alpaca outage look like an
+    # empty portfolio, and reconciliation "closed" every open DB row with
+    # phantom realized P&L. An error means we know nothing — skip entirely.
     try:
-        live = {p["symbol"]: p for p in get_positions(alpaca_client)}
+        live = {p["symbol"]: p for p in get_positions(alpaca_client, raise_on_error=True)}
     except Exception as e:
-        logger.warning(f"[reconcile] could not fetch live positions: {e}")
+        logger.error(
+            f"[reconcile] could not fetch live positions — SKIPPING reconciliation "
+            f"(an API error is not an empty portfolio): {e}"
+        )
         return summary
 
     db_open = get_open_trades()
@@ -463,7 +473,16 @@ def reconcile_positions(alpaca_client, data_client=None, dry_run: bool = False,
         except Exception as e:
             logger.warning(f"[reconcile] ATR fetch failed for {ticker}: {e}")
 
-        stop   = round(entry - ADOPT_STOP_ATR_MULT * atr, 2)
+        stop_distance = ADOPT_STOP_ATR_MULT * atr
+        max_distance  = entry * ADOPT_MAX_STOP_PCT
+        if stop_distance > max_distance:
+            logger.warning(
+                f"[reconcile] {ticker} ATR-based stop distance "
+                f"{stop_distance / entry * 100:.1f}% of entry — capping at "
+                f"{ADOPT_MAX_STOP_PCT * 100:.0f}% (ATR={atr:.2f} likely inflated)"
+            )
+            stop_distance = max_distance
+        stop   = round(entry - stop_distance, 2)
         target = round(entry + ADOPT_RISK_REWARD * (entry - stop), 2)
 
         # Real entry time from order history when available

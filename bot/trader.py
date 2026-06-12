@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES    = 3
 BACKOFF_BASE   = 2   # seconds
 CALL_TIMEOUT   = 12  # seconds per attempt before giving up
+HTTP_TIMEOUT   = (5, 12)  # (connect, read) seconds for the underlying requests session
 
 
 def _retry(fn, *args, **kwargs):
@@ -36,6 +37,27 @@ def _retry(fn, *args, **kwargs):
             time.sleep(wait)
 
 
+def apply_http_timeout(client, timeout: tuple = HTTP_TIMEOUT):
+    """
+    alpaca-py (≤0.29) calls requests.Session.request() without a timeout, so a
+    dead network hangs until the OS gives up (minutes). Wrap the client's
+    session so every HTTP call gets a real connect/read timeout and fails in
+    seconds instead — keeping scan cycles on their cadence.
+    """
+    session = getattr(client, "_session", None)
+    if session is None:
+        logger.warning("[trader] client has no _session — cannot set HTTP timeout")
+        return client
+    original_request = session.request
+
+    def request_with_timeout(method, url, **kwargs):
+        kwargs.setdefault("timeout", timeout)
+        return original_request(method, url, **kwargs)
+
+    session.request = request_with_timeout
+    return client
+
+
 def build_client() -> object:
     """Build and return an Alpaca TradingClient."""
     from alpaca.trading.client import TradingClient
@@ -43,7 +65,8 @@ def build_client() -> object:
     secret_key = os.environ["ALPACA_SECRET_KEY"]
     base_url   = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
     paper      = "paper-api" in base_url
-    return TradingClient(api_key=api_key, secret_key=secret_key, paper=paper)
+    client = TradingClient(api_key=api_key, secret_key=secret_key, paper=paper)
+    return apply_http_timeout(client)
 
 
 def build_data_client() -> object:
@@ -51,7 +74,8 @@ def build_data_client() -> object:
     from alpaca.data.historical import StockHistoricalDataClient
     api_key    = os.environ["ALPACA_API_KEY"]
     secret_key = os.environ["ALPACA_SECRET_KEY"]
-    return StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
+    client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
+    return apply_http_timeout(client)
 
 
 def get_account(client) -> dict:
@@ -71,8 +95,15 @@ def get_account(client) -> dict:
         return {"cash": 0, "portfolio_value": 0, "buying_power": 0, "equity": 0}
 
 
-def get_positions(client) -> list[dict]:
-    """Return all open positions."""
+def get_positions(client, raise_on_error: bool = False) -> list[dict]:
+    """
+    Return all open positions.
+
+    raise_on_error=False (default): returns [] on failure — acceptable for
+    display/enrichment paths. raise_on_error=True: re-raises so callers that
+    MUST distinguish "no positions" from "API failed" (reconciliation!) never
+    mistake an outage for an empty portfolio.
+    """
     def _get():
         positions = client.get_all_positions()
         result = []
@@ -91,6 +122,8 @@ def get_positions(client) -> list[dict]:
         return _retry(_get)
     except Exception as e:
         logger.error(f"[trader] get_positions failed: {e}")
+        if raise_on_error:
+            raise
         return []
 
 

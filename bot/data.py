@@ -16,9 +16,10 @@ def get_data_client():
     global _data_client
     if _data_client is None:
         from alpaca.data.historical import StockHistoricalDataClient
+        from bot.trader import apply_http_timeout
         api_key    = os.environ.get("ALPACA_API_KEY", "")
         secret_key = os.environ.get("ALPACA_SECRET_KEY", "")
-        _data_client = StockHistoricalDataClient(api_key, secret_key)
+        _data_client = apply_http_timeout(StockHistoricalDataClient(api_key, secret_key))
     return _data_client
 
 
