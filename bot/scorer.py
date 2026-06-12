@@ -167,8 +167,16 @@ def get_fundamental_quality(ticker: str) -> dict:
     return result
 
 # ── Trading thresholds ─────────────────────────────────────────────────────
+# FIX 2b: net scores run roughly 100-155, so confidence = net/100 saturated at
+# 1.0 for almost every trade and stopped differentiating quality. Dividing by
+# CONF_SCALE=150 spreads the live range across ~0.67-1.03 (clamped to 1.0) so
+# sizing and gating can actually discriminate. MIN_CONFIDENCE_BUY stays 0.65,
+# which under the new scale corresponds to net ~97.5; since real entries score
+# 100+, trade counts should hold. If they collapse, drop the gate to 0.47
+# (net >= 70 under this scale).
+CONF_SCALE             = 150.0
 MIN_NET_SCORE_BUY      = 65    # strong conviction required
-MIN_CONFIDENCE_BUY     = 0.65  # conf = net/100, matches net>=65
+MIN_CONFIDENCE_BUY     = 0.65  # conf = net/CONF_SCALE
 MIN_NET_SCORE_SHORT    = 70    # shorts need strong conviction, especially in bull markets
 MIN_CONFIDENCE_SHORT   = 0.70  # shorts are riskier
 
@@ -709,7 +717,7 @@ def score_ticker(
     bear = max(0, round(bear))
     net  = bull - bear
 
-    confidence_raw = net / 100.0
+    confidence_raw = net / CONF_SCALE
     confidence     = max(-1.0, min(1.0, confidence_raw))
 
     # Earnings warn: reduce confidence based on proximity
@@ -851,7 +859,7 @@ def score_ticker(
             net  = bull - bear
             # Re-derive confidence with the updated net so velocity/hype adj
             # anchors correctly for the trigger multiplier
-            confidence_raw = net / 100.0
+            confidence_raw = net / CONF_SCALE
             confidence = max(0.0, min(1.0, confidence_raw) + total_conf_adj)
             if fq.get("no_revenue"):
                 confidence = min(confidence, 0.65)
@@ -902,7 +910,7 @@ def score_ticker(
             )
 
         # Recompute confidence after trigger adjustment
-        confidence_raw = net / 100.0
+        confidence_raw = net / CONF_SCALE
         confidence = max(-1.0, min(1.0, confidence_raw))
         # Re-apply velocity/hype confidence adjustments
         confidence = max(0.0, confidence + total_conf_adj)

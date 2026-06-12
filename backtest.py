@@ -103,9 +103,17 @@ def _max_hold_for(pos: dict, hold_mode: str) -> int:
     return HOLD_BY_STRATEGY.get(pos.get("strategy", "mixed"), 5)
 
 # ── Breakout let-run constants ────────────────────────────────────────────────
-CHANDELIER_ATR_MULT    = 3.0   # chandelier stop: highest_seen - 3 × ATR
+CHANDELIER_ATR_MULT    = 3.0   # chandelier stop: highest_seen - 3 x ATR
 BREAKOUT_SWING_LOOKBACK = 3    # prior bars used for structure stop
 BREAKOUT_MAX_HOLD_RUN  = 21    # max hold days when breakout_let_run=True
+BREAKOUT_FAIL_MAX_AGE  = 3     # failed_brk_exit: pivot must hold for the first N days
+BREAKOUT_FAIL_BUFFER   = 0.995 # close below breakout_level * this counts as a failed breakout
+BREAKOUT_STRUCT_FLOOR  = 0.99  # structure_stop: pivot-based stop floor at breakout_level * this
+BREAKOUT_GAP_GUARD     = 1.02  # quality_filter: skip if next open gaps > this x signal close
+BREAKOUT_MIN_VOL_RATIO = 1.5   # quality_filter: required volume_ratio for breakout entries
+BREAKOUT_CLOSE_RANGE   = 0.6   # quality_filter: close must be in top (1 - this) of the day range
+EXT_NET_THRESHOLD      = 130   # FIX 2c: extension gate applies above this net score
+EXT_EMA21_MULT         = 1.04  # FIX 2c: skip if current_price > ema21 * this when net is high
 
 # ── Sector mapping ────────────────────────────────────────────────────────────
 _SECTOR_OF: dict[str, str] = {}
@@ -159,6 +167,56 @@ CACHE_VERSION = "v1"
 def _cache_key(tickers: list[str], start: date, end: date) -> str:
     raw = CACHE_VERSION + "|" + ",".join(sorted(tickers)) + f"|{start}|{end}"
     return hashlib.md5(raw.encode()).hexdigest()[:16]
+
+
+EARNINGS_CACHE = CACHE_DIR / "earnings_dates.pkl"
+
+
+def load_earnings_dates(tickers: list[str], refresh: bool = False) -> dict[str, list[date]]:
+    """FIX 5: historical earnings dates per ticker via yfinance, cached to disk
+    next to the indicator cache. The live bot blocks entries near earnings but
+    the backtest passed news={} and could not, so it took earnings-gap losses.
+    Missing data maps to an empty list (trade allowed) and is logged."""
+    CACHE_DIR.mkdir(exist_ok=True)
+    cache: dict[str, list[date]] = {}
+    if EARNINGS_CACHE.exists() and not refresh:
+        try:
+            with open(EARNINGS_CACHE, "rb") as f:
+                cache = pickle.load(f)
+        except Exception:
+            cache = {}
+
+    missing = [t for t in tickers if t not in cache]
+    if missing:
+        import yfinance as yf
+        console.print(f"[dim]Fetching earnings dates for {len(missing)} ticker(s)…[/dim]")
+        for t in missing:
+            try:
+                ed = yf.Ticker(t).earnings_dates
+                if ed is not None and len(ed) > 0:
+                    cache[t] = sorted({ts.date() for ts in ed.index})
+                else:
+                    cache[t] = []
+                    logger.info(f"[backtest] no earnings dates for {t} — entries allowed")
+            except Exception as e:
+                cache[t] = []
+                logger.warning(f"[backtest] earnings fetch failed for {t}: {e} — entries allowed")
+        try:
+            with open(EARNINGS_CACHE, "wb") as f:
+                pickle.dump(cache, f)
+        except Exception as e:
+            logger.warning(f"[backtest] could not write earnings cache: {e}")
+    return cache
+
+
+def _near_earnings(earnings_map: dict, ticker: str, entry_day: date) -> bool:
+    """True if an earnings date falls in [entry_day - 1, entry_day + 2]."""
+    dates = earnings_map.get(ticker)
+    if not dates:
+        return False
+    lo = entry_day - timedelta(days=1)
+    hi = entry_day + timedelta(days=2)
+    return any(lo <= d <= hi for d in dates)
 
 
 def load_or_build_cache(
@@ -291,11 +349,15 @@ def compute_ind_for_day(ticker: str, df: pd.DataFrame, as_of: date) -> dict:
 def size_position(portfolio_value: float, confidence: float,
                   atr: float, price: float,
                   risk_pct: float = RISK_PCT,
-                  max_pos_pct: float = MAX_POSITION_PCT) -> int:
+                  max_pos_pct: float = MAX_POSITION_PCT,
+                  stop_distance: float | None = None) -> int:
     if price <= 0 or atr <= 0:
         return 0
     dollar_risk = portfolio_value * risk_pct * confidence
-    shares      = floor(dollar_risk / (atr * ATR_STOP_MULT))
+    # Default risk-per-share is atr * ATR_STOP_MULT. When a real stop distance
+    # is supplied (structure_stop), size off it so risk stays a true risk_pct.
+    denom       = stop_distance if (stop_distance and stop_distance > 0) else atr * ATR_STOP_MULT
+    shares      = floor(dollar_risk / denom)
     max_shares  = floor(portfolio_value * max_pos_pct / price)
     return max(0, min(shares, max_shares))
 
@@ -311,6 +373,16 @@ def run_backtest(
     starting_capital: float = STARTING_CAPITAL,
     min_net: int = MIN_NET_SCORE,
     breakout_let_run: bool = True,
+    breakout_no_target: bool = False,  # let-run breakouts ignore the fixed 2.5R target
+    failed_brk_exit: bool = False,     # cut breakouts that lose the pivot in the first N days
+    structure_stop: bool = False,      # pivot-based initial stop + risk-true sizing for breakouts
+    breakeven_ratchet: bool = False,   # raise breakout stop to entry once +1R is reached
+    quality_filter: bool = False,      # stricter breakout entry gate (volume, close, gap)
+    max_daily_entries: int = 2,        # FIX 3a: cap NEW entries per trading day
+    squeeze_mode: str = "current",     # FIX 4: off | chandelier | short_hold | current
+    earnings_filter: bool = True,      # FIX 5: skip entries within 1 day before / 2 after earnings
+    max_stop_width_pct: float = 7.0,   # skip longs whose initial stop sits more than this % below entry
+    _earnings_map: dict | None = None, # FIX 5: ticker -> [earnings dates]
     max_open: int = MAX_OPEN_POSITIONS,
     max_pos_pct: float = MAX_POSITION_PCT,
     risk_pct: float = RISK_PCT,
@@ -352,6 +424,21 @@ def run_backtest(
     equity_curve: list[dict]     = []
 
     spy_bars = bars_map.get("SPY")
+
+    def _portfolio_value(as_of: date) -> float:
+        """FIX 1: cash plus each open position marked at its OWN latest close as
+        of `as_of`. The old code valued every holding at the new candidate's
+        entry_price, which inflated portfolio value and let single positions
+        reach 61 percent of capital on expensive stocks."""
+        v = cash
+        for tk, p in positions.items():
+            d = bars_map.get(tk)
+            if d is None:
+                continue
+            sl = _fast_slice(d, as_of)
+            if not sl.empty:
+                v += p["shares"] * float(sl["Close"].iloc[-1])
+        return v
 
     def _spy_regime(as_of: date) -> str:
         if spy_bars is None:
@@ -439,7 +526,15 @@ def run_backtest(
                 pos_letrun = entry_letrun   # today's regime decides, not entry day's
             else:
                 pos_letrun = pos.get("letrun_set") or letrun_strats
-            if breakout_let_run and pos.get("strategy") in pos_letrun:
+            _strat = pos.get("strategy")
+            # FIX 4: in chandelier mode squeeze_breakout is managed exactly like
+            # breakout; in short_hold mode it keeps its static stop but exits at
+            # 7 days instead of sitting for the full 21.
+            squeeze_letrun = (squeeze_mode == "chandelier" and _strat == "squeeze_breakout")
+            if squeeze_mode == "short_hold" and _strat == "squeeze_breakout":
+                max_hold = min(max_hold, 7)
+            is_letrun_brk = breakout_let_run and (_strat in pos_letrun or squeeze_letrun)
+            if is_letrun_brk:
                 max_hold       = max(max_hold, BREAKOUT_MAX_HOLD_RUN)
                 prior_bars_brk = _fast_slice(df, today - timedelta(days=1)).tail(
                     BREAKOUT_SWING_LOOKBACK
@@ -457,17 +552,39 @@ def run_backtest(
                         stop             = dyn_stop
                         pos["stop_loss"] = stop
 
+            # Breakeven ratchet: once a prior day's high reached +1R, the stop
+            # never sits below entry again. Uses pos["highest"] (prior bars only,
+            # updated at end of loop) so there is no look-ahead.
+            if breakeven_ratchet and (_strat == "breakout" or squeeze_letrun):
+                init_stop = pos.get("initial_stop", stop)
+                if init_stop < entry:
+                    one_r = entry + (entry - init_stop)
+                    if pos.get("highest", entry) >= one_r and stop < entry:
+                        stop             = entry
+                        pos["stop_loss"] = stop
+
             # Stop hit — worst case: gap down through stop uses day open
             if day_low <= stop:
                 exit_price  = max(min(stop, day_open), day_low)
                 exit_reason = "stop"
-            # Target hit
-            elif target and day_high >= target:
+            # Failed breakout: the pivot is lost on a closing basis within the
+            # first few days of entry. Checked after the stop, before target/time.
+            elif (failed_brk_exit and pos.get("strategy") == "breakout"
+                    and age_days <= BREAKOUT_FAIL_MAX_AGE
+                    and pos.get("breakout_level", 0.0) > 0
+                    and day_close < pos["breakout_level"] * BREAKOUT_FAIL_BUFFER):
+                exit_price  = day_close
+                exit_reason = "failed_breakout"
+            # Target hit. Skipped for let-run breakouts when breakout_no_target
+            # is on, so the chandelier trailing stop (not the fixed 2.5R cap)
+            # governs the exit and winners are free to run.
+            elif (target and day_high >= target
+                    and not (breakout_no_target and is_letrun_brk)):
                 exit_price  = min(target, day_high)
                 exit_reason = "target"
             # Time exit
             elif age_days >= max_hold:
-                if (breakout_let_run and pos.get("strategy") in pos_letrun
+                if (is_letrun_brk
                         and prior_bars_brk is not None and len(prior_bars_brk) >= 1):
                     brk_lvl         = pos.get("breakout_level", 0.0)
                     prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
@@ -481,7 +598,7 @@ def run_backtest(
                     exit_reason = "time_exit"
 
             # Track highest for tomorrow's chandelier (no look-ahead)
-            if exit_price is None and breakout_let_run and pos.get("strategy") in pos_letrun:
+            if exit_price is None and is_letrun_brk:
                 pos["highest"] = max(pos.get("highest", entry), day_high)
 
             if exit_price is not None:
@@ -505,6 +622,7 @@ def run_backtest(
                     "net_score":   pos.get("net_score", 0),
                     "confidence":  pos.get("confidence", 0),
                     "signals":     pos.get("signals", []),
+                    "entry_pct_pv": pos.get("entry_pct_pv", 0),
                 })
                 closed_tickers.append(ticker)
 
@@ -561,8 +679,20 @@ def run_backtest(
                 continue
             if confidence < MIN_CONFIDENCE or score.get("strategy") == "mixed":
                 continue
+            # FIX 4 off mode: do not trade squeeze_breakout at all (baseline ref).
+            if squeeze_mode == "off" and score.get("strategy") == "squeeze_breakout":
+                continue
             if macro["bearish_market"]:
                 continue
+
+            # FIX 2c: do not chase extended entries on the highest-scoring names.
+            # The net 120+ bucket underperformed the 100-120 bucket, so when a
+            # signal is very strong but already stretched above ema21, skip it.
+            if net > EXT_NET_THRESHOLD:
+                ema21 = float(ind.get("ema21") or 0)
+                cp    = float(ind.get("current_price") or score.get("entry_price") or 0)
+                if ema21 > 0 and cp > ema21 * EXT_EMA21_MULT:
+                    continue
 
             sec = _SECTOR_OF.get(ticker.upper())
             if sec and sector_counts.get(sec, 0) >= MAX_PER_SECTOR:
@@ -570,8 +700,10 @@ def run_backtest(
 
             new_signals.append(score)
 
-        new_signals.sort(key=lambda s: s.get("confidence", 0), reverse=True)
-        slots = day_max_open - len(positions)
+        # FIX 3a: rank by net_score and admit at most max_daily_entries new
+        # positions per day (still bounded by open slots).
+        new_signals.sort(key=lambda s: s.get("net_score", 0), reverse=True)
+        slots = min(day_max_open - len(positions), max_daily_entries)
 
         for score in new_signals[:slots]:
             ticker      = score["ticker"]
@@ -591,6 +723,10 @@ def run_backtest(
             if day_idx + 1 >= len(trading_days):
                 continue
             next_day = trading_days[day_idx + 1]
+            # FIX 5: skip entries inside the earnings blackout window.
+            if (earnings_filter and _earnings_map is not None
+                    and _near_earnings(_earnings_map, ticker, next_day)):
+                continue
             df = bars_map.get(ticker)
             if df is None:
                 continue
@@ -605,15 +741,80 @@ def run_backtest(
             if entry_price <= 0:
                 continue
 
+            # Breakout pivot level (used by structure stop, failed-breakout exit,
+            # and time-exit suppression). Computed before sizing so the structure
+            # stop can key off it.
+            if strategy == "breakout":
+                r1_val  = float(ind.get("R1") or 0)
+                w52_val = float(ind.get("wk52_high") or 0)
+                if w52_val > 0 and entry_price >= w52_val * 0.99:
+                    brk_lvl_entry = round(w52_val, 2)
+                elif r1_val > 0:
+                    brk_lvl_entry = round(r1_val, 2)
+                else:
+                    brk_lvl_entry = round(entry_price * 0.985, 2)
+            elif squeeze_mode == "chandelier" and strategy == "squeeze_breakout":
+                # FIX 4: pivot for a managed squeeze is the upper band at signal,
+                # falling back to a small buffer below entry.
+                band = float(ind.get("kc_upper") or ind.get("bb_upper") or 0)
+                brk_lvl_entry = round(band, 2) if band > 0 else round(entry_price * 0.985, 2)
+            else:
+                brk_lvl_entry = 0.0
+
+            # Quality filter: stricter breakout entry gate. Uses the signal-day
+            # bar (today) and the next-day open already in hand, no new data.
+            if quality_filter and strategy == "breakout":
+                tp0 = df.index.searchsorted(today_ts, side="left")
+                tp1 = df.index.searchsorted(today_ts + pd.Timedelta(days=1), side="left")
+                sig_bar = df.iloc[tp0:tp1]
+                if sig_bar.empty:
+                    continue
+                sig_high  = float(sig_bar["High"].iloc[-1])
+                sig_low   = float(sig_bar["Low"].iloc[-1])
+                sig_close = float(sig_bar["Close"].iloc[-1])
+                vol_ratio = float(ind.get("volume_ratio") or 0)
+                rng       = sig_high - sig_low
+                # a) volume surge, b) close in the top of the day range,
+                # c) no gap-up chase into the next-day open.
+                if vol_ratio < BREAKOUT_MIN_VOL_RATIO:
+                    continue
+                if rng > 0 and sig_close < sig_low + BREAKOUT_CLOSE_RANGE * rng:
+                    continue
+                if sig_close > 0 and entry_price > sig_close * BREAKOUT_GAP_GUARD:
+                    continue
+
+            # Initial stop. structure_stop gives breakouts a pivot-based floor;
+            # otherwise keep the legacy ATR default (or the scorer-provided stop).
+            if structure_stop and strategy == "breakout":
+                struct = max(entry_price - atr * ATR_STOP_MULT,
+                             brk_lvl_entry * BREAKOUT_STRUCT_FLOOR)
+                if struct >= entry_price:
+                    struct = entry_price - atr * ATR_STOP_MULT
+                stop_loss = round(struct, 2)
+            elif stop_loss <= 0 or stop_loss >= entry_price:
+                stop_loss = round(entry_price - atr * ATR_STOP_MULT, 2)
+
+            # FIX 2a: size off the actual stop distance so risk per trade equals
+            # risk_pct regardless of which strategy's ATR multiplier set the stop.
+            stop_distance = entry_price - stop_loss
+
+            # Stop-width gate: trades whose initial stop sat more than ~6% below
+            # entry averaged -10.6% when stopped and caused over half of all stop
+            # losses. Skip anything wider than max_stop_width_pct.
+            if (max_stop_width_pct > 0
+                    and stop_distance > entry_price * max_stop_width_pct / 100.0):
+                continue
+
+            # FIX 1: value the book at each holding's own latest close.
+            portfolio_value = _portfolio_value(today)
             shares = size_position(
-                portfolio_value=cash + sum(
-                    p["shares"] * entry_price for p in positions.values()
-                ),
+                portfolio_value=portfolio_value,
                 confidence=confidence,
                 atr=atr,
                 price=entry_price,
                 risk_pct=risk_pct,
                 max_pos_pct=day_pos_pct,
+                stop_distance=stop_distance,
             )
             if shares < 1:
                 continue
@@ -625,8 +826,15 @@ def run_backtest(
             if shares < 1:
                 continue
 
-            if stop_loss <= 0 or stop_loss >= entry_price:
-                stop_loss = round(entry_price - atr * ATR_STOP_MULT, 2)
+            # FIX 1 guard: no single position may exceed max_pos_pct of the
+            # correctly valued book. Log loudly rather than abort a long run.
+            if cost > day_pos_pct * portfolio_value + 1.0:
+                console.print(
+                    f"[red][SIZING][/red] {ticker} {today}: cost ${cost:,.0f} exceeds "
+                    f"cap ${day_pos_pct * portfolio_value:,.0f} "
+                    f"({cost / portfolio_value * 100:.1f}% of ${portfolio_value:,.0f})"
+                )
+
             if take_profit <= 0 or take_profit <= entry_price:
                 risk        = entry_price - stop_loss
                 take_profit = round(entry_price + risk * 2.5, 2)
@@ -636,18 +844,6 @@ def run_backtest(
             sec = _SECTOR_OF.get(ticker.upper())
             if sec:
                 sector_counts[sec] = sector_counts.get(sec, 0) + 1
-
-            if strategy == "breakout":
-                r1_val  = float(ind.get("R1") or 0)
-                w52_val = float(ind.get("wk52_high") or 0)
-                if w52_val > 0 and entry_price >= w52_val * 0.99:
-                    brk_lvl_entry = round(w52_val, 2)
-                elif r1_val > 0:
-                    brk_lvl_entry = round(r1_val, 2)
-                else:
-                    brk_lvl_entry = round(entry_price * 0.985, 2)
-            else:
-                brk_lvl_entry = 0.0
 
             positions[ticker] = {
                 "ticker":         ticker,
@@ -665,6 +861,10 @@ def run_backtest(
                 "letrun_set":     entry_letrun,
                 "atr":            atr,
                 "highest":        entry_price,
+                "initial_stop":   stop_loss,
+                # Fingerprint for post-run assertions: position cost as a percent
+                # of the correctly valued book at entry time.
+                "entry_pct_pv":   round(cost / portfolio_value * 100, 2) if portfolio_value > 0 else 0,
             }
 
     # ── Close any remaining open positions at end date ────────────────────────
@@ -696,6 +896,7 @@ def run_backtest(
             "net_score":   pos.get("net_score", 0),
             "confidence":  pos.get("confidence", 0),
             "signals":     pos.get("signals", []),
+            "entry_pct_pv": pos.get("entry_pct_pv", 0),
         })
 
     final_equity = cash
@@ -945,6 +1146,36 @@ def print_report(results: dict, stats: dict, args, label: str = "") -> None:
     t.add_row("Worst trade",       f"[red]{_pct(stats.get('worst_trade_pct', 0))}[/red]")
     console.print(t)
 
+    # ── Fix fingerprints ──────────────────────────────────────────────────────
+    # Loud post-run assertions proving the sizing / throttle / confidence fixes
+    # are active in the code that actually ran. If these regress, the run came
+    # from pre-fix code (for example a workflow launched from the wrong branch).
+    if trades:
+        max_pct   = max((tr.get("entry_pct_pv", 0) or 0) for tr in trades)
+        per_day: dict = {}
+        for tr in trades:
+            per_day[tr["entry_date"]] = per_day.get(tr["entry_date"], 0) + 1
+        max_day, max_day_n = max(per_day.items(), key=lambda kv: kv[1])
+        conf_one  = sum(1 for tr in trades if float(tr.get("confidence", 0)) >= 0.999)
+        conf_pct  = conf_one / len(trades) * 100
+
+        ft = Table(title="Fix Fingerprints", box=box.SIMPLE_HEAVY, show_header=False)
+        ft.add_column("Check", style="bold")
+        ft.add_column("Value")
+        pos_color  = "green" if max_pct <= 12 else "red"
+        day_color  = "green" if max_day_n <= 3 else "red"
+        conf_color = "green" if conf_pct < 50 else "red"
+        ft.add_row("Max single position (% of capital at entry)",
+                   f"[{pos_color}]{max_pct:.1f}%[/{pos_color}]  (cap 10%)")
+        ft.add_row("Max entries in one day",
+                   f"[{day_color}]{max_day_n}[/{day_color}]  on {max_day}  (cap 2)")
+        ft.add_row("Trades at confidence 1.0",
+                   f"[{conf_color}]{conf_one}/{len(trades)} ({conf_pct:.0f}%)[/{conf_color}]")
+        console.print(ft)
+        if max_pct > 12 or max_day_n > 3 or conf_pct >= 90:
+            console.print("[bold red]FINGERPRINT FAIL: results look like PRE-FIX code. "
+                          "Check that the run used the fixed branch.[/bold red]")
+
     # ── Strategy breakdown ────────────────────────────────────────────────────
     by_s = stats.get("by_strategy", {})
     if by_s:
@@ -1093,6 +1324,25 @@ EXPERIMENTS: dict[str, dict] = {
     "hold_horizon":    {"hold_mode": "horizon"},
     # Capital utilization: 5 slots × 10% caps deployment at 50%
     "slots8_pos15":    {"max_open": 8, "max_pos_pct": 0.15},
+    # CHANGE 1: drop the fixed 2.5R target on let-run breakouts so the chandelier
+    # trailing stop governs the exit (tests whether the target cap cuts winners short)
+    "brk_no_target":   {"breakout_no_target": True},
+    # CHANGE 2: cut breakouts that lose the pivot in the first 3 days
+    "brk_failexit":    {"failed_brk_exit": True},
+    # CHANGE 3: pivot-based initial stop + risk-true sizing for breakouts
+    "brk_structstop":  {"structure_stop": True},
+    # CHANGE 4: raise breakout stop to entry once +1R is reached
+    "brk_breakeven":   {"breakeven_ratchet": True},
+    # CHANGE 5: stricter breakout entry gate (volume / close strength / gap guard)
+    "brk_quality":     {"quality_filter": True},
+    # All five breakout changes together (best-combo candidate; trim by validation)
+    "brk_all":         {"breakout_no_target": True, "failed_brk_exit": True,
+                        "structure_stop": True, "breakeven_ratchet": True,
+                        "quality_filter": True},
+    # FIX 4: squeeze_breakout handling, run all three against current behavior
+    "sqz_off":         {"squeeze_mode": "off"},
+    "sqz_chandelier":  {"squeeze_mode": "chandelier"},
+    "sqz_short_hold":  {"squeeze_mode": "short_hold"},
     # Extend the chandelier let-run (the best-performing exit) beyond breakout
     "letrun_trend":    {"letrun_strats": ("breakout", "squeeze_breakout", "trend_follow")},
     # Combined growth candidate
@@ -1109,7 +1359,9 @@ EXPERIMENTS: dict[str, dict] = {
 
 
 def run_experiments(tickers: list[str], windows: list[tuple[date, date]],
-                    capital: float, refresh: bool, use_cache: bool) -> None:
+                    capital: float, refresh: bool, use_cache: bool,
+                    earnings_filter: bool = True,
+                    earnings_map: dict | None = None) -> None:
     full_start = min(w[0] for w in windows)
     full_end   = max(w[1] for w in windows)
 
@@ -1148,7 +1400,9 @@ def run_experiments(tickers: list[str], windows: list[tuple[date, date]],
                     tickers=tickers, start=ws, end=we,
                     starting_capital=capital, quiet=True,
                     _bars_map=bars_map, _ind_cache=ind_cache,
-                    _score_cache=score_cache, **cfg,
+                    _score_cache=score_cache,
+                    earnings_filter=earnings_filter, _earnings_map=earnings_map,
+                    **cfg,
                 )
                 st = compute_stats(res)
                 console.print(f"[dim]  {name} done — {st.get('total_trades',0)} trades, "
@@ -1212,6 +1466,26 @@ def main():
                         help="Output file prefix for CSV exports")
     parser.add_argument("--no-breakout-run", action="store_true",
                         help="Disable breakout let-run mode (wider stops / 21-day hold)")
+    parser.add_argument("--no-target", action="store_true",
+                        help="CHANGE 1: drop the fixed 2.5R target on let-run breakouts")
+    parser.add_argument("--failed-brk-exit", action="store_true",
+                        help="CHANGE 2: exit breakouts that lose the pivot in the first 3 days")
+    parser.add_argument("--structure-stop", action="store_true",
+                        help="CHANGE 3: pivot-based initial stop + risk-true sizing for breakouts")
+    parser.add_argument("--breakeven", action="store_true",
+                        help="CHANGE 4: raise breakout stop to entry once +1R is reached")
+    parser.add_argument("--quality-filter", action="store_true",
+                        help="CHANGE 5: stricter breakout entry gate (volume / close / gap)")
+    parser.add_argument("--max-daily-entries", type=int, default=2,
+                        help="FIX 3a: max NEW entries admitted per trading day (default 2)")
+    parser.add_argument("--squeeze-mode", choices=["off", "chandelier", "short_hold", "current"],
+                        default="current",
+                        help="FIX 4: squeeze_breakout handling (default current behavior)")
+    parser.add_argument("--max-stop-width-pct", type=float, default=7.0,
+                        help="Skip long entries whose initial stop is more than this %% "
+                             "below entry price (0 disables, default 7)")
+    parser.add_argument("--no-earnings-filter", action="store_true",
+                        help="FIX 5: disable the earnings blackout filter on backtest entries")
     parser.add_argument("--quick", action="store_true",
                         help="Fast smoke test: ~20 liquid tickers instead of full universe")
     parser.add_argument("--refresh-cache", action="store_true",
@@ -1241,6 +1515,18 @@ def main():
         tickers = ["SPY"] + tickers
 
     breakout_let_run = not args.no_breakout_run
+    brk_flags = {
+        "breakout_no_target": args.no_target,
+        "failed_brk_exit":    args.failed_brk_exit,
+        "structure_stop":     args.structure_stop,
+        "breakeven_ratchet":  args.breakeven,
+        "quality_filter":     args.quality_filter,
+    }
+
+    # FIX 5: build (or load) the earnings-date cache once and share it.
+    earnings_filter = not args.no_earnings_filter
+    earnings_map    = (load_earnings_dates(tickers, refresh=args.refresh_cache)
+                       if earnings_filter else None)
 
     if args.experiments:
         windows = []
@@ -1251,7 +1537,8 @@ def main():
         console.print(f"Windows: {[(str(a), str(b)) for a, b in windows]}")
         console.print(f"Tickers: {len(tickers)}  |  Variants: {len(EXPERIMENTS)}\n")
         run_experiments(tickers, windows, args.capital,
-                        refresh=args.refresh_cache, use_cache=not args.no_cache)
+                        refresh=args.refresh_cache, use_cache=not args.no_cache,
+                        earnings_filter=earnings_filter, earnings_map=earnings_map)
         return
 
     console.print(f"\n[bold cyan]MoneyPrinter Backtester[/bold cyan]")
@@ -1262,6 +1549,9 @@ def main():
     console.print(f"Min net: {args.min_net}")
     brk_status = "[green]ON[/green]" if breakout_let_run else "[red]OFF[/red]"
     console.print(f"Breakout let-run: {brk_status}")
+    active_flags = [k for k, v in brk_flags.items() if v]
+    if active_flags:
+        console.print(f"Breakout flags: [yellow]{', '.join(active_flags)}[/yellow]")
     cache_status = "[red]disabled[/red]" if args.no_cache else (
         "[yellow]refreshing[/yellow]" if args.refresh_cache else "[green]enabled[/green]")
     console.print(f"Disk cache: {cache_status}\n")
@@ -1283,8 +1573,14 @@ def main():
         starting_capital=args.capital,
         min_net=args.min_net,
         breakout_let_run=breakout_let_run,
+        max_daily_entries=args.max_daily_entries,
+        squeeze_mode=args.squeeze_mode,
+        earnings_filter=earnings_filter,
+        max_stop_width_pct=args.max_stop_width_pct,
+        _earnings_map=earnings_map,
         _bars_map=bars_map,
         _ind_cache=ind_cache,
+        **brk_flags,
     )
 
     if not results:
@@ -1300,6 +1596,11 @@ def main():
             starting_capital=args.capital,
             min_net=args.min_net,
             breakout_let_run=False,
+            max_daily_entries=args.max_daily_entries,
+            squeeze_mode=args.squeeze_mode,
+            earnings_filter=earnings_filter,
+            max_stop_width_pct=args.max_stop_width_pct,
+            _earnings_map=earnings_map,
             _bars_map=bars_map,
             _ind_cache=ind_cache,
         )

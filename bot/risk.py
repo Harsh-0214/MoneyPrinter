@@ -64,12 +64,18 @@ def calculate_position(
     price: float,
     vix_multiplier: float = 1.0,
     high_vol_flag: bool = False,
+    stop_loss: float = None,
 ) -> dict:
     """
     Compute the number of shares to buy/short.
 
     Base risk: 2% of portfolio per trade, scaled by confidence + VIX + volatility.
     Hard cap: 10% of portfolio in any single position.
+
+    FIX 2a: when an actual stop_loss is supplied, size off the real per-trade
+    stop distance (price - stop_loss) so risk equals the intended 2 percent
+    regardless of which strategy's ATR multiplier set the stop. Falls back to
+    atr * 1.5 when no usable stop is given.
     """
     if is_kill_switch_active():
         logger.warning("[risk] Kill switch active — position size = 0")
@@ -82,7 +88,11 @@ def calculate_position(
     vol_adj = 0.60 if high_vol_flag else 1.0
 
     dollar_risk = portfolio_value * 0.02 * confidence * vix_multiplier * vol_adj
-    shares = floor(dollar_risk / (atr * 1.5))
+    if stop_loss is not None and 0 < stop_loss < price:
+        risk_per_share = price - stop_loss
+    else:
+        risk_per_share = atr * 1.5
+    shares = floor(dollar_risk / risk_per_share)
 
     # Cap at 10% of portfolio
     max_val    = portfolio_value * 0.10
