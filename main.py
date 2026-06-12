@@ -72,9 +72,17 @@ MAX_DAILY_LOSS_PCT        = 0.03   # halt trading if session P&L drops 3% below 
 MAX_PORTFOLIO_EXPOSURE_PCT = 0.25  # max 25% of portfolio in any single new position
 MAX_TOTAL_EXPOSURE_PCT     = 0.60  # max 60% of portfolio deployed at once
 
+# FIX 3b: cap NEW entries per session, mirroring the backtest's 2-per-day cap
+# (one live continuous session == one backtest trading day).
+MAX_NEW_ENTRIES_PER_SESSION = 2
+# FIX 2c: extension gate — do not chase very high-scoring but stretched entries.
+EXT_NET_THRESHOLD = 130
+EXT_EMA21_MULT    = 1.04
+
 # ── Session-level state ─────────────────────────────────────────────────────
 _session_start_equity: Optional[float] = None
 _daily_loss_halt: bool = False
+_session_new_entries: int = 0   # FIX 3b: new entries opened in the current session
 
 
 def get_all_trade_tickers() -> list[str]:
@@ -90,13 +98,39 @@ def get_all_trade_tickers() -> list[str]:
 # Max new entries per session — higher turnover acceptable for short-term style
 MAX_TRADES_PER_SESSION = 5
 
+# FIX 3c: every ticker in the watchlist and the discovery UNIVERSE maps to
+# exactly one group, so MAX_POSITIONS_PER_SECTOR actually constrains correlated
+# exposure (the old six-group map left most of the universe unclassified, so
+# correlated semis/software names could all fill at once).
 SECTOR_GROUPS = {
-    "ai_chips":   ["NVDA", "AMD", "MRVL", "SMCI", "AVGO", "ARM"],
-    "big_tech":   ["AAPL", "MSFT", "GOOGL", "META", "AMZN"],
-    "crypto":     ["COIN", "MSTR", "SOFI", "RIOT", "MARA"],
-    "energy":     ["XOM", "CVX", "SLB", "OXY"],
-    "financials": ["JPM", "GS", "BAC", "MS"],
-    "healthcare": ["LLY", "UNH", "ABBV", "MRNA"],
+    "ai_chips":      ["NVDA", "AMD", "MRVL", "SMCI", "AVGO", "ARM"],
+    "semis":         ["MU", "AMAT", "LRCX", "KLAC", "ON", "SWKS", "MPWR", "TSM",
+                      "ASML", "WOLF", "INTC", "QCOM", "TXN", "ADI"],
+    "big_tech":      ["AAPL", "MSFT", "GOOGL", "META", "AMZN", "ORCL", "ADBE"],
+    "software":      ["CRM", "NOW", "SNOW", "NET", "PANW", "CRWD", "ZS", "DDOG",
+                      "MDB", "SHOP", "PLTR", "PATH", "AI", "BBAI", "SOUN", "TTD"],
+    "internet":      ["UBER", "LYFT", "ABNB", "DASH", "RBLX"],
+    "retail":        ["WMT", "COST", "TGT", "HD", "LOW", "NKE", "SBUX", "MCD",
+                      "YUM", "ETSY", "CHWY", "W"],
+    "china_adrs":    ["BABA", "JD", "PDD", "NU", "NIO", "XPEV", "LI"],
+    "financials":    ["JPM", "GS", "BAC", "MS", "BLK", "SCHW", "C", "WFC",
+                      "AXP", "V", "MA"],
+    "fintech":       ["PYPL", "SOFI", "HOOD", "AFRM", "LC"],
+    "pharma":        ["LLY", "MRNA", "PFE", "JNJ", "ABBV", "UNH", "CVS", "BMY",
+                      "GILD", "BIIB", "REGN", "VRTX"],
+    "medtech":       ["ISRG", "DXCM", "TDOC", "HIMS"],
+    "industrials":   ["BA", "LMT", "RTX", "NOC", "GE", "CAT", "DE", "HON",
+                      "MMM", "UPS", "AXON", "KTOS", "HII"],
+    "energy":        ["XOM", "CVX", "SLB", "HAL", "MPC", "VLO", "PSX", "OXY",
+                      "DVN", "FANG"],
+    "media_telecom": ["NFLX", "DIS", "CMCSA", "T", "VZ", "WBD", "SPOT"],
+    "ev":            ["TSLA", "RIVN", "LCID", "JOBY", "ACHR", "SPCE"],
+    "clean_energy":  ["ENPH", "FSLR", "RUN", "PLUG"],
+    "materials":     ["FCX", "NEM", "GOLD", "AA", "CLF", "MP", "VALE"],
+    "reits":         ["AMT", "EQIX", "PLD", "O", "WELL"],
+    "crypto":        ["COIN", "RIOT", "MARA", "MSTR", "CLSK"],
+    "leveraged_etf": ["SOXL", "TQQQ", "ARKK", "LABU"],
+    "meme":          ["GME", "AMC"],
 }
 MAX_POSITIONS_PER_SECTOR = 2
 
@@ -509,7 +543,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
     Skips duplicates (ticker already has an open position in the DB).
     """
     import time as _time
-    global _session_start_equity, _daily_loss_halt
+    global _session_start_equity, _daily_loss_halt, _session_new_entries
 
     from bot.logger import log_trade, log_rejection
     from bot.risk   import calculate_position, is_kill_switch_active, init_daily_state
@@ -547,6 +581,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
     # ── Daily loss circuit breaker ─────────────────────────────────────────
     if _session_start_equity is None:
         _session_start_equity = current_equity
+        _session_new_entries  = 0   # FIX 3b: reset the per-session new-entry counter
         logger.info(f"[main] Session start equity recorded: ${_session_start_equity:,.2f}")
 
     if (_session_start_equity and _session_start_equity > 0
@@ -615,6 +650,30 @@ def execute_signals(signals: list, alpaca_client, data_client,
 
         if entry_price == 0:
             continue
+
+        # ── FIX 3b: per-session new-entry cap (mirrors backtest 2/day) ────
+        if action in ("buy", "short") and _session_new_entries >= MAX_NEW_ENTRIES_PER_SESSION:
+            log_rejection(
+                session=session, ticker=ticker, net_score=sig.get("net_score", 0),
+                confidence=confidence, action=action,
+                rejection_reason="max_daily_entries",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0), strategy=strategy,
+            )
+            continue
+
+        # ── FIX 2c: extension gate — skip stretched very high-score buys ──
+        if action == "buy" and sig.get("net_score", 0) > EXT_NET_THRESHOLD:
+            _ema21 = float(sig.get("_indicators", {}).get("ema21") or 0)
+            if _ema21 > 0 and entry_price > _ema21 * EXT_EMA21_MULT:
+                log_rejection(
+                    session=session, ticker=ticker, net_score=sig.get("net_score", 0),
+                    confidence=confidence, action=action,
+                    rejection_reason="extended_entry",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                continue
 
         # ── Daily loss halt: skip new buys/shorts ─────────────────────────
         if _daily_loss_halt and action in ("buy", "short"):
@@ -798,6 +857,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
             price=entry_price,
             vix_multiplier=macro_context.get("vix_multiplier", 1.0),
             high_vol_flag=high_vol,
+            stop_loss=sig.get("stop_loss"),   # FIX 2a: size off true stop distance
         )
 
         shares = pos["shares"]
@@ -934,6 +994,8 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 breakout_level=breakout_level,
             )
             executed += 1
+            if action in ("buy", "short"):
+                _session_new_entries += 1   # FIX 3b
             horizon    = sig.get("time_horizon", "swing")
             trade_type = {"position": "POSITION TRADE", "swing": "SWING TRADE", "scalp": "SCALP"}.get(horizon, "SWING TRADE")
             console.print(
