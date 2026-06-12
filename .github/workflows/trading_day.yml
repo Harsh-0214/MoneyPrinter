@@ -50,7 +50,58 @@ jobs:
       - name: Create data directory
         run: mkdir -p data logs
 
+      - name: Dispatcher gate
+        id: gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # With the external dispatcher enabled (vars.EXTERNAL_DISPATCHER), it
+          # fires workflow_dispatch at the exact session start and this
+          # scheduled run becomes the fallback. Disabled (default): proceed
+          # immediately — main.py waits for the 09:30 open internally.
+          if [ "${{ github.event_name }}" != "schedule" ] \
+             || [ "${{ vars.EXTERNAL_DISPATCHER || 'false' }}" != "true" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          WF=$(basename "${GITHUB_WORKFLOW_REF%%@*}")
+          check_dispatched() {
+            gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/${WF}/runs" \
+              -f event=workflow_dispatch -f "created=>=$1" \
+              --jq '.total_count' 2>/dev/null || echo 0
+          }
+          if [ "${{ github.event.schedule }}" = "7 17 * * 1-5" ]; then
+            # Afternoon slot (13:07 ET): skip only if a dispatched run took it
+            # in the last 20 min (a 09:30 morning dispatch must not suppress us)
+            SINCE=$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+            if [ "$(check_dispatched "$SINCE")" -gt 0 ]; then
+              echo "Dispatched run owns the afternoon slot — bowing out."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            echo "proceed=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Morning slot: hold until 09:35 ET, bow out the moment the
+          # dispatcher's 09:30 run appears, else proceed as the fallback.
+          SINCE=$(date -u -d 'TZ="America/New_York" today 09:25' +%Y-%m-%dT%H:%M:%SZ)
+          DEADLINE=$(( 9 * 60 + 35 ))
+          while :; do
+            H=$(TZ=America/New_York date +%-H); M=$(TZ=America/New_York date +%-M)
+            NOW=$(( H * 60 + M ))
+            if [ "$NOW" -ge $(( 9 * 60 + 28 )) ]; then
+              if [ "$(check_dispatched "$SINCE")" -gt 0 ]; then
+                echo "Dispatched run owns the morning slot — bowing out."
+                echo "proceed=false" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              if [ "$NOW" -ge "$DEADLINE" ]; then
+                echo "No dispatched run by 09:35 ET — proceeding as fallback."
+                echo "proceed=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+            fi
+            sleep 60
+          done
+
       - name: Run continuous session
+        if: steps.gate.outputs.proceed == 'true'
         env:
           ALPACA_API_KEY:          ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY:       ${{ secrets.ALPACA_SECRET_KEY }}

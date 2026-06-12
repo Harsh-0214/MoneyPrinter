@@ -42,6 +42,8 @@ jobs:
       - name: Wait until 08:30 ET
         id: wait
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ github.event_name }}" != "schedule" ]; then
             echo "Manual dispatch — running immediately."
@@ -50,6 +52,14 @@ jobs:
           fi
           TARGET_MIN=$(( 8 * 60 + 30 ))   # 08:30 ET
           CUTOFF_MIN=$(( 15 * 60 ))       # past 15:00 ET discovery is pointless
+          # With the external dispatcher enabled, it owns the exact start time:
+          # this scheduled run becomes a fallback that bows out when the
+          # dispatched run appears, and only proceeds at target + grace.
+          DISPATCHER="${{ vars.EXTERNAL_DISPATCHER || 'false' }}"
+          GRACE_MIN=5
+          WF=$(basename "${GITHUB_WORKFLOW_REF%%@*}")
+          SINCE=$(date -u -d 'TZ="America/New_York" today 08:25' +%Y-%m-%dT%H:%M:%SZ)
+          LAST_CHECK=0
           while :; do
             H=$(TZ=America/New_York date +%-H); M=$(TZ=America/New_York date +%-M)
             NOW=$(( H * 60 + M ))
@@ -57,7 +67,23 @@ jobs:
               echo "Past cutoff (now $H:$M ET) — skipping."
               echo "proceed=false" >> "$GITHUB_OUTPUT"; exit 0
             fi
-            if [ "$NOW" -ge "$TARGET_MIN" ]; then
+            if [ "$DISPATCHER" = "true" ] && [ "$NOW" -ge $(( TARGET_MIN - 2 )) ] \
+               && [ $(( $(date +%s) - LAST_CHECK )) -ge 55 ]; then
+              LAST_CHECK=$(date +%s)
+              N=$(gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/workflows/${WF}/runs" \
+                    -f event=workflow_dispatch -f "created=>=${SINCE}" \
+                    --jq '.total_count' 2>/dev/null || echo 0)
+              if [ "${N:-0}" -gt 0 ]; then
+                echo "External dispatcher fired — bowing out."
+                echo "proceed=false" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+            fi
+            if [ "$DISPATCHER" = "true" ]; then
+              if [ "$NOW" -ge $(( TARGET_MIN + GRACE_MIN )) ]; then
+                printf 'No dispatched run by %02d:%02d ET — proceeding as fallback.\n' "$H" "$M"
+                echo "proceed=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+            elif [ "$NOW" -ge "$TARGET_MIN" ]; then
               printf 'Target reached: %02d:%02d ET — proceeding.\n' "$H" "$M"
               echo "proceed=true" >> "$GITHUB_OUTPUT"; exit 0
             fi
