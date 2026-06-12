@@ -311,6 +311,7 @@ def run_backtest(
     starting_capital: float = STARTING_CAPITAL,
     min_net: int = MIN_NET_SCORE,
     breakout_let_run: bool = True,
+    breakout_no_target: bool = False,  # let-run breakouts ignore the fixed 2.5R target
     max_open: int = MAX_OPEN_POSITIONS,
     max_pos_pct: float = MAX_POSITION_PCT,
     risk_pct: float = RISK_PCT,
@@ -439,7 +440,8 @@ def run_backtest(
                 pos_letrun = entry_letrun   # today's regime decides, not entry day's
             else:
                 pos_letrun = pos.get("letrun_set") or letrun_strats
-            if breakout_let_run and pos.get("strategy") in pos_letrun:
+            is_letrun_brk = breakout_let_run and pos.get("strategy") in pos_letrun
+            if is_letrun_brk:
                 max_hold       = max(max_hold, BREAKOUT_MAX_HOLD_RUN)
                 prior_bars_brk = _fast_slice(df, today - timedelta(days=1)).tail(
                     BREAKOUT_SWING_LOOKBACK
@@ -461,13 +463,16 @@ def run_backtest(
             if day_low <= stop:
                 exit_price  = max(min(stop, day_open), day_low)
                 exit_reason = "stop"
-            # Target hit
-            elif target and day_high >= target:
+            # Target hit — skipped for let-run breakouts when breakout_no_target
+            # is on, so the chandelier trailing stop (not the fixed 2.5R cap)
+            # governs the exit and winners are free to run.
+            elif (target and day_high >= target
+                    and not (breakout_no_target and is_letrun_brk)):
                 exit_price  = min(target, day_high)
                 exit_reason = "target"
             # Time exit
             elif age_days >= max_hold:
-                if (breakout_let_run and pos.get("strategy") in pos_letrun
+                if (is_letrun_brk
                         and prior_bars_brk is not None and len(prior_bars_brk) >= 1):
                     brk_lvl         = pos.get("breakout_level", 0.0)
                     prior_close_brk = float(prior_bars_brk["Close"].iloc[-1])
@@ -481,7 +486,7 @@ def run_backtest(
                     exit_reason = "time_exit"
 
             # Track highest for tomorrow's chandelier (no look-ahead)
-            if exit_price is None and breakout_let_run and pos.get("strategy") in pos_letrun:
+            if exit_price is None and is_letrun_brk:
                 pos["highest"] = max(pos.get("highest", entry), day_high)
 
             if exit_price is not None:
@@ -1093,6 +1098,9 @@ EXPERIMENTS: dict[str, dict] = {
     "hold_horizon":    {"hold_mode": "horizon"},
     # Capital utilization: 5 slots × 10% caps deployment at 50%
     "slots8_pos15":    {"max_open": 8, "max_pos_pct": 0.15},
+    # Drop the fixed 2.5R target on let-run breakouts so the chandelier trailing
+    # stop governs the exit — tests whether the target cap is cutting winners short
+    "brk_no_target":   {"breakout_no_target": True},
     # Extend the chandelier let-run (the best-performing exit) beyond breakout
     "letrun_trend":    {"letrun_strats": ("breakout", "squeeze_breakout", "trend_follow")},
     # Combined growth candidate
