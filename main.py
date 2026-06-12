@@ -75,9 +75,12 @@ MAX_TOTAL_EXPOSURE_PCT     = 0.60  # max 60% of portfolio deployed at once
 # FIX 3b: cap NEW entries per session, mirroring the backtest's 2-per-day cap
 # (one live continuous session == one backtest trading day).
 MAX_NEW_ENTRIES_PER_SESSION = 2
-# FIX 2c: extension gate — do not chase very high-scoring but stretched entries.
+# FIX 2c: extension gate: do not chase very high-scoring but stretched entries.
 EXT_NET_THRESHOLD = 130
 EXT_EMA21_MULT    = 1.04
+# Stop-width gate: skip longs whose initial stop sits more than this percent
+# below entry. Wide stops produced outsized losses when hit.
+MAX_STOP_WIDTH_PCT = 7.0
 
 # ── Session-level state ─────────────────────────────────────────────────────
 _session_start_equity: Optional[float] = None
@@ -662,7 +665,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
             )
             continue
 
-        # ── FIX 2c: extension gate — skip stretched very high-score buys ──
+        # ── FIX 2c: extension gate: skip stretched very high-score buys ──
         if action == "buy" and sig.get("net_score", 0) > EXT_NET_THRESHOLD:
             _ema21 = float(sig.get("_indicators", {}).get("ema21") or 0)
             if _ema21 > 0 and entry_price > _ema21 * EXT_EMA21_MULT:
@@ -670,6 +673,22 @@ def execute_signals(signals: list, alpaca_client, data_client,
                     session=session, ticker=ticker, net_score=sig.get("net_score", 0),
                     confidence=confidence, action=action,
                     rejection_reason="extended_entry",
+                    bull_score=sig.get("bull_score", 0),
+                    bear_score=sig.get("bear_score", 0), strategy=strategy,
+                )
+                continue
+
+        # ── Stop-width gate: skip longs whose initial stop is too far away ─
+        # Stops wider than ~6% averaged -10.6% per stop-out and caused over
+        # half of all stop losses in the forensic review.
+        if action == "buy":
+            _sl = float(sig.get("stop_loss") or 0)
+            if _sl > 0 and entry_price > 0 \
+                    and (entry_price - _sl) > entry_price * MAX_STOP_WIDTH_PCT / 100.0:
+                log_rejection(
+                    session=session, ticker=ticker, net_score=sig.get("net_score", 0),
+                    confidence=confidence, action=action,
+                    rejection_reason="stop_too_wide",
                     bull_score=sig.get("bull_score", 0),
                     bear_score=sig.get("bear_score", 0), strategy=strategy,
                 )

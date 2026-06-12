@@ -381,6 +381,7 @@ def run_backtest(
     max_daily_entries: int = 2,        # FIX 3a: cap NEW entries per trading day
     squeeze_mode: str = "current",     # FIX 4: off | chandelier | short_hold | current
     earnings_filter: bool = True,      # FIX 5: skip entries within 1 day before / 2 after earnings
+    max_stop_width_pct: float = 7.0,   # skip longs whose initial stop sits more than this % below entry
     _earnings_map: dict | None = None, # FIX 5: ticker -> [earnings dates]
     max_open: int = MAX_OPEN_POSITIONS,
     max_pos_pct: float = MAX_POSITION_PCT,
@@ -621,6 +622,7 @@ def run_backtest(
                     "net_score":   pos.get("net_score", 0),
                     "confidence":  pos.get("confidence", 0),
                     "signals":     pos.get("signals", []),
+                    "entry_pct_pv": pos.get("entry_pct_pv", 0),
                 })
                 closed_tickers.append(ticker)
 
@@ -796,6 +798,13 @@ def run_backtest(
             # risk_pct regardless of which strategy's ATR multiplier set the stop.
             stop_distance = entry_price - stop_loss
 
+            # Stop-width gate: trades whose initial stop sat more than ~6% below
+            # entry averaged -10.6% when stopped and caused over half of all stop
+            # losses. Skip anything wider than max_stop_width_pct.
+            if (max_stop_width_pct > 0
+                    and stop_distance > entry_price * max_stop_width_pct / 100.0):
+                continue
+
             # FIX 1: value the book at each holding's own latest close.
             portfolio_value = _portfolio_value(today)
             shares = size_position(
@@ -853,6 +862,9 @@ def run_backtest(
                 "atr":            atr,
                 "highest":        entry_price,
                 "initial_stop":   stop_loss,
+                # Fingerprint for post-run assertions: position cost as a percent
+                # of the correctly valued book at entry time.
+                "entry_pct_pv":   round(cost / portfolio_value * 100, 2) if portfolio_value > 0 else 0,
             }
 
     # ── Close any remaining open positions at end date ────────────────────────
@@ -884,6 +896,7 @@ def run_backtest(
             "net_score":   pos.get("net_score", 0),
             "confidence":  pos.get("confidence", 0),
             "signals":     pos.get("signals", []),
+            "entry_pct_pv": pos.get("entry_pct_pv", 0),
         })
 
     final_equity = cash
@@ -1132,6 +1145,36 @@ def print_report(results: dict, stats: dict, args, label: str = "") -> None:
     t.add_row("Best trade",        f"[green]{_pct(stats.get('best_trade_pct', 0))}[/green]")
     t.add_row("Worst trade",       f"[red]{_pct(stats.get('worst_trade_pct', 0))}[/red]")
     console.print(t)
+
+    # ── Fix fingerprints ──────────────────────────────────────────────────────
+    # Loud post-run assertions proving the sizing / throttle / confidence fixes
+    # are active in the code that actually ran. If these regress, the run came
+    # from pre-fix code (for example a workflow launched from the wrong branch).
+    if trades:
+        max_pct   = max((tr.get("entry_pct_pv", 0) or 0) for tr in trades)
+        per_day: dict = {}
+        for tr in trades:
+            per_day[tr["entry_date"]] = per_day.get(tr["entry_date"], 0) + 1
+        max_day, max_day_n = max(per_day.items(), key=lambda kv: kv[1])
+        conf_one  = sum(1 for tr in trades if float(tr.get("confidence", 0)) >= 0.999)
+        conf_pct  = conf_one / len(trades) * 100
+
+        ft = Table(title="Fix Fingerprints", box=box.SIMPLE_HEAVY, show_header=False)
+        ft.add_column("Check", style="bold")
+        ft.add_column("Value")
+        pos_color  = "green" if max_pct <= 12 else "red"
+        day_color  = "green" if max_day_n <= 3 else "red"
+        conf_color = "green" if conf_pct < 50 else "red"
+        ft.add_row("Max single position (% of capital at entry)",
+                   f"[{pos_color}]{max_pct:.1f}%[/{pos_color}]  (cap 10%)")
+        ft.add_row("Max entries in one day",
+                   f"[{day_color}]{max_day_n}[/{day_color}]  on {max_day}  (cap 2)")
+        ft.add_row("Trades at confidence 1.0",
+                   f"[{conf_color}]{conf_one}/{len(trades)} ({conf_pct:.0f}%)[/{conf_color}]")
+        console.print(ft)
+        if max_pct > 12 or max_day_n > 3 or conf_pct >= 90:
+            console.print("[bold red]FINGERPRINT FAIL: results look like PRE-FIX code. "
+                          "Check that the run used the fixed branch.[/bold red]")
 
     # ── Strategy breakdown ────────────────────────────────────────────────────
     by_s = stats.get("by_strategy", {})
@@ -1438,6 +1481,9 @@ def main():
     parser.add_argument("--squeeze-mode", choices=["off", "chandelier", "short_hold", "current"],
                         default="current",
                         help="FIX 4: squeeze_breakout handling (default current behavior)")
+    parser.add_argument("--max-stop-width-pct", type=float, default=7.0,
+                        help="Skip long entries whose initial stop is more than this %% "
+                             "below entry price (0 disables, default 7)")
     parser.add_argument("--no-earnings-filter", action="store_true",
                         help="FIX 5: disable the earnings blackout filter on backtest entries")
     parser.add_argument("--quick", action="store_true",
@@ -1530,6 +1576,7 @@ def main():
         max_daily_entries=args.max_daily_entries,
         squeeze_mode=args.squeeze_mode,
         earnings_filter=earnings_filter,
+        max_stop_width_pct=args.max_stop_width_pct,
         _earnings_map=earnings_map,
         _bars_map=bars_map,
         _ind_cache=ind_cache,
@@ -1552,6 +1599,7 @@ def main():
             max_daily_entries=args.max_daily_entries,
             squeeze_mode=args.squeeze_mode,
             earnings_filter=earnings_filter,
+            max_stop_width_pct=args.max_stop_width_pct,
             _earnings_map=earnings_map,
             _bars_map=bars_map,
             _ind_cache=ind_cache,
