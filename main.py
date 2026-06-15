@@ -139,7 +139,7 @@ SECTOR_GROUPS = {
     "leveraged_etf": ["SOXL", "TQQQ", "ARKK", "LABU"],
     "meme":          ["GME", "AMC"],
 }
-MAX_POSITIONS_PER_SECTOR = 2
+MAX_POSITIONS_PER_SECTOR = int(os.getenv("MAX_POSITIONS_PER_SECTOR", "3"))
 
 
 def _sector_of(ticker: str) -> Optional[str]:
@@ -1603,6 +1603,27 @@ def session_eod_summary(alpaca_client) -> None:
     account         = get_account(alpaca_client)
     portfolio_value = account.get("portfolio_value", 0)
     cash            = account.get("cash", 0)
+
+    # ── Stale-position sweep ───────────────────────────────────────────────
+    # Time/stop/target exits normally fire inside session_continuous; if that
+    # session is interrupted, positions overstay their hold period. Sweep them
+    # here so aging positions still get closed at end of day.
+    if not DRY_RUN:
+        try:
+            from bot.portfolio import (check_stops, check_targets, check_time_exits,
+                                       close_position_and_log)
+            for status, positions in (
+                ("stopped",    check_stops(alpaca_client)),
+                ("target_hit", check_targets(alpaca_client)),
+                ("time_exit",  check_time_exits(alpaca_client, data_client=None)),
+            ):
+                for pos in positions:
+                    cp = pos.get("current_price") or pos.get("entry_price", 0)
+                    close_position_and_log(alpaca_client, pos, cp, "eod_summary",
+                                           status=status, dry_run=DRY_RUN)
+                    console.print(f"[yellow]EOD {status}: {pos['ticker']} @ {cp}[/yellow]")
+        except Exception as e:
+            logger.warning(f"[eod] stale-position sweep failed: {e}")
 
     trades_today = get_trades_today()
     closed   = [t for t in trades_today if t.get("pnl_dollar") is not None]

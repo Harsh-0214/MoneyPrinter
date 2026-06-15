@@ -66,6 +66,81 @@ UNIVERSE = [
     "SOXL", "TQQQ", "ARKK", "LABU",
 ]
 
+# Ticker -> company name for news lookups. NewsAPI matches the search term as a
+# keyword, so querying the bare symbol (e.g. "AA", "PATH", "HON", "AI") returns
+# articles about unrelated subjects and makes the Claude screen reject every
+# candidate for lack of a catalyst. Searching the company name fixes that.
+COMPANY_NAMES = {
+    # Mega-cap tech
+    "ORCL": "Oracle", "CRM": "Salesforce", "ADBE": "Adobe", "INTC": "Intel",
+    "QCOM": "Qualcomm", "TXN": "Texas Instruments", "NOW": "ServiceNow",
+    "SNOW": "Snowflake", "NET": "Cloudflare", "PANW": "Palo Alto Networks",
+    "CRWD": "CrowdStrike", "ZS": "Zscaler", "DDOG": "Datadog", "MDB": "MongoDB",
+    "SHOP": "Shopify", "UBER": "Uber", "LYFT": "Lyft", "ABNB": "Airbnb",
+    "DASH": "DoorDash", "RBLX": "Roblox", "PLTR": "Palantir", "PATH": "UiPath",
+    "AI": "C3.ai", "BBAI": "BigBear.ai", "SOUN": "SoundHound AI",
+    # Semis
+    "AVGO": "Broadcom", "MU": "Micron", "AMAT": "Applied Materials",
+    "LRCX": "Lam Research", "KLAC": "KLA Corporation", "MRVL": "Marvell Technology",
+    "ARM": "Arm Holdings", "ON": "ON Semiconductor", "SWKS": "Skyworks Solutions",
+    "MPWR": "Monolithic Power Systems", "SMCI": "Super Micro Computer",
+    "NVDA": "Nvidia", "AMD": "AMD", "TSM": "Taiwan Semiconductor",
+    "ASML": "ASML", "WOLF": "Wolfspeed",
+    # Consumer/retail
+    "AMZN": "Amazon", "WMT": "Walmart", "COST": "Costco", "TGT": "Target",
+    "HD": "Home Depot", "LOW": "Lowe's", "NKE": "Nike", "SBUX": "Starbucks",
+    "MCD": "McDonald's", "YUM": "Yum Brands", "BABA": "Alibaba", "JD": "JD.com",
+    "PDD": "PDD Holdings", "ETSY": "Etsy", "CHWY": "Chewy", "W": "Wayfair",
+    # Financials
+    "MS": "Morgan Stanley", "BLK": "BlackRock", "SCHW": "Charles Schwab",
+    "C": "Citigroup", "WFC": "Wells Fargo", "AXP": "American Express",
+    "V": "Visa", "MA": "Mastercard", "PYPL": "PayPal", "SOFI": "SoFi",
+    "HOOD": "Robinhood", "AFRM": "Affirm", "NU": "Nu Holdings", "LC": "LendingClub",
+    # Healthcare/biotech
+    "JNJ": "Johnson & Johnson", "PFE": "Pfizer", "MRNA": "Moderna",
+    "ABBV": "AbbVie", "LLY": "Eli Lilly", "UNH": "UnitedHealth",
+    "CVS": "CVS Health", "BMY": "Bristol Myers Squibb", "GILD": "Gilead Sciences",
+    "BIIB": "Biogen", "REGN": "Regeneron", "VRTX": "Vertex Pharmaceuticals",
+    "ISRG": "Intuitive Surgical", "DXCM": "Dexcom", "TDOC": "Teladoc Health",
+    "HIMS": "Hims & Hers Health",
+    # Industrials/defense
+    "BA": "Boeing", "LMT": "Lockheed Martin", "RTX": "RTX Corporation",
+    "NOC": "Northrop Grumman", "GE": "GE Aerospace", "CAT": "Caterpillar",
+    "DE": "Deere", "HON": "Honeywell", "MMM": "3M", "UPS": "UPS",
+    "AXON": "Axon Enterprise", "KTOS": "Kratos Defense", "HII": "Huntington Ingalls",
+    # Energy
+    "SLB": "Schlumberger", "HAL": "Halliburton", "MPC": "Marathon Petroleum",
+    "VLO": "Valero Energy", "PSX": "Phillips 66", "OXY": "Occidental Petroleum",
+    "DVN": "Devon Energy", "FANG": "Diamondback Energy",
+    # Media/telecom
+    "NFLX": "Netflix", "DIS": "Disney", "CMCSA": "Comcast", "T": "AT&T",
+    "VZ": "Verizon", "WBD": "Warner Bros Discovery", "SPOT": "Spotify",
+    "TTD": "The Trade Desk",
+    # EV / clean energy
+    "RIVN": "Rivian", "LCID": "Lucid Motors", "NIO": "NIO", "XPEV": "XPeng",
+    "LI": "Li Auto", "ENPH": "Enphase Energy", "FSLR": "First Solar",
+    "RUN": "Sunrun", "PLUG": "Plug Power",
+    # Commodities / materials
+    "FCX": "Freeport-McMoRan", "NEM": "Newmont", "GOLD": "Barrick Gold",
+    "AA": "Alcoa", "CLF": "Cleveland-Cliffs", "MP": "MP Materials", "VALE": "Vale",
+    # Real estate / REITs
+    "AMT": "American Tower", "EQIX": "Equinix", "PLD": "Prologis",
+    "O": "Realty Income", "WELL": "Welltower",
+    # Crypto-adjacent
+    "COIN": "Coinbase", "RIOT": "Riot Platforms", "MARA": "MARA Holdings",
+    "MSTR": "MicroStrategy", "CLSK": "CleanSpark",
+    # High-beta momentum
+    "TSLA": "Tesla", "GME": "GameStop", "AMC": "AMC Entertainment",
+    "SPCE": "Virgin Galactic", "JOBY": "Joby Aviation", "ACHR": "Archer Aviation",
+    # ETFs (leveraged/thematic) — keep symbol; news on these is index-driven
+    "SOXL": "Semiconductor", "TQQQ": "Nasdaq 100", "ARKK": "ARK Innovation",
+    "LABU": "Biotech",
+    # Static watchlist names not already above
+    "AAPL": "Apple", "MSFT": "Microsoft", "GOOGL": "Google", "META": "Meta",
+    "JPM": "JPMorgan", "GS": "Goldman Sachs", "BAC": "Bank of America",
+    "XOM": "Exxon Mobil", "CVX": "Chevron",
+}
+
 
 def _load_discovered() -> dict:
     if DISCOVERED_PATH.exists():
@@ -186,16 +261,24 @@ Rules:
 
 
 def _fetch_newsapi_headlines(ticker: str, api_key: str) -> str:
-    """Fetch recent headlines for a ticker using NewsAPI (reliable in cloud environments)."""
+    """Fetch recent headlines for a ticker using NewsAPI (reliable in cloud environments).
+
+    Searches by company name as an exact phrase rather than the bare ticker symbol,
+    which otherwise matches unrelated articles (e.g. "AA", "PATH", "AI", "HON") and
+    causes the Claude screen to reject genuine movers for lack of a catalyst.
+    """
     if not api_key:
         return "(no headlines fetched)"
     try:
         import urllib.request
         import urllib.parse
-        query = urllib.parse.quote(ticker)
+        name = COMPANY_NAMES.get(ticker.upper(), ticker)
+        # Exact-phrase match on the company name; restrict to title/description so
+        # incidental body mentions don't pull in off-topic stories.
+        query = urllib.parse.quote(f'"{name}"')
         url = (
-            f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt"
-            f"&pageSize=5&language=en&apiKey={api_key}"
+            f"https://newsapi.org/v2/everything?q={query}&searchIn=title,description"
+            f"&sortBy=publishedAt&pageSize=5&language=en&apiKey={api_key}"
         )
         with urllib.request.urlopen(url, timeout=8) as resp:
             data = json.loads(resp.read())

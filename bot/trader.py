@@ -488,12 +488,17 @@ def check_order_filled(client, order_id: str, timeout: int = 60) -> dict:
 
 
 def compute_limit_price(side: str, quote: dict, current_price: float) -> float:
-    """Compute aggressive-but-safe limit price from quote."""
+    """Compute aggressive-but-safe limit price from quote.
+
+    The marketable buffer scales with price (~5 bps, floored at $0.03): a flat
+    3-cent buffer is too thin on high-priced names (e.g. AMAT ~$585) and leaves
+    orders unfilled until they time out and cancel.
+    """
     if side == "buy":
         ask = quote.get("ask") or current_price
-        return round(ask + 0.03, 2)
+        return round(ask + max(0.03, round(ask * 0.0005, 2)), 2)
     else:
         bid = quote.get("bid") or current_price
-        return round(bid - 0.03, 2)
+        return round(bid - max(0.03, round(bid * 0.0005, 2)), 2)
 
 
