@@ -1,19 +1,6 @@
-name: Trading Day (split sessions, waits in-job)
+name: Trading Day (split sessions)
 
-# GitHub kills hosted jobs at 6 hours, so a single 9:30→16:00 session is
-# impossible. The day is split into two runs; main.py enforces its own
-# runtime budget (SESSION_MAX_RUNTIME_MIN) and exits cleanly so the commit
-# step always runs. GTC bracket orders protect positions between sessions.
-#
-#   morning:   10:43 UTC = 06:43 ET (EDT) — bot waits internally until 09:30
-#   afternoon: 17:07 UTC = 13:07 ET (EDT) — picks up until the 16:00 close
-#
-# No "skip if late" gate: a delayed run still trades the rest of the day,
-# which beats not trading at all. The loop itself exits at 16:00 ET.
 on:
-  schedule:
-    - cron: "43 10 * * 1-5"
-    - cron: "7 17 * * 1-5"
   workflow_dispatch:
 
 concurrency:

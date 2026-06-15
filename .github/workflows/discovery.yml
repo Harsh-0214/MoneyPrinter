@@ -1,11 +1,6 @@
-name: Discovery (08:30 ET, waits in-job)
+name: Discovery (08:30 ET)
 
-# GitHub cron is best-effort (delays of hours are normal), so we schedule
-# well BEFORE the target and the job waits until exactly 08:30 ET.
-# 10:23 UTC = 06:23 ET in EDT / 05:23 ET in EST — the wait loop absorbs DST.
 on:
-  schedule:
-    - cron: "23 10 * * 1-5"
   workflow_dispatch:
 
 concurrency:
