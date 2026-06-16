@@ -203,6 +203,129 @@ footer a{color:var(--dim);text-decoration:none} footer a:hover{color:var(--blue)
   .hide-m{display:none}
   .run-name{width:auto;flex:1}
 }
+
+/* ════════════════════════ STRATEGIES PAGE ════════════════════════ */
+.strat-hero{background:linear-gradient(135deg,rgba(96,165,250,.07),rgba(167,139,250,.07));border:1px solid var(--line2);border-radius:var(--r);padding:28px 28px 22px;margin-bottom:24px;position:relative;overflow:hidden}
+.strat-hero::before{content:'';position:absolute;top:-50px;right:-50px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(167,139,250,.1),transparent 70%);pointer-events:none}
+.strat-hero::after{content:'';position:absolute;bottom:-30px;left:20%;width:300px;height:120px;border-radius:50%;background:radial-gradient(ellipse,rgba(96,165,250,.06),transparent 70%);pointer-events:none}
+.strat-hero-title{font-size:1.6rem;font-weight:800;letter-spacing:-.6px;margin-bottom:8px;background:linear-gradient(135deg,var(--blue) 30%,var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.strat-hero-sub{font-size:13px;color:var(--dim);line-height:1.7;max-width:700px}
+.strat-hero-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.strat-hero-chips .hc{font-size:10.5px;font-weight:700;padding:4px 12px;border-radius:99px;background:var(--surface3);color:var(--dim);border:1px solid var(--line2)}
+
+.sec-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.9px;color:var(--faint);margin:26px 0 13px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+
+/* pipeline */
+.pipeline{display:grid;grid-template-columns:repeat(4,1fr);margin-bottom:24px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.pipe-stage{padding:18px 16px 16px;border-right:1px solid var(--line);position:relative;transition:.15s}
+.pipe-stage:last-child{border-right:none}
+.pipe-stage:hover{background:var(--surface2)}
+.pipe-num{font-size:9px;font-weight:800;color:var(--faint);letter-spacing:.7px;text-transform:uppercase;margin-bottom:8px;font-family:var(--mono)}
+.pipe-ic{font-size:24px;margin-bottom:8px;display:block;line-height:1}
+.pipe-name{font-size:13px;font-weight:750;margin-bottom:3px}
+.pipe-time{font-size:10.5px;color:var(--blue);font-family:var(--mono);font-weight:600;margin-bottom:8px}
+.pipe-desc{font-size:11px;color:var(--dim);line-height:1.65}
+@media(max-width:820px){.pipeline{grid-template-columns:1fr 1fr}.pipe-stage:nth-child(2){border-right:none}.pipe-stage:nth-child(3n){border-top:1px solid var(--line)}.pipe-stage:nth-child(4){border-top:1px solid var(--line)}}
+@media(max-width:480px){.pipeline{grid-template-columns:1fr}.pipe-stage{border-right:none;border-bottom:1px solid var(--line)}.pipe-stage:last-child{border-bottom:none}}
+
+/* signal categories */
+.sig-cats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:24px}
+.sig-cat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:14px 14px 13px;transition:.15s}
+.sig-cat:hover{border-color:var(--line2);transform:translateY(-1px)}
+.sig-cat .sc-ic{font-size:18px;margin-bottom:7px}
+.sig-cat .sc-nm{font-size:12px;font-weight:750;margin-bottom:7px}
+.sig-cat .sc-tags{display:flex;flex-wrap:wrap;gap:3px}
+.sig-cat .sc-tag{font-size:9px;background:var(--surface3);color:var(--dim);border-radius:4px;padding:2px 7px;font-weight:600;border:1px solid var(--line)}
+@media(max-width:900px){.sig-cats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:560px){.sig-cats{grid-template-columns:1fr 1fr}}
+
+/* strategy cards */
+.strat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:13px;margin-bottom:24px}
+.strat-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;transition:.2s}
+.strat-card:hover{border-color:var(--line2);transform:translateY(-2px);box-shadow:0 10px 28px rgba(0,0,0,.3)}
+.strat-top{padding:16px 18px 13px;border-bottom:1px solid var(--line)}
+.strat-top-row{display:flex;align-items:flex-start;gap:11px;margin-bottom:8px}
+.strat-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.strat-name{font-size:13.5px;font-weight:800;letter-spacing:-.2px;line-height:1.2}
+.strat-id{font-size:10px;color:var(--faint);font-family:var(--mono);margin-top:2px}
+.strat-desc{font-size:11.5px;color:var(--dim);line-height:1.65}
+.strat-body{padding:14px 18px}
+.strat-params{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.param-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:700;font-family:var(--mono);letter-spacing:.2px}
+.p-sl{background:rgba(251,113,133,.1);color:var(--red);border:1px solid rgba(251,113,133,.2)}
+.p-tp{background:rgba(52,211,153,.1);color:var(--green);border:1px solid rgba(52,211,153,.2)}
+.p-rr{background:rgba(96,165,250,.1);color:var(--blue);border:1px solid rgba(96,165,250,.2)}
+.p-hz{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.2)}
+.strat-sigs-label{font-size:9.5px;font-weight:750;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:7px}
+.strat-sigs{display:flex;flex-wrap:wrap;gap:4px}
+.sig-pill{font-size:10px;padding:3px 9px;border-radius:5px;font-weight:650;line-height:1.4}
+.sig-bull{background:rgba(52,211,153,.1);color:var(--green);border:1px solid rgba(52,211,153,.2)}
+.sig-bear{background:rgba(251,113,133,.1);color:var(--red);border:1px solid rgba(251,113,133,.2)}
+.sig-vol{background:rgba(251,191,36,.1);color:var(--amber);border:1px solid rgba(251,191,36,.2)}
+.sig-neu{background:var(--surface3);color:var(--dim);border:1px solid var(--line2)}
+.strat-priority{font-size:10px;color:var(--faint);margin-top:11px;font-family:var(--mono);display:flex;align-items:center;gap:5px}
+.prio-dot{width:6px;height:6px;border-radius:50%;background:var(--faint);flex-shrink:0}
+/* color overrides */
+.sc-blue  .strat-top{border-top:3px solid var(--blue)}.sc-blue  .strat-icon{background:rgba(96,165,250,.15)}
+.sc-green .strat-top{border-top:3px solid var(--green)}.sc-green .strat-icon{background:rgba(52,211,153,.15)}
+.sc-amber .strat-top{border-top:3px solid var(--amber)}.sc-amber .strat-icon{background:rgba(251,191,36,.15)}
+.sc-red   .strat-top{border-top:3px solid var(--red)}.sc-red   .strat-icon{background:rgba(251,113,133,.15)}
+.sc-violet.strat-top{border-top:3px solid var(--violet)}.sc-violet .strat-icon{background:rgba(167,139,250,.15)}
+.sc-orange.strat-top{border-top:3px solid #fb923c}.sc-orange .strat-icon{background:rgba(251,146,60,.15)}
+.sc-gray  .strat-top{border-top:3px solid var(--faint)}.sc-gray  .strat-icon{background:var(--surface3)}
+/* fix: color class applied to card, not to strat-top */
+.strat-card.sc-blue  .strat-top{border-top:3px solid var(--blue)}
+.strat-card.sc-green .strat-top{border-top:3px solid var(--green)}
+.strat-card.sc-amber .strat-top{border-top:3px solid var(--amber)}
+.strat-card.sc-red   .strat-top{border-top:3px solid var(--red)}
+.strat-card.sc-violet .strat-top{border-top:3px solid var(--violet)}
+.strat-card.sc-orange .strat-top{border-top:3px solid #fb923c}
+.strat-card.sc-gray  .strat-top{border-top:3px solid var(--faint)}
+.strat-card.sc-blue  .strat-icon{background:rgba(96,165,250,.15)}
+.strat-card.sc-green .strat-icon{background:rgba(52,211,153,.15)}
+.strat-card.sc-amber .strat-icon{background:rgba(251,191,36,.15)}
+.strat-card.sc-red   .strat-icon{background:rgba(251,113,133,.15)}
+.strat-card.sc-violet .strat-icon{background:rgba(167,139,250,.15)}
+.strat-card.sc-orange .strat-icon{background:rgba(251,146,60,.15)}
+.strat-card.sc-gray  .strat-icon{background:var(--surface3)}
+
+/* classification chain */
+.class-chain{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px 20px 18px;margin-bottom:24px}
+.chain-label{font-size:11px;color:var(--dim);margin-bottom:14px;line-height:1.6}
+.chain-row{display:flex;align-items:center;gap:0;overflow-x:auto;padding-bottom:4px}
+.chain-step{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 13px;border-radius:var(--r-sm);background:var(--surface2);border:1px solid var(--line);min-width:108px;text-align:center;flex-shrink:0;transition:.15s}
+.chain-step:hover{border-color:var(--line2);background:var(--surface3)}
+.chain-step .cprio{font-size:8.5px;color:var(--faint);font-weight:800;text-transform:uppercase;letter-spacing:.5px;font-family:var(--mono)}
+.chain-step .cname{font-size:11px;font-weight:750;font-family:var(--mono)}
+.chain-step .ccond{font-size:9.5px;color:var(--dim);line-height:1.4;margin-top:2px}
+.chain-arr{padding:0 7px;color:var(--faint);font-size:13px;flex-shrink:0;user-select:none}
+.chain-note{font-size:11px;color:var(--faint);margin-top:13px;line-height:1.65;padding-top:12px;border-top:1px solid var(--line)}
+
+/* AI section */
+.ai-box{background:var(--surface);border:1px solid rgba(167,139,250,.28);border-radius:var(--r);overflow:hidden;margin-bottom:24px}
+.ai-box-head{background:rgba(167,139,250,.07);padding:16px 20px;border-bottom:1px solid rgba(167,139,250,.18);display:flex;align-items:flex-start;gap:14px}
+.ai-head-icon{font-size:26px;flex-shrink:0;margin-top:2px}
+.ai-head-title{font-size:14px;font-weight:800;margin-bottom:3px}
+.ai-head-sub{font-size:12px;color:var(--dim);line-height:1.6}
+.ai-box-body{padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.ai-col-label{font-size:9.5px;font-weight:750;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:9px}
+.ai-list{display:flex;flex-direction:column;gap:7px}
+.ai-list-item{font-size:12px;color:var(--dim);line-height:1.6;display:flex;gap:8px}
+.ai-list-item::before{content:'›';color:var(--violet);font-weight:800;flex-shrink:0}
+.ai-list-item strong{color:var(--text);font-weight:700}
+.ai-thresholds{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.thr-chip{padding:8px 14px;border-radius:var(--r-sm);font-size:11.5px;font-weight:700;font-family:var(--mono);display:flex;flex-direction:column;gap:3px;background:var(--surface2);border:1px solid var(--line)}
+.thr-chip .tl{font-size:9px;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.4px;font-family:var(--sans)}
+.thr-chip .tv{color:var(--text)}
+@media(max-width:600px){.ai-box-body{grid-template-columns:1fr}}
+
+/* risk grid */
+.risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:11px;margin-bottom:24px}
+.risk-item{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:14px 16px;transition:.15s}
+.risk-item:hover{border-color:var(--line2)}
+.risk-item .rk{font-size:9.5px;font-weight:750;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);margin-bottom:6px}
+.risk-item .rv{font-size:1.3rem;font-weight:800;font-family:var(--mono);color:var(--text);line-height:1.1}
+.risk-item .rs{font-size:10.5px;color:var(--dim);margin-top:5px;line-height:1.55}
 </style>
 </head>
 <body>
@@ -227,6 +350,7 @@ footer a{color:var(--dim);text-decoration:none} footer a:hover{color:var(--blue)
   <button data-pane="decisions">Decisions</button>
   <button data-pane="trades">Trades</button>
   <button data-pane="system">System</button>
+  <button data-pane="strategies">Strategies</button>
 </nav>
 
 <!-- ═══════════ OVERVIEW ═══════════ -->
@@ -347,6 +471,440 @@ footer a{color:var(--dim);text-decoration:none} footer a:hover{color:var(--blue)
       <tbody id="histBody"></tbody>
     </table></div>
   </div>
+</div>
+
+<!-- ═══════════ STRATEGIES ═══════════ -->
+<div class="pane" id="pane-strategies">
+
+  <div class="strat-hero">
+    <div class="strat-hero-title">How MoneyPrinter Works</div>
+    <div class="strat-hero-sub">A fully autonomous algorithmic trading system built on 30+ technical indicators, Claude AI second-opinion validation, and Alpaca paper execution — all running on free GitHub Actions cron schedules with zero servers required.</div>
+    <div class="strat-hero-chips">
+      <span class="hc">30+ Indicators</span>
+      <span class="hc">7 Strategies</span>
+      <span class="hc">Claude AI Filter</span>
+      <span class="hc">Alpaca Paper Trading</span>
+      <span class="hc">150+ Universe</span>
+      <span class="hc">4 Daily Sessions</span>
+    </div>
+  </div>
+
+  <div class="sec-label">Daily Pipeline</div>
+  <div class="pipeline">
+    <div class="pipe-stage">
+      <div class="pipe-num">Stage 01</div>
+      <span class="pipe-ic">🔭</span>
+      <div class="pipe-name">Discovery</div>
+      <div class="pipe-time">08:30 ET</div>
+      <div class="pipe-desc">Screens 150+ liquid large/mid-caps for active movers. Criteria: market cap ≥ $10B, avg vol ≥ 2M, vol ratio ≥ 1.5×, price move ≥ 1.5% or within 3% of 52-week high. Top 10 promoted to watchlist. Claude rejects candidates without a clear business catalyst.</div>
+    </div>
+    <div class="pipe-stage">
+      <div class="pipe-num">Stage 02</div>
+      <span class="pipe-ic">📊</span>
+      <div class="pipe-name">Pre-Market Score</div>
+      <div class="pipe-time">09:00 ET</div>
+      <div class="pipe-desc">Fetches live snapshots and 90 days of bars for every watchlist ticker. Computes 30+ indicators across trend, momentum, volatility, volume, and news categories. Bull/bear point system produces Net Score and Confidence. Claude AI then validates every decision.</div>
+    </div>
+    <div class="pipe-stage">
+      <div class="pipe-num">Stage 03</div>
+      <span class="pipe-ic">⚡</span>
+      <div class="pipe-name">Trading Day</div>
+      <div class="pipe-time">09:30–16:00 ET</div>
+      <div class="pipe-desc">Executes buy/short/sell orders via Alpaca Paper API. Re-scans open positions every session for rescore. Applies macro filter (VIX + SPY regime) before each order. Risk controls enforce 2% base risk, 10% max position, 60% max exposure, and a kill switch at −3% daily P&L.</div>
+    </div>
+    <div class="pipe-stage">
+      <div class="pipe-num">Stage 04</div>
+      <span class="pipe-ic">🌙</span>
+      <div class="pipe-name">EOD Summary</div>
+      <div class="pipe-time">16:15 ET</div>
+      <div class="pipe-desc">Fetches final portfolio snapshot from Alpaca. Computes daily P&L, win rate, and profit factor for closed trades. Appends daily history to live_feed.json on GitHub. Logs all decisions and trade outcomes for the dashboard.</div>
+    </div>
+  </div>
+
+  <div class="sec-label">Signal Categories</div>
+  <div class="sig-cats">
+    <div class="sig-cat">
+      <div class="sc-ic">📈</div>
+      <div class="sc-nm">Trend</div>
+      <div class="sc-tags">
+        <span class="sc-tag">EMA 9/21/50/200</span>
+        <span class="sc-tag">ADX</span>
+        <span class="sc-tag">MACD</span>
+        <span class="sc-tag">Parabolic SAR</span>
+        <span class="sc-tag">VWAP</span>
+      </div>
+    </div>
+    <div class="sig-cat">
+      <div class="sc-ic">🚀</div>
+      <div class="sc-nm">Momentum</div>
+      <div class="sc-tags">
+        <span class="sc-tag">RSI</span>
+        <span class="sc-tag">Stochastic RSI</span>
+        <span class="sc-tag">CCI</span>
+        <span class="sc-tag">Williams %R</span>
+      </div>
+    </div>
+    <div class="sig-cat">
+      <div class="sc-ic">🌊</div>
+      <div class="sc-nm">Volatility</div>
+      <div class="sc-tags">
+        <span class="sc-tag">Bollinger %B</span>
+        <span class="sc-tag">Keltner Channels</span>
+        <span class="sc-tag">ATR</span>
+        <span class="sc-tag">BB Squeeze</span>
+      </div>
+    </div>
+    <div class="sig-cat">
+      <div class="sc-ic">📦</div>
+      <div class="sc-nm">Volume</div>
+      <div class="sc-tags">
+        <span class="sc-tag">OBV</span>
+        <span class="sc-tag">Volume Ratio</span>
+        <span class="sc-tag">MFI</span>
+      </div>
+    </div>
+    <div class="sig-cat">
+      <div class="sc-ic">📰</div>
+      <div class="sc-nm">News</div>
+      <div class="sc-tags">
+        <span class="sc-tag">Headlines</span>
+        <span class="sc-tag">TextBlob Sentiment</span>
+        <span class="sc-tag">Keyword Boosts</span>
+        <span class="sc-tag">Hype Penalty</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-label">Trading Strategies</div>
+  <div class="strat-grid">
+
+    <div class="strat-card sc-blue">
+      <div class="strat-top">
+        <div class="strat-top-row">
+          <div class="strat-icon">📈</div>
+          <div>
+            <div class="strat-name">Trend Follow</div>
+            <div class="strat-id">trend_follow</div>
+          </div>
+        </div>
+        <div class="strat-desc">Full EMA bull stack with strong directional momentum. Requires all three short-term EMAs aligned, ADX confirming trend strength, positive MACD histogram, and volume confirmation — a classic swing setup.</div>
+      </div>
+      <div class="strat-body">
+        <div class="strat-params">
+          <span class="param-chip p-sl">SL 2.0× ATR</span>
+          <span class="param-chip p-rr">TP 2.5R</span>
+          <span class="param-chip p-hz">Swing 2–5d</span>
+        </div>
+        <div class="strat-sigs-label">Entry Conditions</div>
+        <div class="strat-sigs">
+          <span class="sig-bull">EMA9 &gt; EMA21 &gt; EMA50</span>
+          <span class="sig-bull">ADX &gt; 18</span>
+          <span class="sig-bull">MACD hist &gt; 0</span>
+          <span class="sig-vol">Volume confirm</span>
+        </div>
+        <div class="strat-priority"><span class="prio-dot"></span>Priority 4 in classification hierarchy</div>
+      </div>
+    </div>
+
+    <div class="strat-card sc-green">
+      <div class="strat-top">
+        <div class="strat-top-row">
+          <div class="strat-icon">↩️</div>
+          <div>
+            <div class="strat-name">Mean Reversion</div>
+            <div class="strat-id">mean_reversion</div>
+          </div>
+        </div>
+        <div class="strat-desc">Buys oversold dips or shorts overbought spikes when RSI or Bollinger %B reaches an extreme. Entry is only taken if price is still above the 50-day SMA — preventing falling-knife trades. Target is the 20-day SMA (Bollinger middle), not a fixed R multiple.</div>
+      </div>
+      <div class="strat-body">
+        <div class="strat-params">
+          <span class="param-chip p-sl">SL 1.5× ATR</span>
+          <span class="param-chip p-rr">TP 2.0R / SMA20</span>
+          <span class="param-chip p-hz">Scalp 0–2d</span>
+        </div>
+        <div class="strat-sigs-label">Entry Conditions</div>
+        <div class="strat-sigs">
+          <span class="sig-bull">RSI &lt; 38 or &gt; 68</span>
+          <span class="sig-bull">BB %B &lt; 0.15 or &gt; 0.85</span>
+          <span class="sig-bull">Price &gt; SMA50</span>
+          <span class="sig-neu">No full EMA alignment</span>
+        </div>
+        <div class="strat-priority"><span class="prio-dot"></span>Priority 5 in classification hierarchy</div>
+      </div>
+    </div>
+
+    <div class="strat-card sc-amber">
+      <div class="strat-top">
+        <div class="strat-top-row">
+          <div class="strat-icon">🚀</div>
+          <div>
+            <div class="strat-name">Breakout</div>
+            <div class="strat-id">breakout</div>
+          </div>
+        </div>
+        <div class="strat-desc">Momentum play on a clean technical breakout above R1 pivot or 52-week high, confirmed by elevated volume. Highest risk:reward target of all strategies since breakouts often extend. Entry within 2% above the level to avoid chasing.</div>
+      </div>
+      <div class="strat-body">
+        <div class="strat-params">
+          <span class="param-chip p-sl">SL 1.5× ATR</span>
+          <span class="param-chip p-rr">TP 3.0R</span>
+          <span class="param-chip p-hz">Swing 1–3d</span>
+        </div>
+        <div class="strat-sigs-label">Entry Conditions</div>
+        <div class="strat-sigs">
+          <span class="sig-bull">Price &gt; R1 pivot or 52wk high</span>
+          <span class="sig-bull">Within 2% of breakout level</span>
+          <span class="sig-vol">Volume ratio &gt; 1.3×</span>
+        </div>
+        <div class="strat-priority"><span class="prio-dot"></span>Priority 2 in classification hierarchy</div>
+      </div>
+    </div>
+
+    <div class="strat-card sc-red">
+      <div class="strat-top">
+        <div class="strat-top-row">
+          <div class="strat-icon">📉</div>
+          <div>
+            <div class="strat-name">Breakdown</div>
+            <div class="strat-id">breakdown</div>
+          </div>
+        </div>
+        <div class="strat-desc">Short-side momentum trade when price breaks below the S1 support pivot with volume confirmation, signaling institutional distribution. Mirror image of the breakout strategy but for bearish setups.</div>
+      </div>
+      <div class="strat-body">
+        <div class="strat-params">
+          <span class="param-chip p-sl">SL 1.5× ATR</span>
+          <span class="param-chip p-rr">TP 2.5R</span>
+          <span class="param-chip p-hz">Swing 1–3d</span>
+        </div>
+        <div class="strat-sigs-label">Entry Conditions</div>
+        <div class="strat-sigs">
+          <span class="sig-bear">Price breaks below S1 pivot</span>
+          <span class="sig-vol">Volume confirmation</span>
+          <span class="sig-bear">Short / Sell signal</span>
+        </div>
+        <div class="strat-priority"><span class="prio-dot"></span>Priority 3 in classification hierarchy</div>
+      </div>
+    </div>
+
+    <div class="strat-card sc-violet">
+      <div class="strat-top">
+        <div class="strat-top-row">
+          <div class="strat-icon">💥</div>
+          <div>
+            <div class="strat-name">Squeeze Breakout</div>
+            <div class="strat-id">squeeze_breakout</div>
+          </div>
+        </div>
+        <div class="strat-desc">Highest-conviction setup: Bollinger Bands contract inside Keltner Channels (a "squeeze"), then price explodes through the Keltner upper band with two consecutive confirmed closes. Only valid on low-volatility names (ATR/price &lt; 3%). Stop placed at the 10-day consolidation low.</div>
+      </div>
+      <div class="strat-body">
+        <div class="strat-params">
+          <span class="param-chip p-sl">SL 10d low</span>
+          <span class="param-chip p-rr">TP 2.5R×dist</span>
+          <span class="param-chip p-hz">Swing 2–4d</span>
+        </div>
+        <div class="strat-sigs-label">Entry Conditions</div>
+        <div class="strat-sigs">
+          <span class="sig-bull">BB inside Keltner (squeeze)</span>
+          <span class="sig-bull">KC upper breakout</span>
+          <span class="sig-bull">2 consecutive closes above KC</span>
+          <span class="sig-neu">ATR/price &lt; 3%</span>
+        </div>
+        <div class="strat-priority"><span class="prio-dot"></span>Priority 1 — checked first in classification</div>
+      </div>
+    </div>
+
+    <div class="strat-card sc-orange">
+      <div class="strat-top">
+        <div class="strat-top-row">
+          <div class="strat-icon">📡</div>
+          <div>
+            <div class="strat-name">News Momentum</div>
+            <div class="strat-id">news_momentum</div>
+          </div>
+        </div>
+        <div class="strat-desc">Catalyst-driven scalp triggered when strong positive or negative news sentiment combines with at least partial EMA alignment or a volume surge. Designed for same-day reactions to earnings, guidance, or macro announcements. Hype detection penalty still applies.</div>
+      </div>
+      <div class="strat-body">
+        <div class="strat-params">
+          <span class="param-chip p-sl">SL 1.5× ATR</span>
+          <span class="param-chip p-rr">TP 2.0R</span>
+          <span class="param-chip p-hz">Scalp same-day</span>
+        </div>
+        <div class="strat-sigs-label">Entry Conditions</div>
+        <div class="strat-sigs">
+          <span class="sig-bull">News positive / negative signal</span>
+          <span class="sig-bull">EMA partial alignment</span>
+          <span class="sig-vol">OR volume surge</span>
+        </div>
+        <div class="strat-priority"><span class="prio-dot"></span>Priority 6 in classification hierarchy</div>
+      </div>
+    </div>
+
+    <div class="strat-card sc-gray">
+      <div class="strat-top">
+        <div class="strat-top-row">
+          <div class="strat-icon">🔀</div>
+          <div>
+            <div class="strat-name">Mixed</div>
+            <div class="strat-id">mixed</div>
+          </div>
+        </div>
+        <div class="strat-desc">Fallback when no dominant pattern is identifiable. Confidence is automatically reduced by a 5% penalty to discourage marginal trades. Most mixed-strategy tickers result in a HOLD decision and are not traded. Treated as a signal to wait for a cleaner setup.</div>
+      </div>
+      <div class="strat-body">
+        <div class="strat-params">
+          <span class="param-chip p-sl">SL 2.0× ATR</span>
+          <span class="param-chip p-rr">TP 2.0R</span>
+          <span class="param-chip p-hz">Short hold</span>
+        </div>
+        <div class="strat-sigs-label">Characteristics</div>
+        <div class="strat-sigs">
+          <span class="sig-neu">No dominant pattern</span>
+          <span class="sig-neu">−5% confidence penalty</span>
+          <span class="sig-neu">Usually → HOLD</span>
+        </div>
+        <div class="strat-priority"><span class="prio-dot"></span>Priority 7 — last resort fallback</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="sec-label">Classification Hierarchy</div>
+  <div class="class-chain">
+    <div class="chain-label">The bot evaluates conditions in strict priority order — the first strategy whose entry conditions are met is selected. This prevents ambiguous overlap between strategies.</div>
+    <div class="chain-row">
+      <div class="chain-step">
+        <div class="cprio">#1</div>
+        <div class="cname" style="color:var(--violet)">squeeze_breakout</div>
+        <div class="ccond">BB squeeze + KC break + 2 closes + low vol</div>
+      </div>
+      <div class="chain-arr">›</div>
+      <div class="chain-step">
+        <div class="cprio">#2</div>
+        <div class="cname" style="color:var(--amber)">breakout</div>
+        <div class="ccond">Above R1 / 52wk high with vol &gt; 1.3×</div>
+      </div>
+      <div class="chain-arr">›</div>
+      <div class="chain-step">
+        <div class="cprio">#3</div>
+        <div class="cname" style="color:var(--red)">breakdown</div>
+        <div class="ccond">Below S1 with volume confirm</div>
+      </div>
+      <div class="chain-arr">›</div>
+      <div class="chain-step">
+        <div class="cprio">#4</div>
+        <div class="cname" style="color:var(--blue)">trend_follow</div>
+        <div class="ccond">EMA bull stack + ADX &gt; 18 + MACD &gt; 0 + vol</div>
+      </div>
+      <div class="chain-arr">›</div>
+      <div class="chain-step">
+        <div class="cprio">#5</div>
+        <div class="cname" style="color:var(--green)">mean_reversion</div>
+        <div class="ccond">RSI/BB extreme + above SMA50</div>
+      </div>
+      <div class="chain-arr">›</div>
+      <div class="chain-step">
+        <div class="cprio">#6</div>
+        <div class="cname" style="color:#fb923c">news_momentum</div>
+        <div class="ccond">News signal + EMA partial or vol surge</div>
+      </div>
+      <div class="chain-arr">›</div>
+      <div class="chain-step">
+        <div class="cprio">#7</div>
+        <div class="cname" style="color:var(--faint)">mixed</div>
+        <div class="ccond">No conditions matched — fallback</div>
+      </div>
+    </div>
+    <div class="chain-note">Action thresholds: Net Score ≥ 65 + Confidence ≥ 0.65 → BUY &nbsp;·&nbsp; Net ≥ 70 + Confidence ≥ 0.70 → SHORT &nbsp;·&nbsp; Otherwise → HOLD. Net Score = Bull Points − Bear Points. Confidence = Net Score ÷ 100.</div>
+  </div>
+
+  <div class="sec-label">Claude AI Layer</div>
+  <div class="ai-box">
+    <div class="ai-box-head">
+      <div class="ai-head-icon">🤖</div>
+      <div>
+        <div class="ai-head-title">Claude Sonnet — Second-Opinion Analyst</div>
+        <div class="ai-head-sub">Every scored ticker (buy, hold, or short) is reviewed by Claude before execution. Claude is not a rubber-stamp — it can confirm, upgrade, or reject any signal the rules engine produces. Falls back silently if the API is unavailable, leaving the scorer's decision unchanged.</div>
+      </div>
+    </div>
+    <div class="ai-box-body">
+      <div>
+        <div class="ai-col-label">What Claude evaluates</div>
+        <div class="ai-list">
+          <div class="ai-list-item"><strong>For BUY candidates:</strong> Is there a plausible fundamental reason the stock should recover or continue higher? Is the dip caused by structural problems or sector decline? Is momentum actually turning, or is this a falling knife?</div>
+          <div class="ai-list-item"><strong>For SHORT candidates:</strong> Is there a genuine reason the stock should fall? Or is it strong for a real reason (earnings growth, market leadership)? Is the setup confirmed or is it just high RSI?</div>
+          <div class="ai-list-item"><strong>Inputs provided:</strong> 30+ indicator values, bull/bear signals triggered, multi-timeframe velocity returns, news headlines and sentiment, current held position context.</div>
+          <div class="ai-list-item"><strong>Discovery filter:</strong> Claude also runs a pre-screen on discovery candidates to reject tickers without a clear business catalyst driving the volume/price activity.</div>
+        </div>
+      </div>
+      <div>
+        <div class="ai-col-label">Execution thresholds</div>
+        <div class="ai-thresholds">
+          <div class="thr-chip">
+            <span class="tl">Auto-Execute</span>
+            <span class="tv">Net ≥ 85 &amp; Conf ≥ 0.85</span>
+          </div>
+          <div class="thr-chip">
+            <span class="tl">Claude Runs</span>
+            <span class="tv">Net ≥ 60 &amp; Conf ≥ 0.65</span>
+          </div>
+          <div class="thr-chip">
+            <span class="tl">Macro: VIX Halt</span>
+            <span class="tv">VIX &gt; 35 → no new longs</span>
+          </div>
+          <div class="thr-chip">
+            <span class="tl">Macro: SPY Bear</span>
+            <span class="tv">Bull signals −20% to −50%</span>
+          </div>
+        </div>
+        <div style="height:14px"></div>
+        <div class="ai-col-label">Hype detection</div>
+        <div class="ai-list">
+          <div class="ai-list-item"><strong>Penalties:</strong> Cramer mentions, Reddit/WSB hype, FOMO language, short-squeeze narratives.</div>
+          <div class="ai-list-item"><strong>Boosts:</strong> Earnings beats, raised guidance, insider buying, analyst upgrades with price targets.</div>
+          <div class="ai-list-item"><strong>Velocity penalty:</strong> Large recent gains reduce confidence. Halved for fundamental breakouts, doubled for hype. Hard cap at −0.45.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-label">Risk Management</div>
+  <div class="risk-grid">
+    <div class="risk-item">
+      <div class="rk">Base Risk / Trade</div>
+      <div class="rv">2%</div>
+      <div class="rs">Of portfolio value, scaled by confidence × VIX multiplier</div>
+    </div>
+    <div class="risk-item">
+      <div class="rk">Max Position Size</div>
+      <div class="rv">10%</div>
+      <div class="rs">Per individual stock, regardless of confidence</div>
+    </div>
+    <div class="risk-item">
+      <div class="rk">Max Exposure</div>
+      <div class="rv">60%</div>
+      <div class="rs">Total portfolio across all open positions simultaneously</div>
+    </div>
+    <div class="risk-item">
+      <div class="rk">Kill Switch</div>
+      <div class="rv">−3%</div>
+      <div class="rs">Daily P&L threshold — all new orders halt for the session</div>
+    </div>
+    <div class="risk-item">
+      <div class="rk">VIX Halt</div>
+      <div class="rv">35</div>
+      <div class="rs">Above this level, no new long positions are opened</div>
+    </div>
+    <div class="risk-item">
+      <div class="rk">Default Stop Loss</div>
+      <div class="rv">1.5× ATR</div>
+      <div class="rs">Strategy-specific multipliers override this (1.5–2.0×)</div>
+    </div>
+  </div>
+
 </div>
 
 <footer>
