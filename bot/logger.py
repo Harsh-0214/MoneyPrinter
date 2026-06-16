@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -129,8 +129,9 @@ def init_db() -> None:
         try:
             conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {col_type}")
             conn.commit()
-        except Exception:
-            pass  # column already exists
+        except sqlite3.OperationalError as e:
+            if "already exists" not in str(e).lower():
+                raise
 
     conn.close()
     logger.info(f"[logger] DB initialized at {DB_PATH}")
@@ -187,7 +188,7 @@ def log_trade(
             fundamental_score, hype_penalty, breakout_quality, breakout_level
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            datetime.utcnow().isoformat(),
+            datetime.now(timezone.utc).isoformat(),
             session,
             ticker,
             action,
@@ -247,7 +248,7 @@ def update_trade_exit(
             pnl_dollar      = ?,
             pnl_pct         = ?
         WHERE id = ?
-        """, (exit_price, datetime.utcnow().isoformat(), status, pnl_dollar, pnl_pct, trade_id))
+        """, (exit_price, datetime.now(timezone.utc).isoformat(), status, pnl_dollar, pnl_pct, trade_id))
         conn.commit()
         logger.info(f"[logger] Trade {trade_id} updated: status={status} pnl=${pnl_dollar:.2f}")
     finally:
@@ -269,7 +270,7 @@ def get_open_trades() -> list[dict]:
 
 def get_trades_today() -> list[dict]:
     init_db()
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     conn = _connect()
     try:
         rows = conn.execute(
@@ -351,7 +352,7 @@ def log_scan(
             total_bull_signals, total_bear_signals
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            datetime.utcnow().isoformat(),
+            datetime.now(timezone.utc).isoformat(),
             session, tickers_scanned,
             signals_generated, trades_executed,
             total_bull, total_bear,
@@ -421,7 +422,7 @@ def log_rejection(
             action, rejection_reason, bull_score, bear_score, strategy
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            datetime.utcnow().isoformat(),
+            datetime.now(timezone.utc).isoformat(),
             session, ticker, net_score, confidence,
             action, rejection_reason, bull_score, bear_score, strategy,
         ))

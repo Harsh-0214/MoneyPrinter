@@ -500,7 +500,10 @@ def reconcile_positions(alpaca_client, data_client=None, dry_run: bool = False,
             continue
 
         qty   = int(float(p.get("qty") or 0))
-        entry = float(p.get("avg_entry_price") or 0)
+        if p.get("avg_entry_price") is None:
+            logger.warning(f"[reconcile] {ticker} has no avg_entry_price — skipping adoption")
+            continue
+        entry = float(p.get("avg_entry_price"))
         if qty <= 0 or entry <= 0:
             continue
 
