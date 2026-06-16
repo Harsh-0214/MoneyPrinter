@@ -8,7 +8,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 FEED_PATH   = Path(__file__).parent.parent / "data" / "live_feed.json"
-MAX_ENTRIES = 2000
+MAX_ENTRIES = 500
 
 
 def _load() -> dict:

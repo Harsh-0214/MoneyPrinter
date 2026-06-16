@@ -103,6 +103,14 @@ def init_db() -> None:
     """)
     conn.commit()
 
+    cur.executescript("""
+    CREATE INDEX IF NOT EXISTS idx_trades_status           ON trades (status);
+    CREATE INDEX IF NOT EXISTS idx_trades_timestamp        ON trades (timestamp);
+    CREATE INDEX IF NOT EXISTS idx_trades_ticker_status    ON trades (ticker, status);
+    CREATE INDEX IF NOT EXISTS idx_rejections_ticker       ON rejections (ticker);
+    """)
+    conn.commit()
+
     # Add columns if missing (migration-safe)
     for col, col_type in [
         ("highest_price_seen",  "REAL"),
