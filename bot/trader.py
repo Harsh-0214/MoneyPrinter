@@ -127,16 +127,6 @@ def get_positions(client, raise_on_error: bool = False) -> list[dict]:
         return []
 
 
-def get_market_status(client) -> bool:
-    """Return True if market is currently open."""
-    try:
-        clock = _retry(client.get_clock)
-        return bool(clock.is_open)
-    except Exception as e:
-        logger.warning(f"[trader] get_market_status failed: {e}")
-        return False
-
-
 def get_latest_quote(data_client, ticker: str) -> dict:
     """Fetch latest bid/ask quote for a ticker."""
     if data_client is None:

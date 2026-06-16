@@ -13,7 +13,7 @@ import ta.trend as ta_trend
 import ta.momentum as ta_momentum
 import ta.volatility as ta_volatility
 import ta.volume as ta_volume
-from bot.data import fetch_daily_bars, fetch_intraday_bars, fetch_snapshot, fetch_vix
+from bot.data import fetch_daily_bars, fetch_intraday_bars, fetch_snapshot
 
 logger = logging.getLogger(__name__)
 

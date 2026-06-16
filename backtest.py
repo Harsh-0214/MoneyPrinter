@@ -38,7 +38,6 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 from rich.panel import Panel
-from rich.text import Text
 
 load_dotenv()
 
@@ -340,14 +339,6 @@ def _build_indicator_cache(
                 console.print(f"  [dim]{done}/{n_work} tickers done[/dim]")
     console.print(f"[green]Cache ready[/green]\n")
     return cache
-
-
-def compute_ind_for_day(ticker: str, df: pd.DataFrame, as_of: date) -> dict:
-    """Slice df to [start, as_of] and compute indicators — no lookahead."""
-    sliced = _fast_slice(df, as_of)
-    if len(sliced) < 30:
-        return {"ticker": ticker, "error": "insufficient_history"}
-    return compute_indicators_from_df(ticker, sliced, intraday=None, realtime_price=False)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
