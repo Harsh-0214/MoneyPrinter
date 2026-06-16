@@ -1,4 +1,5 @@
-"""SQLite trade logger — auto-creates all tables on first run."""
+"""Trade logger — local SQLite by default, or Turso (libSQL) when
+TURSO_DATABASE_URL is set. Auto-creates all tables on first run."""
 
 import json
 import logging
@@ -12,8 +13,102 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "data" / "trades.db"
 
+# "Column already exists" during the migration-safe ALTER TABLE loop surfaces
+# as sqlite3.OperationalError locally but ValueError from libsql/Turso.
+_MIGRATION_DUP_ERRORS = (sqlite3.OperationalError, ValueError)
 
-def _connect() -> sqlite3.Connection:
+
+# ── libSQL (Turso) compatibility shim ─────────────────────────────────────────
+# libsql_experimental returns plain tuples and has no row_factory, while the
+# rest of this module relies on sqlite3.Row semantics — dict(row) and row[i].
+# These thin wrappers restore that behaviour so no call site has to change.
+
+class _Row:
+    """sqlite3.Row work-alike: supports dict(row), row['col'] and row[i]."""
+    __slots__ = ("_cols", "_vals")
+
+    def __init__(self, cols, vals):
+        self._cols = cols
+        self._vals = vals
+
+    def keys(self):
+        return list(self._cols)
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self._vals[self._cols.index(key)]
+        return self._vals[key]
+
+    def __iter__(self):
+        return iter(self._vals)
+
+    def __len__(self):
+        return len(self._vals)
+
+
+class _Cursor:
+    def __init__(self, cur):
+        self._cur = cur
+
+    def _cols(self):
+        desc = self._cur.description
+        return [d[0] for d in desc] if desc else []
+
+    def execute(self, sql, params=None):
+        self._cur.execute(sql, params or ())
+        return self
+
+    def executescript(self, script):
+        self._cur.executescript(script)
+        return self
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        return _Row(self._cols(), row) if row is not None else None
+
+    def fetchall(self):
+        cols = self._cols()
+        return [_Row(cols, r) for r in self._cur.fetchall()]
+
+    @property
+    def lastrowid(self):
+        return self._cur.lastrowid
+
+    @property
+    def description(self):
+        return self._cur.description
+
+
+class _Conn:
+    """Wraps a libsql connection to mimic the sqlite3.Connection API used here."""
+    def __init__(self, conn):
+        self._conn = conn
+
+    def cursor(self):
+        return _Cursor(self._conn.cursor())
+
+    def execute(self, sql, params=None):
+        return self.cursor().execute(sql, params)
+
+    def executescript(self, script):
+        self._conn.executescript(script)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+
+def _connect():
+    """Return a DB connection. Uses Turso (libSQL) when TURSO_DATABASE_URL is
+    set, otherwise a local SQLite file (default and offline fallback)."""
+    url = os.getenv("TURSO_DATABASE_URL", "").strip()
+    if url:
+        import libsql_experimental as libsql
+        token = os.getenv("TURSO_AUTH_TOKEN", "").strip()
+        return _Conn(libsql.connect(database=url, auth_token=token))
+
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
@@ -129,8 +224,9 @@ def init_db() -> None:
         try:
             conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {col_type}")
             conn.commit()
-        except sqlite3.OperationalError as e:
-            if "already exists" not in str(e).lower():
+        except _MIGRATION_DUP_ERRORS as e:
+            msg = str(e).lower()
+            if "already exists" not in msg and "duplicate column" not in msg:
                 raise
 
     conn.close()

@@ -568,9 +568,8 @@ def reconcile_positions(alpaca_client, data_client=None, dry_run: bool = False,
         # Backdate to the real fill time so time exits count from actual entry
         if entry_ts:
             try:
-                import sqlite3
-                from bot.logger import DB_PATH
-                conn = sqlite3.connect(str(DB_PATH))
+                from bot.logger import _connect
+                conn = _connect()
                 conn.execute("UPDATE trades SET timestamp = ? WHERE id = ?", (entry_ts, trade_id))
                 conn.commit()
                 conn.close()

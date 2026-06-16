@@ -11,3 +11,4 @@ python-dotenv==1.0.1
 numpy==1.26.4
 anthropic>=0.25.0
 lxml>=4.9
+libsql-experimental==0.0.55
