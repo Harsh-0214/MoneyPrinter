@@ -18,7 +18,11 @@
         "premarket",
         "market_open",
         "continuous"
-      ]
+      ],
+      "pnl_dollar": 0,
+      "trades_executed": 0,
+      "win_rate": 0,
+      "portfolio_value": 34978.59
     },
     "2026-06-15": {
       "date": "2026-06-15",
@@ -55313,20 +55317,20 @@
     }
   ],
   "portfolio": {
-    "updated": "2026-06-16T19:52:06.234608+00:00",
-    "equity": 34997.65,
+    "updated": "2026-06-16T20:15:55.699283+00:00",
+    "equity": 34978.59,
     "cash": 31543.15,
-    "buying_power": 135845.2,
+    "buying_power": 135791.82,
     "positions": [
       {
         "ticker": "UBER",
         "qty": 47.0,
         "side": "long",
         "avg_entry": 73.55,
-        "current": 73.5,
-        "market_value": 3454.5,
-        "unrealized_pl": -2.35,
-        "unrealized_plpc": -0.00068,
+        "current": 73.0944,
+        "market_value": 3435.44,
+        "unrealized_pl": -21.4132,
+        "unrealized_plpc": -0.00619,
         "stop_loss": 68.82,
         "take_profit": 85.09,
         "strategy": "trend_follow",
