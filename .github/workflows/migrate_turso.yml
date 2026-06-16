@@ -1,0 +1,27 @@
+name: Migrate to Turso (one-off)
+
+# Manual, run-once migration of the committed data/trades.db into Turso.
+# Safe to leave in the repo: the script aborts if Turso already has trade rows.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Migrate local SQLite into Turso
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN:   ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python scripts/migrate_to_turso.py
