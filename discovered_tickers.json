@@ -1,5 +1,6 @@
 {
   "tickers": [
+    "NVDA",
     "HON"
   ],
   "meta": {
@@ -11,6 +12,13 @@
       "near_52wk": false,
       "claude_reasoning": "Board-approved aerospace spin-off is a credible, material corporate action catalyst that unlocks conglomerate discount and signals renewed capital allocation discipline, justifying elevated volume and price appreciation with potential for continued re-rating over the next 1-3 sessions as investors digest the strategic implications.",
       "claude_confidence": 0.72
+    },
+    "NVDA": {
+      "ticker": "NVDA",
+      "gap_pct": 2.88,
+      "news_polarity": 0.12,
+      "gap_catalyst": true,
+      "source": "premarket_gap_news"
     }
   }
 }
