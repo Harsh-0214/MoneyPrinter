@@ -17,3 +17,9 @@ logs/*.log
 backtest_cache/
 backtest_output/
 *.pkl
+
+# Trade ledger now lives in Turso (libSQL); no longer round-tripped through git.
+data/trades.db
+data/trades.db-wal
+data/trades.db-shm
+data/test_trades.db
