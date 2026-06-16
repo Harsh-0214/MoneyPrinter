@@ -204,38 +204,74 @@ def _quick_news_recheck(ticker: str) -> bool:
 
 
 def _rescore_open_positions(tickers, alpaca_client, data_client, dry_run: bool) -> None:
-    """Re-score all open buy positions and exit early if thesis is broken (net < 20)."""
-    import time as _time
+    """Re-score all open buy positions and exit early if thesis is broken.
+
+    Two checks per position (in order):
+    1. Breakout invalidation — price closes back below the original breakout
+       pivot (breakout_level) for breakout/squeeze_breakout strategies.
+    2. Full thesis re-score — runs the rules engine with fresh news; exits
+       if net_score < 20.
+    """
     from bot.indicators import get_indicators
-    from bot.scorer import score_ticker
-    from bot.logger import get_open_trades, update_trade_exit
-    from bot.trader import close_position, get_account
+    from bot.news       import get_news_batch
+    from bot.scorer     import score_ticker
+    from bot.logger     import get_open_trades, update_trade_exit
+    from bot.trader     import close_position
 
     try:
         open_trades = get_open_trades()
+        if not open_trades:
+            return
         macro = get_macro_context()
-        for trade in open_trades:
-            if trade.get("action") != "buy":
-                continue
-            ticker = trade.get("ticker")
-            if not ticker:
-                continue
+
+        buy_trades   = [t for t in open_trades if t.get("action") == "buy" and t.get("ticker")]
+        open_tickers = [t["ticker"] for t in buy_trades]
+
+        # Batch-fetch news once for all held tickers
+        news_api_key = os.getenv("NEWS_API_KEY", "")
+        try:
+            news_map = get_news_batch(open_tickers, COMPANY_NAMES, api_key=news_api_key, max_workers=2)
+        except Exception as _ne:
+            logger.warning(f"[main] rescore news fetch failed: {_ne}")
+            news_map = {}
+
+        for trade in buy_trades:
+            ticker = trade["ticker"]
             try:
                 ind = get_indicators(ticker)
                 if ind.get("error"):
                     continue
-                score = score_ticker(ticker, ind, {}, macro)
-                net = score.get("net_score", 0)
-                if net < 20:
-                    logger.warning(f"[main] {ticker} thesis broken (net={net}) — exiting early")
+                cp = float(ind.get("current_price") or trade.get("entry_price") or 0)
+                ep = float(trade.get("entry_price") or cp)
+
+                def _exit(reason: str) -> None:
                     close_position(alpaca_client, ticker, dry_run)
                     trade_id = trade.get("id")
                     if trade_id:
-                        ep = float(trade.get("entry_price") or 0)
-                        cp = float(ind.get("current_price") or ep)
-                        pnl_pct = (cp - ep) / ep * 100 if ep > 0 else 0.0
+                        pnl_pct    = (cp - ep) / ep * 100 if ep > 0 else 0.0
                         pnl_dollar = (cp - ep) * float(trade.get("quantity") or 0)
-                        update_trade_exit(trade_id, cp, "thesis_broken", pnl_dollar, pnl_pct)
+                        update_trade_exit(trade_id, cp, reason, pnl_dollar, pnl_pct)
+
+                # ── Check 1: breakout pivot invalidated ───────────────────────
+                brk_lvl = float(trade.get("breakout_level") or 0)
+                if (brk_lvl > 0
+                        and trade.get("strategy") in ("breakout", "squeeze_breakout")
+                        and cp < brk_lvl * 0.99):
+                    logger.warning(
+                        f"[main] {ticker} breakout failed — "
+                        f"price {cp:.2f} < pivot {brk_lvl:.2f} — exiting"
+                    )
+                    _exit("breakout_failed")
+                    continue
+
+                # ── Check 2: thesis re-score with news ────────────────────────
+                news  = news_map.get(ticker, {})
+                score = score_ticker(ticker, ind, news, macro)
+                net   = score.get("net_score", 0)
+                if net < 20:
+                    logger.warning(f"[main] {ticker} thesis broken (net={net}) — exiting early")
+                    _exit("thesis_broken")
+
             except Exception as e:
                 logger.warning(f"[main] rescore error for {ticker}: {e}")
     except Exception as e:
