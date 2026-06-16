@@ -251,6 +251,13 @@ def calculate_partial_exit(position: dict, current_price: float) -> dict:
 CHANDELIER_ATR_MULT     = 3.0
 BREAKOUT_SWING_LOOKBACK = 3   # bars for structure stop (matches backtest)
 
+# Hysteresis for trailing the server-side stop: only move it when the new stop
+# rises by at least max(STOP_TRAIL_MIN_STEP_ABS, STOP_TRAIL_MIN_STEP_ATR × ATR).
+# Without this, sub-cent recomputations each scan cycle triggered a constant
+# cancel/resubmit churn (e.g. CVS replaced ~18×/day).
+STOP_TRAIL_MIN_STEP_ATR = 0.10
+STOP_TRAIL_MIN_STEP_ABS = 0.05
+
 
 def update_breakout_stops(alpaca_client, data_client=None) -> None:
     """
@@ -340,7 +347,10 @@ def update_breakout_stops(alpaca_client, data_client=None) -> None:
             if new_stop >= cur_price:
                 new_stop = cur_stop   # don't set stop above current price
 
-            if new_stop > cur_stop:
+            # Only re-trail when the stop rises by a meaningful amount —
+            # avoids per-cycle cancel/resubmit churn on sub-cent moves.
+            min_step = max(STOP_TRAIL_MIN_STEP_ABS, STOP_TRAIL_MIN_STEP_ATR * atr)
+            if new_stop >= cur_stop + min_step:
                 update_trade_stop(trade_id, round(new_stop, 4))
                 update_trade_trailing(trade_id, round(new_highest, 4), round(new_stop, 4))
                 logger.info(
@@ -349,14 +359,13 @@ def update_breakout_stops(alpaca_client, data_client=None) -> None:
                     f"(chandelier={chandelier:.2f} structure={structure:.2f} "
                     f"breakeven={breakeven:.2f} highest={new_highest:.2f})"
                 )
-                # Replace the working server-side stop so Alpaca enforces the
-                # raised level even when no workflow is running.
+                # Raise the working server-side stop in place so Alpaca enforces
+                # the new level even when no workflow is running.
                 try:
-                    from bot.trader import cancel_open_orders, submit_stop_only
+                    from bot.trader import replace_stop_order
                     qty = int(float(pos.get("quantity") or 0))
                     if qty > 0:
-                        cancel_open_orders(alpaca_client, ticker)
-                        submit_stop_only(alpaca_client, ticker, qty, round(new_stop, 2))
+                        replace_stop_order(alpaca_client, ticker, qty, round(new_stop, 2))
                 except Exception as _ro_err:
                     logger.warning(f"[portfolio] stop replace failed for {ticker}: {_ro_err}")
             elif new_highest > highest:

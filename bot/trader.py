@@ -302,6 +302,59 @@ def submit_stop_only(client, ticker: str, qty: int, stop_loss: float,
         return None
 
 
+def replace_stop_order(client, ticker: str, qty: int, stop_loss: float,
+                       dry_run: bool = False) -> Optional[str]:
+    """
+    Raise the working stop for a long position *in place* via
+    replace_order_by_id, instead of cancel-then-resubmit. Atomic on Alpaca's
+    side, so the position is never left without a working stop, and it avoids
+    the order churn that cancel+resubmit produced each scan cycle.
+
+    Falls back to submitting a fresh stop if no working stop order is found,
+    and to cancel+resubmit if the replace call itself fails.
+    Returns the (new) order id or None.
+    """
+    if dry_run:
+        logger.info(f"[trader] DRY_RUN: would replace stop for {ticker} → {stop_loss:.2f}")
+        return f"dry-{uuid.uuid4().hex[:8]}"
+
+    from alpaca.trading.requests import GetOrdersRequest, ReplaceOrderRequest
+    from alpaca.trading.enums import QueryOrderStatus
+
+    # Find the working stop-loss SELL leg (a stop or stop-limit order).
+    stop_order = None
+    try:
+        req = GetOrdersRequest(status=QueryOrderStatus.OPEN, symbols=[ticker])
+        for o in _retry(client.get_orders, req):
+            if str(o.side).lower().endswith("sell") and getattr(o, "stop_price", None) is not None:
+                stop_order = o
+                break
+    except Exception as e:
+        logger.warning(f"[trader] replace_stop_order lookup failed for {ticker}: {e}")
+
+    if stop_order is None:
+        # Nothing to modify — attach a fresh stop instead.
+        return submit_stop_only(client, ticker, qty, stop_loss, dry_run=dry_run)
+
+    def _replace():
+        rreq = ReplaceOrderRequest(
+            stop_price=round(stop_loss, 2),
+            limit_price=round(stop_loss * 0.995, 2),
+        )
+        new_order = client.replace_order_by_id(str(stop_order.id), rreq)
+        return str(new_order.id)
+
+    try:
+        new_id = _retry(_replace)
+        logger.info(f"[trader] Stop replaced in place: {ticker} → {stop_loss:.2f} id={new_id}")
+        return new_id
+    except Exception as e:
+        logger.warning(f"[trader] replace_order_by_id failed for {ticker} ({e}) — "
+                       f"falling back to cancel+resubmit")
+        cancel_open_orders(client, ticker)
+        return submit_stop_only(client, ticker, qty, stop_loss, dry_run=dry_run)
+
+
 def submit_oco_exit(client, ticker: str, qty: int, take_profit: float,
                     stop_loss: float, dry_run: bool = False) -> Optional[str]:
     """
