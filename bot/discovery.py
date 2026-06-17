@@ -3,14 +3,16 @@ Discovery scanner — screens a large-cap universe for active movers
 and promotes them into discovered_tickers.json for the next trading sessions.
 
 Criteria for promotion:
-  - Market cap >= $10B
   - Average daily volume >= 2M shares
   - Today's volume ratio >= 1.5x (actively moving)
   - |price change vs prev close| >= 1.5%  OR  within 3% of 52-week high
   - Not already in the static watchlist
-  - Max DISCOVERY_LIMIT tickers kept at once (ranked by volume ratio)
   - Claude second-opinion screen: rejects candidates without a clear
     business reason driving the activity
+  - Max DISCOVERY_LIMIT tickers kept at once (ranked by Claude confidence)
+
+Large-cap is enforced implicitly by the hand-curated UNIVERSE below — Alpaca
+does not expose market cap, so there is no live market-cap filter.
 """
 
 import json
@@ -157,6 +159,42 @@ def _save_discovered(data: dict) -> None:
         json.dump(data, f, indent=2)
 
 
+def _meta_entry(
+    ticker: str,
+    source: str,
+    *,
+    price: Optional[float] = None,
+    pct_change: float = 0.0,
+    vol_ratio: Optional[float] = None,
+    near_52wk: bool = False,
+    news_polarity: Optional[float] = None,
+    claude_confidence: Optional[float] = None,
+    claude_reasoning: Optional[str] = None,
+    gap_catalyst: bool = False,
+) -> dict:
+    """Build a discovered-ticker metadata entry in the canonical shape shared by
+    every writer (discovery scan + premarket gap promotion). Keeping the shape
+    in one place means the dashboard/display can read any entry uniformly,
+    regardless of which session produced it.
+
+    `pct_change` is SIGNED here (premarket gap folds in as-is). `gap_catalyst`
+    is True only for premarket gap-ups; the continuous session uses it to give
+    those tickers priority on the first scan cycle.
+    """
+    return {
+        "ticker":            ticker,
+        "source":            source,
+        "price":             round(float(price), 2) if price is not None else None,
+        "pct_change":        round(float(pct_change), 2),
+        "vol_ratio":         round(float(vol_ratio), 2) if vol_ratio is not None else None,
+        "near_52wk":         bool(near_52wk),
+        "news_polarity":     round(float(news_polarity), 2) if news_polarity is not None else None,
+        "claude_confidence": round(float(claude_confidence), 2) if claude_confidence is not None else None,
+        "claude_reasoning":  claude_reasoning,
+        "gap_catalyst":      bool(gap_catalyst),
+    }
+
+
 def run_discovery(static_tickers: list[str]) -> list[str]:
     """
     Screen UNIVERSE for active movers not already in static_tickers.
@@ -230,10 +268,24 @@ def run_discovery(static_tickers: list[str]) -> list[str]:
     logger.info(f"[discovery] Sending {len(pre_claude)} candidates to Claude for qualitative screen...")
     approved = claude_screen_discovery_candidates(pre_claude)
 
+    # Keep the names Claude was most confident in (not just the highest-volume).
+    approved.sort(key=lambda c: c.get("claude_confidence") or 0.0, reverse=True)
     promoted = approved[:DISCOVERY_LIMIT]
     promoted_tickers = [c["ticker"] for c in promoted]
 
-    meta = {c["ticker"]: c for c in promoted}
+    meta = {
+        c["ticker"]: _meta_entry(
+            c["ticker"],
+            source="discovery",
+            price=c.get("price"),
+            pct_change=c.get("pct_change", 0.0),
+            vol_ratio=c.get("vol_ratio"),
+            near_52wk=c.get("near_52wk", False),
+            claude_confidence=c.get("claude_confidence"),
+            claude_reasoning=c.get("claude_reasoning"),
+        )
+        for c in promoted
+    }
     _save_discovered({"tickers": promoted_tickers, "meta": meta})
 
     logger.info(f"[discovery] {len(promoted)} tickers promoted after Claude screen: {promoted_tickers}")

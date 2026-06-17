@@ -1181,19 +1181,22 @@ def session_discovery() -> None:
     table.add_column("Price",      justify="right")
     table.add_column("Chg %",      justify="right")
     table.add_column("Vol Ratio",  justify="right")
-    table.add_column("Mkt Cap $B", justify="right")
+    table.add_column("Claude Conf", justify="right")
     table.add_column("Near 52wk?")
 
     for t in promoted:
         m = meta.get(t, {})
-        chg = m.get("pct_change", 0)
+        chg = m.get("pct_change") or 0.0
         color = "green" if chg >= 0 else "red"
+        price = m.get("price")
+        vr    = m.get("vol_ratio")
+        conf  = m.get("claude_confidence")
         table.add_row(
             t,
-            f"${m.get('price', 0):.2f}",
+            f"${price:.2f}" if price is not None else "—",
             f"[{color}]{chg:+.1f}%[/{color}]",
-            f"{m.get('vol_ratio', 0):.1f}x",
-            f"${m.get('mkt_cap_b', 0):.0f}B" if m.get("mkt_cap_b") else "—",
+            f"{vr:.1f}x" if vr is not None else "—",
+            f"{conf * 100:.0f}%" if conf is not None else "—",
             "yes" if m.get("near_52wk") else "no",
         )
     console.print(table)
@@ -1248,7 +1251,7 @@ def session_premarket(alpaca_client=None, data_client=None) -> None:
     # so we compute it directly from the snapshot here.
     from bot.data     import fetch_snapshots_batch
     from bot.news     import get_news_batch
-    from bot.discovery import _load_discovered, _save_discovered
+    from bot.discovery import _load_discovered, _save_discovered, _meta_entry
 
     NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
     all_tickers  = get_all_trade_tickers()
@@ -1298,13 +1301,14 @@ def session_premarket(alpaca_client=None, data_client=None) -> None:
         for ticker, gap, pol in sorted(gap_ups_with_news, key=lambda x: x[1], reverse=True)[:5]:
             if ticker not in existing:
                 existing.add(ticker)
-                meta[ticker] = {
-                    "ticker":        ticker,
-                    "gap_pct":       round(gap, 2),
-                    "news_polarity": round(pol, 2),
-                    "gap_catalyst":  True,
-                    "source":        "premarket_gap_news",
-                }
+                meta[ticker] = _meta_entry(
+                    ticker,
+                    source="premarket_gap_news",
+                    price=snapshots.get(ticker, {}).get("price"),
+                    pct_change=gap,
+                    news_polarity=pol,
+                    gap_catalyst=True,
+                )
                 logger.info(f"[premarket] Promoted gap-catalyst: {ticker} +{gap:.1f}%")
 
         _save_discovered({"tickers": list(existing), "meta": meta})
