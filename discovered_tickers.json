@@ -1,4 +1,14 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "JPM"
+  ],
+  "meta": {
+    "JPM": {
+      "ticker": "JPM",
+      "gap_pct": 3.59,
+      "news_polarity": 0.12,
+      "gap_catalyst": true,
+      "source": "premarket_gap_news"
+    }
+  }
 }
