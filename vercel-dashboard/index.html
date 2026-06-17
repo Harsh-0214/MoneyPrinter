@@ -70,11 +70,10 @@ header{
   background:rgba(0,0,0,0.82);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);z-index:50;
 }
 .logo{
-  width:38px;height:38px;border-radius:10px;flex-shrink:0;
-  background:linear-gradient(135deg,#8B1A1A 0%,#B22222 55%,#CC2222 100%);
-  display:flex;align-items:center;justify-content:center;font-size:19px;
-  box-shadow:0 0 22px rgba(178,34,34,0.55),0 0 48px rgba(178,34,34,0.2);
+  width:44px;height:44px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
 }
+.logo img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 0 10px rgba(178,34,34,0.5))}
 @keyframes shimmer{0%,100%{color:#B22222;text-shadow:none}50%{color:#e03535;text-shadow:0 0 18px rgba(178,34,34,0.65)}}
 h1{font-size:1.22rem;font-weight:800;letter-spacing:-.3px;line-height:1.15;font-family:var(--sans)}
 h1 em{font-style:normal;animation:shimmer 3.5s ease-in-out infinite}
@@ -380,7 +379,7 @@ footer a:hover{color:var(--cardinal)}
 <div class="wrap">
 
 <header>
-  <div class="logo">💹</div>
+  <div class="logo"><img src="logo.png" alt="Cardinal"></div>
   <div>
     <h1>Money<em>Printer</em></h1>
     <div class="brand-sub">by Cardinal</div>
