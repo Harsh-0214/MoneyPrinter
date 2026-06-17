@@ -2,6 +2,11 @@ name: Trading Day (split sessions)
 
 on:
   workflow_dispatch:
+    inputs:
+      max_runtime_min:
+        description: "Max session runtime in minutes (morning=210, afternoon=180)"
+        required: false
+        default: "210"
 
 concurrency:
   group: trading-day
@@ -100,7 +105,7 @@ jobs:
           DRY_RUN:                 ${{ vars.DRY_RUN || 'false' }}
           USE_CLAUDE:              ${{ vars.USE_CLAUDE || 'false' }}
           BACKTEST_PARITY:         ${{ vars.BACKTEST_PARITY || 'true' }}
-          SESSION_MAX_RUNTIME_MIN: "310"
+          SESSION_MAX_RUNTIME_MIN: ${{ github.event.inputs.max_runtime_min || '210' }}
         run: python main.py --session continuous
 
       - name: Commit trade log
