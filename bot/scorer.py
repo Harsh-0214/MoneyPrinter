@@ -806,6 +806,14 @@ def score_ticker(
         vel_penalty *= 0.5
     elif bq == "hype":
         vel_penalty *= 2.0
+
+    # Stocks in a confirmed multi-timeframe uptrend (full EMA stack + strong
+    # trend strength) are not over-extended — they are momentum names doing
+    # what they do. Halve the velocity penalty so genuine trend-following
+    # setups (NVDA, ARM, MRVL etc.) aren't systematically blocked.
+    if ema_full_bull and float(ind.get("adx", 0)) > 25:
+        vel_penalty *= 0.5
+
     vel_penalty = min(vel_penalty, 0.45)  # hard cap
 
     total_conf_adj = hype.get("net_confidence_adj", 0) - vel_penalty
@@ -900,8 +908,8 @@ def score_ticker(
                 bull = round(bull / 1.25)
                 logger.info(f"[{ticker}] Hype override: trigger boost cancelled due to velocity penalty {total_conf_adj:.2f}")
         else:
-            net = round(net * 0.75)
-            bull = round(bull * 0.75)
+            net = round(net * 0.88)
+            bull = round(bull * 0.88)
             signals_against.append("no_fresh_trigger")
             logger.info(
                 f"[{ticker}] NO fresh bullish triggers "

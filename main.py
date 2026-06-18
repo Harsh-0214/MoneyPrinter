@@ -442,12 +442,18 @@ def get_macro_context() -> dict:
 
 def run_full_scan(session: str, macro_context: dict,
                   alpaca_client=None, data_client=None,
-                  extra_tickers: list | None = None) -> list[dict]:
+                  extra_tickers: list | None = None,
+                  premarket_buy_tickers: set | None = None) -> list[dict]:
     """
     Score all tickers and return actionable signal list.
 
     Applies SPY trend filter: if bearish_market=True, all buy signals are
     dropped and only shorts with confidence > 0.80 pass through.
+
+    premarket_buy_tickers: tickers the premarket session scored as strong buys
+    (conf >= 0.75). These receive a +0.15 confidence carry-forward boost when
+    they land within 0.15 of the buy threshold in the current cycle, ensuring
+    pre-market conviction isn't lost when the fresh-trigger has aged out.
     """
     from bot.indicators import get_indicators_batch
     from bot.news        import get_news_batch
@@ -555,9 +561,28 @@ def run_full_scan(session: str, macro_context: dict,
     for score in signals_all:
         action     = score.get("action", "hold")
         confidence = score.get("confidence", 0.0)
+        ticker     = score.get("ticker", "")
 
-        # Apply strategy/confidence gates
-        if action == "buy" and (confidence < 0.65 or score.get("strategy") == "mixed"):
+        # Pre-market carry-forward: boost tickers the premarket session confirmed
+        # as strong buys when they are within 0.15 of the buy gate this cycle.
+        # This prevents valid setups from dropping out simply because the
+        # fresh-trigger that fired at 9:00 AM has already aged out by 9:30 AM.
+        if (premarket_buy_tickers and ticker in premarket_buy_tickers
+                and action == "hold" and 0.50 <= confidence < 0.65):
+            confidence += 0.15
+            action = "buy"
+            score["confidence"] = confidence
+            score["action"] = "buy"
+            score.setdefault("signals_triggered", []).append("premarket_carry_forward")
+            logger.info(
+                f"[{ticker}] premarket carry-forward: conf boosted to {confidence:.2f}"
+            )
+
+        # Apply strategy/confidence gates.
+        # 'mixed' signals are allowed through as long as confidence >= 0.65;
+        # they are handled by the execute_signals pipeline which applies its
+        # own position-sizing and stop-width checks.
+        if action == "buy" and confidence < 0.65:
             action = "hold"
             score["action"] = "hold"
         elif action in ("short", "sell") and confidence < 0.70:
@@ -782,7 +807,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
             _dl    = float(_ind.get("day_low") or 0)
             _cp    = float(_ind.get("current_price") or entry_price or 0)
             _rng   = _dh - _dl
-            if _vr < 1.5 or (_rng > 0 and _cp < _dl + 0.6 * _rng):
+            if _vr < 1.3 or (_rng > 0 and _cp < _dl + 0.6 * _rng):
                 log_rejection(
                     session=session, ticker=ticker, net_score=sig.get("net_score", 0),
                     confidence=confidence, action=action,
@@ -1227,6 +1252,34 @@ def session_premarket(alpaca_client=None, data_client=None) -> None:
     all_decisions = run_full_scan("premarket", macro,
                                   alpaca_client=alpaca_client, data_client=data_client)
 
+    # Persist strong pre-market buy signals so the 9:30 continuous session can
+    # carry them forward via a confidence boost on cycle 1-3 — preventing valid
+    # setups from dropping out when the fresh-trigger ages out by market open.
+    _pm_buy_signals = [s for s in all_decisions
+                       if s.get("action") == "buy" and s.get("confidence", 0) >= 0.75]
+    if _pm_buy_signals:
+        from bot.discovery import _load_discovered, _save_discovered, _meta_entry
+        _disc = _load_discovered()
+        _ex   = set(_disc.get("tickers", []))
+        _meta = _disc.get("meta", {})
+        for _sig in _pm_buy_signals:
+            _t = _sig["ticker"]
+            _ex.add(_t)
+            entry = _meta_entry(_t, source="premarket_buy",
+                                price=_sig.get("entry_price"),
+                                pct_change=0, gap_catalyst=False,
+                                claude_confidence=_sig.get("confidence"))
+            entry["premarket_buy"]  = True
+            entry["premarket_conf"] = round(_sig.get("confidence", 0), 2)
+            entry["premarket_strategy"] = _sig.get("strategy", "")
+            _meta[_t] = entry
+            logger.info(f"[premarket] Saved carry-forward buy: {_t} conf={_sig.get('confidence'):.2f}")
+        _save_discovered({"tickers": list(_ex), "meta": _meta})
+        console.print(
+            f"[bold green]Pre-market carry-forward signals saved: "
+            f"{[s['ticker'] for s in _pm_buy_signals]}[/bold green]"
+        )
+
     # Surface current holdings vs DB before the open
     if alpaca_client:
         try:
@@ -1380,7 +1433,7 @@ def session_continuous(alpaca_client, data_client) -> None:
     except Exception as _rec_err:
         logger.warning(f"[main] reconciliation failed: {_rec_err}")
 
-    # Load gap-catalyst tickers flagged by premarket session
+    # Load gap-catalyst tickers and pre-market buy signals flagged by premarket session
     from bot.discovery import _load_discovered
     _pm_disc = _load_discovered()
     gap_catalyst_tickers = [
@@ -1389,6 +1442,12 @@ def session_continuous(alpaca_client, data_client) -> None:
     ]
     if gap_catalyst_tickers:
         console.print(f"[bold yellow]Gap-catalyst tickers from pre-market: {gap_catalyst_tickers}[/bold yellow]")
+    _premarket_buy_tickers = {
+        t for t, m in _pm_disc.get("meta", {}).items()
+        if m.get("premarket_buy") and float(m.get("premarket_conf", 0)) >= 0.75
+    }
+    if _premarket_buy_tickers:
+        console.print(f"[bold green]Pre-market carry-forward tickers: {_premarket_buy_tickers}[/bold green]")
 
     # ── One-time session setup ─────────────────────────────────────────────
     global _session_start_equity, _daily_loss_halt
@@ -1600,8 +1659,12 @@ def session_continuous(alpaca_client, data_client) -> None:
 
         # ── Scan for new signals ───────────────────────────────────────────
         session_label = "market_open" if cycle == 1 else "continuous"
+        # Carry pre-market buy conviction forward for the first 3 cycles (~30 min).
+        # After that the market has had time to produce its own fresh triggers.
+        _pm_ctx = _premarket_buy_tickers if cycle <= 3 else None
         signals = run_full_scan(session_label, macro, alpaca_client, data_client,
-                                extra_tickers=extra_tickers)
+                                extra_tickers=extra_tickers,
+                                premarket_buy_tickers=_pm_ctx)
         if signals:
             execute_signals(signals, alpaca_client, data_client, macro,
                             session_label, max_trades=MAX_TRADES_PER_SESSION)

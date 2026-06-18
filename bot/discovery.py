@@ -265,8 +265,24 @@ def run_discovery(static_tickers: list[str]) -> list[str]:
     candidates.sort(key=lambda x: x["vol_ratio"], reverse=True)
     pre_claude = candidates[:DISCOVERY_LIMIT * 2]
 
-    logger.info(f"[discovery] Sending {len(pre_claude)} candidates to Claude for qualitative screen...")
-    approved = claude_screen_discovery_candidates(pre_claude)
+    # Auto-pass very strong movers (vol >= 2x AND move >= 7%) without waiting
+    # for Claude to find a fundamental narrative. At this magnitude the price
+    # action itself is the signal — Claude was rejecting real moves like HOOD
+    # +9.1% / 2.3x simply because the headline didn't frame growth positively.
+    auto_pass = [c for c in pre_claude
+                 if c["vol_ratio"] >= 2.0 and c["pct_change"] >= 7.0]
+    to_screen  = [c for c in pre_claude if c not in auto_pass]
+    for c in auto_pass:
+        c["claude_reasoning"]  = "auto-pass: vol>=2x and move>=7% (strong price action)"
+        c["claude_confidence"] = 0.70
+        logger.info(
+            f"[discovery] AUTO-PASS {c['ticker']}: chg={c['pct_change']:+.1f}% "
+            f"vol={c['vol_ratio']:.1f}x — bypassing Claude screen"
+        )
+
+    logger.info(f"[discovery] Sending {len(to_screen)} candidates to Claude for qualitative screen...")
+    claude_approved = claude_screen_discovery_candidates(to_screen)
+    approved = auto_pass + claude_approved
 
     # Keep the names Claude was most confident in (not just the highest-volume).
     approved.sort(key=lambda c: c.get("claude_confidence") or 0.0, reverse=True)
