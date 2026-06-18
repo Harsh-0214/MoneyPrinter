@@ -1,14 +1,19 @@
 {
   "tickers": [
-    "JPM"
+    "MRNA"
   ],
   "meta": {
-    "JPM": {
-      "ticker": "JPM",
-      "gap_pct": 3.59,
-      "news_polarity": 0.12,
-      "gap_catalyst": true,
-      "source": "premarket_gap_news"
+    "MRNA": {
+      "ticker": "MRNA",
+      "source": "discovery",
+      "price": 61.79,
+      "pct_change": 11.55,
+      "vol_ratio": 1.88,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "An FDA-related development ('Surprising FDA View') appears to be the catalyst driving the move, which is an acceptable fundamental driver, but the vague headline framing and proximity to 52-week highs warrant caution and further verification of the specific regulatory catalyst before acting.",
+      "gap_catalyst": false
     }
   }
 }
