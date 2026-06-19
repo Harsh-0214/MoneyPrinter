@@ -16,7 +16,7 @@ from bot.risk import record_trade_pnl
 # so the chandelier stop can do its job (with stale-exit suppression below).
 HOLD_BY_STRATEGY = {
     "trend_follow":      7,
-    "mean_reversion":    5,
+    "mean_reversion":    0,   # intraday scalp — exit same day (matches time_horizon="scalp")
     "news_momentum":     3,
     "breakdown":         7,
     "mixed":             5,
@@ -57,18 +57,39 @@ def get_open_positions(alpaca_client=None) -> list[dict]:
     return enriched
 
 
+def _is_stale_price(current_price, entry_price) -> bool:
+    """Return True when current_price looks like an API fallback to entry_price."""
+    if current_price is None or entry_price is None:
+        return False
+    cp = float(current_price)
+    ep = float(entry_price)
+    if cp == ep:
+        return True
+    if ep > 0 and abs(cp - ep) / ep > 0.25:
+        return True
+    return False
+
+
 def check_stops(alpaca_client) -> list[dict]:
     """
     Compare open positions to their stop loss levels.
     Returns list of positions that have breached their stop loss.
+    Skips positions where current_price appears to be an API fallback.
     """
     positions = get_open_positions(alpaca_client)
     breached = []
     for pos in positions:
         sl = pos.get("stop_loss")
         cp = pos.get("current_price") or pos.get("entry_price")
+        ep = pos.get("entry_price")
         action = pos.get("action", "buy")
         if sl is None or cp is None:
+            continue
+        if _is_stale_price(cp, ep):
+            logger.warning(
+                f"[portfolio] {pos['ticker']} current_price={cp} looks stale "
+                f"(entry={ep}) — skipping stop check"
+            )
             continue
         if action == "buy" and float(cp) <= float(sl):
             logger.warning(f"[portfolio] STOP HIT: {pos['ticker']} price={cp} sl={sl}")
@@ -83,14 +104,22 @@ def check_targets(alpaca_client) -> list[dict]:
     """
     Compare open positions to their take profit targets.
     Returns list of positions that have hit their target.
+    Skips positions where current_price appears to be an API fallback.
     """
     positions = get_open_positions(alpaca_client)
     targets_hit = []
     for pos in positions:
         tp = pos.get("take_profit")
         cp = pos.get("current_price") or pos.get("entry_price")
+        ep = pos.get("entry_price")
         action = pos.get("action", "buy")
         if tp is None or cp is None:
+            continue
+        if _is_stale_price(cp, ep):
+            logger.warning(
+                f"[portfolio] {pos['ticker']} current_price={cp} looks stale "
+                f"(entry={ep}) — skipping target check"
+            )
             continue
         if action == "buy" and float(cp) >= float(tp):
             logger.info(f"[portfolio] TARGET HIT: {pos['ticker']} price={cp} tp={tp}")

@@ -175,7 +175,7 @@ def get_fundamental_quality(ticker: str) -> dict:
 # 100+, trade counts should hold. If they collapse, drop the gate to 0.47
 # (net >= 70 under this scale).
 CONF_SCALE             = 150.0
-MIN_NET_SCORE_BUY      = 65    # strong conviction required
+MIN_NET_SCORE_BUY      = 98    # conf = 98/150 = 0.653 ≈ MIN_CONFIDENCE_BUY threshold
 MIN_CONFIDENCE_BUY     = 0.65  # conf = net/CONF_SCALE
 MIN_NET_SCORE_SHORT    = 70    # shorts need strong conviction, especially in bull markets
 MIN_CONFIDENCE_SHORT   = 0.70  # shorts are riskier

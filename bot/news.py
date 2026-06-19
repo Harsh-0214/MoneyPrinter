@@ -32,7 +32,36 @@ _HEADERS = {
 
 # ── Sentiment ──────────────────────────────────────────────────────────────────
 
+_FIN_POSITIVE = [
+    "beats earnings", "beat earnings", "raises guidance", "raised guidance",
+    "record revenue", "record earnings", "dividend increase", "buyback",
+    "upgrade", "buy rating", "price target raised", "strong demand",
+    "market share gain", "beat estimates", "raised outlook", "blowout quarter",
+    "fda approved", "major contract", "strong quarter",
+]
+_FIN_NEGATIVE = [
+    "misses earnings", "missed earnings", "lowers guidance", "lowered guidance",
+    "sec investigation", "class action", "bankruptcy", "delisted",
+    "doj probe", "going concern", "fraud", "recall", "ceo resigned",
+    "revenue miss", "guidance cut", "downgrade", "sell rating",
+    "below expectations", "disappointing results",
+]
+
+
+def _financial_sentiment_override(text: str) -> Optional[float]:
+    """Return polarity override for finance-specific phrases, bypassing TextBlob."""
+    t = text.lower()
+    pos = sum(1 for p in _FIN_POSITIVE if p in t)
+    neg = sum(1 for n in _FIN_NEGATIVE if n in t)
+    if pos or neg:
+        return min(1.0, max(-1.0, (pos - neg) * 0.4))
+    return None
+
+
 def _sentiment(text: str) -> float:
+    override = _financial_sentiment_override(text)
+    if override is not None:
+        return override
     try:
         return TextBlob(str(text)).sentiment.polarity
     except Exception:

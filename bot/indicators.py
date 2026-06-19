@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -16,6 +17,11 @@ import ta.volume as ta_volume
 from bot.data import fetch_daily_bars, fetch_intraday_bars, fetch_snapshot
 
 logger = logging.getLogger(__name__)
+
+# IEX free tier only captures ~35% of consolidated tape volume.
+# Apply a scale factor when using IEX so volume-ratio signals reflect reality.
+_VOLUME_FEED = os.getenv("VOLUME_FEED", "iex").lower()
+_VOLUME_SCALE = float(os.getenv("VOLUME_SCALE_FACTOR", "2.8" if _VOLUME_FEED == "iex" else "1.0"))
 
 _cache: dict = {}
 
@@ -608,8 +614,8 @@ def compute_indicators_from_df(ticker: str, df: pd.DataFrame,
 
     # ── VOLUME: Volume Ratio ───────────────────────────────────────────────
     try:
-        today_vol  = float(vol.iloc[-1])
-        avg_vol_20 = float(vol.iloc[-21:-1].mean()) if len(vol) >= 21 else float(vol.mean())
+        today_vol  = float(vol.iloc[-1]) * _VOLUME_SCALE  # scale for IEX undercount
+        avg_vol_20 = float(vol.iloc[-21:-1].mean()) * _VOLUME_SCALE if len(vol) >= 21 else float(vol.mean()) * _VOLUME_SCALE
         result["volume_today"] = today_vol
         result["volume_avg20"] = avg_vol_20
         result["volume_ratio"] = today_vol / avg_vol_20 if avg_vol_20 > 0 else None
@@ -659,7 +665,7 @@ def get_indicators(ticker: str) -> dict:
     """Fetch data and compute all indicators for a ticker. Returns clean dict."""
 
     _now = datetime.now()
-    _bucket = (_now.minute // 15) * 15
+    _bucket = (_now.minute // 10) * 10   # 10-min bucket matches scan loop cadence
     cache_key = f"{ticker}_{_now.strftime('%Y%m%d_%H')}_{_bucket:02d}"
     if cache_key in _cache:
         logger.debug(f"[indicators] cache hit for {ticker}")

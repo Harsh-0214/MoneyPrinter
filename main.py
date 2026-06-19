@@ -62,7 +62,7 @@ USE_CLAUDE    = os.getenv("USE_CLAUDE", "false").lower() == "true"
 # chandelier only. The extra live-only exits (partial exits, trailing stops,
 # signal-flip closes, thesis rescore, scale-ins) are disabled because the
 # backtest results were produced without them.
-BACKTEST_PARITY = os.getenv("BACKTEST_PARITY", "true").lower() == "true"
+BACKTEST_PARITY = os.getenv("BACKTEST_PARITY", "false").lower() == "true"
 
 # GitHub-hosted jobs are killed at 6h; leave room for setup + the commit step.
 SESSION_MAX_RUNTIME_MIN = int(os.getenv("SESSION_MAX_RUNTIME_MIN", "310"))
@@ -166,15 +166,6 @@ def _check_sector_cap(ticker: str, alpaca_client=None) -> Optional[str]:
     if alpaca_client:
         try:
             for p in get_positions(alpaca_client):
-                # Deeply underwater positions (-10% or worse) don't count toward
-                # the sector cap — they're not healthy positions worth protecting.
-                plpc = p.get("unrealized_plpc")
-                if plpc is not None and plpc < -0.10:
-                    logger.debug(
-                        f"[sector_cap] {p['symbol']} excluded from cap "
-                        f"(unrealized P&L: {plpc:.1%})"
-                    )
-                    continue
                 open_tickers.add(p["symbol"])
         except Exception:
             pass
@@ -187,19 +178,34 @@ def _check_sector_cap(ticker: str, alpaca_client=None) -> Optional[str]:
 
 
 def _quick_news_recheck(ticker: str) -> bool:
-    """Returns False if a breaking negative headline found in last 5 minutes."""
+    """
+    Returns False if a fresh (last-hour) strongly negative headline is found.
+    Uses yfinance per-ticker news for precision, scored via news.py sentiment.
+    Only blocks when the net news score delta is ≤ -10 points.
+    """
     try:
-        import feedparser
-        feed = feedparser.parse("https://finance.yahoo.com/rss/")
-        for entry in feed.entries[:20]:
-            title = (getattr(entry, "title", "") or "").lower()
-            if ticker.lower() in title:
-                negative_words = ["crash", "halt", "sec", "fraud", "bankrupt", "recall", "lawsuit", "downgrade"]
-                if any(w in title for w in negative_words):
-                    logger.warning(f"[main] {ticker} breaking negative headline before order: {title[:100]}")
-                    return False
-    except Exception:
-        pass
+        import time as _t
+        import yfinance as yf
+        from bot.news import _sentiment, keyword_amplifier
+        ticker_obj = yf.Ticker(ticker)
+        articles = ticker_obj.news or []
+        cutoff = _t.time() - 3600  # last hour
+        fresh = [a for a in articles if a.get("providerPublishTime", 0) > cutoff]
+        if not fresh:
+            return True
+        combined_text = " ".join(a.get("title", "") for a in fresh)
+        bull_boost, bear_boost = keyword_amplifier(combined_text)
+        polarity_sum = sum(_sentiment(a.get("title", "")) for a in fresh)
+        # Convert polarity to approximate score delta
+        news_delta = polarity_sum * 10 + bull_boost - bear_boost
+        if news_delta <= -10:
+            logger.warning(
+                f"[main] {ticker} pre-order news recheck: negative delta={news_delta:.1f} "
+                f"(bear_boost={bear_boost}) — blocking order"
+            )
+            return False
+    except Exception as _e:
+        logger.debug(f"[main] news recheck failed for {ticker}: {_e}")
     return True
 
 
@@ -332,6 +338,24 @@ def is_market_open_today() -> bool:
     today = datetime.utcnow().strftime("%Y-%m-%d")
     schedule = nyse.schedule(start_date=today, end_date=today)
     return not schedule.empty
+
+
+def get_market_close_et() -> tuple:
+    """Return (hour, minute) ET of today's market close. Handles early closes."""
+    try:
+        from zoneinfo import ZoneInfo
+        nyse = mcal.get_calendar("NYSE")
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        schedule = nyse.schedule(start_date=today, end_date=today)
+        if schedule.empty:
+            return (16, 0)
+        close_utc = schedule.iloc[0]["market_close"]
+        # pandas_market_calendars returns tz-aware UTC timestamps
+        close_et = close_utc.astimezone(ZoneInfo("America/New_York"))
+        return (close_et.hour, close_et.minute)
+    except Exception as e:
+        logger.warning(f"[main] get_market_close_et failed: {e} — using default 16:00")
+        return (16, 0)
 
 
 def _has_open_position(ticker: str, alpaca_client=None) -> bool:
@@ -642,7 +666,19 @@ def execute_signals(signals: list, alpaca_client, data_client,
     account         = get_account(alpaca_client)
     portfolio_value = account.get("portfolio_value", 100_000)
     current_equity  = account.get("equity", portfolio_value)
+    buying_power    = account.get("buying_power", portfolio_value)
+    daytrade_count  = account.get("daytrade_count", 0)
     init_daily_state(portfolio_value)
+    from bot.risk import check_kill_switch as _check_ks
+    _check_ks(current_equity)  # C2: kill switch now checks total equity delta (incl. unrealized)
+
+    # ── PDT guard (Pattern Day Trader rule) ───────────────────────────────
+    _pdt_blocked = (current_equity < 25_000 and daytrade_count >= 3 and not DRY_RUN)
+    if _pdt_blocked:
+        logger.warning(
+            f"[main] PDT guard: equity=${current_equity:,.2f} <$25k, "
+            f"daytrade_count={daytrade_count} — new intraday buys blocked"
+        )
 
     # ── Daily loss circuit breaker ─────────────────────────────────────────
     if _session_start_equity is None:
@@ -663,6 +699,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
     ranked  = ranked[:max_trades + 6]
 
     executed = 0
+    _actioned_this_cycle: set = set()
     for sig in ranked:
         if is_kill_switch_active():
             log_rejection(
@@ -715,6 +752,11 @@ def execute_signals(signals: list, alpaca_client, data_client,
             breakout_level = None
 
         if entry_price == 0:
+            continue
+
+        # ── Per-cycle dedup: never act on same ticker twice in one scan ──
+        if ticker in _actioned_this_cycle:
+            logger.debug(f"[execute] {ticker} already actioned this cycle — skipping duplicate")
             continue
 
         # ── FIX 3b: per-session new-entry cap (mirrors backtest 2/day) ────
@@ -807,6 +849,16 @@ def execute_signals(signals: list, alpaca_client, data_client,
             )
             continue
 
+        # ── PDT guard: block new day-trade buys on sub-$25k accounts ────
+        if _pdt_blocked and action == "buy":
+            log_rejection(
+                session=session, ticker=ticker, net_score=sig.get("net_score", 0),
+                confidence=confidence, action=action, rejection_reason="pdt_limit",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0), strategy=strategy,
+            )
+            continue
+
         # Short selling is disabled pending dedicated short indicator set
         if action in ("short", "sell") and not _has_open_position(ticker, alpaca_client):
             continue  # not an open position exit — skip
@@ -835,6 +887,16 @@ def execute_signals(signals: list, alpaca_client, data_client,
                     limit_price=limit_price,
                     dry_run=DRY_RUN,
                 )
+                # H4: verify limit sell fills; fallback to market if it doesn't
+                if not DRY_RUN:
+                    sell_fill = check_order_filled(alpaca_client, order_id, timeout=120)
+                    if sell_fill.get("status") not in ("filled",):
+                        logger.warning(
+                            f"[execute] SELL limit for {ticker} did not fill "
+                            f"({sell_fill.get('status')}) — submitting market sell"
+                        )
+                        from bot.trader import submit_market_sell as _mktsel
+                        _mktsel(alpaca_client, ticker, pos_qty, dry_run=False)
                 console.print(
                     f"[red]✓ SELL (EXIT) {pos_qty}x {ticker} @ ${entry_price:.2f} "
                     f"(limit ${limit_price:.2f}) | AI recommended exit[/red]"
@@ -967,6 +1029,16 @@ def execute_signals(signals: list, alpaca_client, data_client,
             except Exception as _exp_err:
                 logger.warning(f"[execute] exposure cap check failed: {_exp_err}")
 
+        # ── Buying power check: skip if we can't afford even 1 share ─────
+        if action == "buy" and entry_price > 0 and buying_power < entry_price:
+            log_rejection(
+                session=session, ticker=ticker, net_score=sig.get("net_score", 0),
+                confidence=confidence, action=action, rejection_reason="insufficient_buying_power",
+                bull_score=sig.get("bull_score", 0),
+                bear_score=sig.get("bear_score", 0), strategy=strategy,
+            )
+            continue
+
         pos = calculate_position(
             portfolio_value=portfolio_value,
             confidence=confidence,
@@ -975,6 +1047,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
             vix_multiplier=macro_context.get("vix_multiplier", 1.0),
             high_vol_flag=high_vol,
             stop_loss=sig.get("stop_loss"),   # FIX 2a: size off true stop distance
+            buying_power=buying_power,        # C1: cap by actual available capital
         )
 
         shares = pos["shares"]
@@ -1112,6 +1185,26 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 except Exception as _so_err:
                     logger.error(f"[execute] stop-only attach failed for {ticker}: {_so_err}")
 
+            # C3: verify bracket legs exist after parent fill; attach OCO fallback if missing
+            if use_bracket and fill_status == "open" and not DRY_RUN:
+                try:
+                    from bot.trader import has_open_exit_order, submit_oco_exit
+                    if not has_open_exit_order(alpaca_client, ticker):
+                        logger.critical(
+                            f"[execute] BRACKET LEGS MISSING for {ticker} — "
+                            f"attaching OCO fallback (sl={sig_stop} tp={sig_target})"
+                        )
+                        submit_oco_exit(
+                            alpaca_client, ticker, shares,
+                            take_profit=float(sig_target),
+                            stop_loss=float(sig_stop),
+                            dry_run=DRY_RUN,
+                        )
+                    else:
+                        logger.debug(f"[execute] {ticker} bracket verified — exit orders present")
+                except Exception as _bv_err:
+                    logger.error(f"[execute] bracket verification failed for {ticker}: {_bv_err}")
+
             log_trade(
                 session=session,
                 ticker=ticker,
@@ -1140,6 +1233,7 @@ def execute_signals(signals: list, alpaca_client, data_client,
                 breakout_level=breakout_level,
             )
             executed += 1
+            _actioned_this_cycle.add(ticker)
             if action in ("buy", "short"):
                 _session_new_entries += 1   # FIX 3b
             horizon    = sig.get("time_horizon", "swing")
@@ -1345,8 +1439,10 @@ def session_continuous(alpaca_client, data_client) -> None:
     SCAN_INTERVAL = 10          # minutes between scans
     MOVER_SCAN_EVERY = 3        # run rising-movers screen every N cycles (~15 min)
     MARKET_OPEN_ET  = (9,  30)  # 9:30 AM ET
-    SCALP_CLOSE_ET  = (15, 45)  # 3:45 PM ET — close scalps before market close
-    LOOP_END_ET     = (16, 0)   # 4:00 PM ET — stop looping
+    # L1: use actual market close from calendar (handles early closes / half-days)
+    _close_et   = get_market_close_et()
+    SCALP_CLOSE_ET  = (_close_et[0], max(0, _close_et[1] - 15))  # 15 min before close
+    LOOP_END_ET     = _close_et  # stop at actual close time
 
     ET = ZoneInfo("America/New_York")  # handles EST/EDT automatically
 
@@ -1679,7 +1775,7 @@ def session_eod_summary(alpaca_client) -> None:
 
     log_daily_summary(
         date=today,
-        starting_value=portfolio_value - gross_pnl,
+        starting_value=_session_start_equity or (portfolio_value - gross_pnl),
         ending_value=portfolio_value,
         cash=cash,
         total_trades=len(closed),

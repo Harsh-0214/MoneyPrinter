@@ -79,7 +79,7 @@ def build_data_client() -> object:
 
 
 def get_account(client) -> dict:
-    """Return account cash, portfolio_value, buying_power."""
+    """Return account cash, portfolio_value, buying_power, equity, daytrade_count."""
     def _get():
         acc = client.get_account()
         return {
@@ -87,12 +87,13 @@ def get_account(client) -> dict:
             "portfolio_value": float(acc.portfolio_value),
             "buying_power":    float(acc.buying_power),
             "equity":          float(acc.equity),
+            "daytrade_count":  int(acc.daytrade_count) if hasattr(acc, "daytrade_count") and acc.daytrade_count is not None else 0,
         }
     try:
         return _retry(_get)
     except Exception as e:
         logger.error(f"[trader] get_account failed: {e}")
-        return {"cash": 0, "portfolio_value": 0, "buying_power": 0, "equity": 0}
+        return {"cash": 0, "portfolio_value": 0, "buying_power": 0, "equity": 0, "daytrade_count": 0}
 
 
 def get_positions(client, raise_on_error: bool = False) -> list[dict]:
@@ -200,7 +201,6 @@ def submit_order(
                 take_profit=TakeProfitRequest(limit_price=round(take_profit, 2)),
                 stop_loss=StopLossRequest(
                     stop_price=round(stop_loss, 2),
-                    limit_price=round(stop_loss * 0.995, 2),
                 ),
             )
         else:
@@ -221,6 +221,64 @@ def submit_order(
     except Exception as e:
         logger.error(f"[trader] submit_order failed for {ticker}: {e}")
         raise
+
+
+def submit_market_sell(client, ticker: str, qty: int, dry_run: bool = False) -> Optional[str]:
+    """Submit a market sell order to close a position. Used as fallback when limit sell doesn't fill."""
+    if dry_run:
+        fake_id = f"dry-{uuid.uuid4().hex[:8]}"
+        logger.info(f"[trader] DRY_RUN: would submit market sell {qty} {ticker} -> {fake_id}")
+        return fake_id
+
+    from alpaca.trading.requests import MarketOrderRequest
+    from alpaca.trading.enums import OrderSide, TimeInForce
+
+    def _submit():
+        req = MarketOrderRequest(
+            symbol=ticker,
+            qty=qty,
+            side=OrderSide.SELL,
+            time_in_force=TimeInForce.DAY,
+        )
+        order = client.submit_order(req)
+        return str(order.id)
+
+    try:
+        order_id = _retry(_submit)
+        logger.info(f"[trader] Market sell submitted: {qty} {ticker} id={order_id}")
+        return order_id
+    except Exception as e:
+        logger.error(f"[trader] submit_market_sell failed for {ticker}: {e}")
+        return None
+
+
+def submit_market_buy(client, ticker: str, qty: int, dry_run: bool = False) -> Optional[str]:
+    """Submit a market buy order (used for high-confidence entries to guarantee fill)."""
+    if dry_run:
+        fake_id = f"dry-{uuid.uuid4().hex[:8]}"
+        logger.info(f"[trader] DRY_RUN: would submit market buy {qty} {ticker} -> {fake_id}")
+        return fake_id
+
+    from alpaca.trading.requests import MarketOrderRequest
+    from alpaca.trading.enums import OrderSide, TimeInForce
+
+    def _submit():
+        req = MarketOrderRequest(
+            symbol=ticker,
+            qty=qty,
+            side=OrderSide.SELL,
+            time_in_force=TimeInForce.DAY,
+        )
+        order = client.submit_order(req)
+        return str(order.id)
+
+    try:
+        order_id = _retry(_submit)
+        logger.info(f"[trader] Market buy submitted: {qty} {ticker} id={order_id}")
+        return order_id
+    except Exception as e:
+        logger.error(f"[trader] submit_market_buy failed for {ticker}: {e}")
+        return None
 
 
 def cancel_open_orders(client, ticker: str, dry_run: bool = False) -> int:
@@ -277,17 +335,16 @@ def submit_stop_only(client, ticker: str, qty: int, stop_loss: float,
                     f"stop={stop_loss:.2f}")
         return f"dry-{uuid.uuid4().hex[:8]}"
 
-    from alpaca.trading.requests import StopLimitOrderRequest
+    from alpaca.trading.requests import StopOrderRequest
     from alpaca.trading.enums import OrderSide, TimeInForce
 
     def _submit():
-        req = StopLimitOrderRequest(
+        req = StopOrderRequest(
             symbol=ticker,
             qty=qty,
             side=OrderSide.SELL,
             time_in_force=TimeInForce.GTC,
             stop_price=round(stop_loss, 2),
-            limit_price=round(stop_loss * 0.995, 2),
         )
         order = client.submit_order(req)
         return str(order.id)
@@ -339,7 +396,6 @@ def replace_stop_order(client, ticker: str, qty: int, stop_loss: float,
     def _replace():
         rreq = ReplaceOrderRequest(
             stop_price=round(stop_loss, 2),
-            limit_price=round(stop_loss * 0.995, 2),
         )
         new_order = client.replace_order_by_id(str(stop_order.id), rreq)
         return str(new_order.id)
@@ -384,7 +440,6 @@ def submit_oco_exit(client, ticker: str, qty: int, take_profit: float,
             take_profit=TakeProfitRequest(limit_price=round(take_profit, 2)),
             stop_loss=StopLossRequest(
                 stop_price=round(stop_loss, 2),
-                limit_price=round(stop_loss * 0.995, 2),
             ),
         )
         order = client.submit_order(req)
@@ -530,16 +585,18 @@ def check_order_filled(client, order_id: str, timeout: int = 60) -> dict:
             "order_id": order_id}
 
 
-def compute_limit_price(side: str, quote: dict, current_price: float) -> float:
+def compute_limit_price(side: str, quote: dict, current_price: float,
+                        confidence: float = 0.0) -> float:
     """Compute aggressive-but-safe limit price from quote.
 
-    The marketable buffer scales with price (~5 bps, floored at $0.03): a flat
-    3-cent buffer is too thin on high-priced names (e.g. AMAT ~$585) and leaves
-    orders unfilled until they time out and cancel.
+    Buy side uses a wider cushion (15bps or $0.10) so momentum entries fill
+    reliably. At confidence ≥ 0.80, caller should use market orders instead
+    (see execute_signals). Sell side is tight to minimize give-up.
     """
     if side == "buy":
         ask = quote.get("ask") or current_price
-        return round(ask + max(0.03, round(ask * 0.0005, 2)), 2)
+        cushion = max(0.10, round(ask * 0.0015, 2))
+        return round(ask + cushion, 2)
     else:
         bid = quote.get("bid") or current_price
         return round(bid - max(0.03, round(bid * 0.0005, 2)), 2)

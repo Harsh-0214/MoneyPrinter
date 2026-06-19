@@ -1,42 +1,107 @@
 """Position sizing, stop/target calculation, and kill switch logic."""
 
+import json
 import logging
 import os
+from datetime import datetime
 from math import floor
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+_ET = ZoneInfo("America/New_York")
+_SESSION_EQUITY_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "session_equity.json"
+)
 
 KILL_SWITCH_ACTIVE = False
 DAILY_REALIZED_PNL = 0.0
 DAILY_START_VALUE  = 0.0
+_DAILY_STATE_DATE  = ""   # ET date string when state was last initialized
+
+
+def _today_et() -> str:
+    return datetime.now(_ET).strftime("%Y-%m-%d")
+
+
+def _load_persisted_start_equity() -> Optional[float]:
+    """Load session start equity from disk if it was saved today (ET)."""
+    try:
+        if not os.path.exists(_SESSION_EQUITY_FILE):
+            return None
+        with open(_SESSION_EQUITY_FILE) as f:
+            data = json.load(f)
+        if data.get("date") == _today_et():
+            return float(data["equity"])
+    except Exception as e:
+        logger.warning(f"[risk] Failed to load persisted session equity: {e}")
+    return None
+
+
+def _persist_start_equity(equity: float) -> None:
+    """Save session start equity to disk so restarts preserve the kill switch baseline."""
+    try:
+        os.makedirs(os.path.dirname(_SESSION_EQUITY_FILE), exist_ok=True)
+        with open(_SESSION_EQUITY_FILE, "w") as f:
+            json.dump({"date": _today_et(), "equity": equity}, f)
+    except Exception as e:
+        logger.warning(f"[risk] Failed to persist session equity: {e}")
 
 
 def init_daily_state(starting_portfolio_value: float) -> None:
-    global KILL_SWITCH_ACTIVE, DAILY_REALIZED_PNL, DAILY_START_VALUE
-    # Only initialise once per process — subsequent calls are no-ops so the kill
-    # switch and accumulated P&L persist across all scan cycles within a session.
-    if DAILY_START_VALUE > 0:
+    global KILL_SWITCH_ACTIVE, DAILY_REALIZED_PNL, DAILY_START_VALUE, _DAILY_STATE_DATE
+    today = _today_et()
+    # Reset at ET midnight (new trading day) or on first call
+    if DAILY_START_VALUE > 0 and _DAILY_STATE_DATE == today:
         return
     KILL_SWITCH_ACTIVE  = False
     DAILY_REALIZED_PNL  = 0.0
-    DAILY_START_VALUE   = starting_portfolio_value
-    logger.info(f"[risk] Daily state initialized. Starting value: ${starting_portfolio_value:,.2f}")
+    _DAILY_STATE_DATE   = today
+    # Prefer persisted start equity so restarts don't reset the kill-switch baseline
+    persisted = _load_persisted_start_equity()
+    if persisted is not None:
+        DAILY_START_VALUE = persisted
+        logger.info(
+            f"[risk] Daily state restored for {today}. "
+            f"Start equity (persisted): ${DAILY_START_VALUE:,.2f}"
+        )
+    else:
+        DAILY_START_VALUE = starting_portfolio_value
+        _persist_start_equity(starting_portfolio_value)
+        logger.info(
+            f"[risk] Daily state initialized for {today}. "
+            f"Starting value: ${starting_portfolio_value:,.2f}"
+        )
 
 
 def record_trade_pnl(pnl: float) -> None:
-    """Called after each closed trade to accumulate daily P&L and check kill switch."""
-    global KILL_SWITCH_ACTIVE, DAILY_REALIZED_PNL, DAILY_START_VALUE
+    """Called after each closed trade to accumulate daily realized P&L."""
+    global DAILY_REALIZED_PNL
     DAILY_REALIZED_PNL += pnl
 
-    if DAILY_START_VALUE > 0:
-        pnl_pct = DAILY_REALIZED_PNL / DAILY_START_VALUE
-        if pnl_pct < -0.03 and not KILL_SWITCH_ACTIVE:
-            KILL_SWITCH_ACTIVE = True
-            logger.critical(
-                f"[risk] KILL SWITCH ACTIVATED — daily P&L {pnl_pct*100:.2f}% "
-                f"(${DAILY_REALIZED_PNL:,.2f}) exceeds -3% threshold"
-            )
+
+def check_kill_switch(current_equity: float) -> bool:
+    """
+    Check kill switch using total equity delta (realized + unrealized).
+    Call this every scan cycle with the live account equity.
+    Returns True if the kill switch just activated.
+    """
+    global KILL_SWITCH_ACTIVE, DAILY_START_VALUE
+    if KILL_SWITCH_ACTIVE:
+        return False  # already active
+    if DAILY_START_VALUE <= 0:
+        return False
+    loss_pct = (current_equity - DAILY_START_VALUE) / DAILY_START_VALUE
+    if loss_pct < -0.03:
+        KILL_SWITCH_ACTIVE = True
+        logger.critical(
+            f"[risk] KILL SWITCH ACTIVATED — equity delta {loss_pct*100:.2f}% "
+            f"(current=${current_equity:,.2f} start=${DAILY_START_VALUE:,.2f}) "
+            f"exceeds -3% threshold (includes unrealized P&L)"
+        )
+        return True
+    return False
 
 
 def is_kill_switch_active() -> bool:
@@ -65,6 +130,7 @@ def calculate_position(
     vix_multiplier: float = 1.0,
     high_vol_flag: bool = False,
     stop_loss: float = None,
+    buying_power: float = None,
 ) -> dict:
     """
     Compute the number of shares to buy/short.
@@ -98,7 +164,18 @@ def calculate_position(
     max_val    = portfolio_value * 0.10
     max_shares = floor(max_val / price)
     shares     = min(shares, max_shares)
-    shares     = max(0, shares)
+
+    # Hard cap by available buying power (leave 5% buffer for fees/slippage)
+    if buying_power is not None and buying_power > 0:
+        bp_max = floor((buying_power * 0.95) / price)
+        if shares > bp_max:
+            logger.warning(
+                f"[risk] buying_power cap: {shares} → {bp_max} shares "
+                f"(bp=${buying_power:,.0f} price=${price:.2f})"
+            )
+            shares = bp_max
+
+    shares = max(0, shares)
 
     return {
         "shares": shares,
