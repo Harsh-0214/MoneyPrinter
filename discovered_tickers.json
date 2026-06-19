@@ -1,18 +1,57 @@
 {
   "tickers": [
-    "MRNA"
+    "MRNA",
+    "KLAC",
+    "BMY",
+    "TXN"
   ],
   "meta": {
     "MRNA": {
       "ticker": "MRNA",
       "source": "discovery",
-      "price": 61.79,
-      "pct_change": 11.55,
-      "vol_ratio": 1.88,
+      "price": 63.93,
+      "pct_change": 3.46,
+      "vol_ratio": 3.56,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.72,
+      "claude_reasoning": "FDA advisory panel review of Moderna's mRNA flu vaccine is a concrete regulatory catalyst that could drive near-term price action, with the Investor Day providing an additional scheduled event to sustain momentum over the next 1-3 sessions.",
+      "gap_catalyst": false
+    },
+    "KLAC": {
+      "ticker": "KLAC",
+      "source": "discovery",
+      "price": 260.81,
+      "pct_change": 9.22,
+      "vol_ratio": 2.38,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "BMY": {
+      "ticker": "BMY",
+      "source": "discovery",
+      "price": 54.0,
+      "pct_change": 2.35,
+      "vol_ratio": 2.73,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Positive multiple myeloma pipeline data presented at EHA26 is a credible clinical catalyst that could sustain buying interest over the next 1-3 sessions, though the macro/Fed angle is speculative and the regional GM appointment is immaterial.",
+      "gap_catalyst": false
+    },
+    "TXN": {
+      "ticker": "TXN",
+      "source": "discovery",
+      "price": 322.58,
+      "pct_change": 6.89,
+      "vol_ratio": 2.69,
       "near_52wk": true,
       "news_polarity": null,
       "claude_confidence": 0.62,
-      "claude_reasoning": "An FDA-related development ('Surprising FDA View') appears to be the catalyst driving the move, which is an acceptable fundamental driver, but the vague headline framing and proximity to 52-week highs warrant caution and further verification of the specific regulatory catalyst before acting.",
+      "claude_reasoning": "Citi's significant $65 price target increase tied to an industrial recovery thesis provides a credible fundamental catalyst beyond pure momentum, though the stock is near its 52-week high and the move may already be largely priced in without a hard earnings or product catalyst.",
       "gap_catalyst": false
     }
   }
