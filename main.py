@@ -443,7 +443,8 @@ def get_macro_context() -> dict:
 def run_full_scan(session: str, macro_context: dict,
                   alpaca_client=None, data_client=None,
                   extra_tickers: list | None = None,
-                  premarket_buy_tickers: set | None = None) -> list[dict]:
+                  premarket_buy_tickers: set | None = None,
+                  pm_boost: float = 0.15) -> list[dict]:
     """
     Score all tickers and return actionable signal list.
 
@@ -451,9 +452,11 @@ def run_full_scan(session: str, macro_context: dict,
     dropped and only shorts with confidence > 0.80 pass through.
 
     premarket_buy_tickers: tickers the premarket session scored as strong buys
-    (conf >= 0.75). These receive a +0.15 confidence carry-forward boost when
-    they land within 0.15 of the buy threshold in the current cycle, ensuring
-    pre-market conviction isn't lost when the fresh-trigger has aged out.
+    (conf >= 0.75). These receive a carry-forward confidence boost when they
+    land within striking distance of the buy threshold in the current cycle.
+
+    pm_boost: the confidence delta to apply (decays from 0.15 at open to 0.05
+    at noon; caller computes this based on elapsed time since open).
     """
     from bot.indicators import get_indicators_batch
     from bot.news        import get_news_batch
@@ -564,18 +567,20 @@ def run_full_scan(session: str, macro_context: dict,
         ticker     = score.get("ticker", "")
 
         # Pre-market carry-forward: boost tickers the premarket session confirmed
-        # as strong buys when they are within 0.15 of the buy gate this cycle.
-        # This prevents valid setups from dropping out simply because the
-        # fresh-trigger that fired at 9:00 AM has already aged out by 9:30 AM.
+        # as strong buys when they are within pm_boost of the buy gate this cycle.
+        # pm_boost decays from 0.15 at open to 0.05 at noon so conviction is
+        # honoured throughout the morning without overriding afternoon price action.
         if (premarket_buy_tickers and ticker in premarket_buy_tickers
-                and action == "hold" and 0.50 <= confidence < 0.65):
-            confidence += 0.15
+                and pm_boost > 0 and action == "hold"
+                and (0.65 - pm_boost) <= confidence < 0.65):
+            confidence = round(confidence + pm_boost, 3)
             action = "buy"
             score["confidence"] = confidence
             score["action"] = "buy"
             score.setdefault("signals_triggered", []).append("premarket_carry_forward")
             logger.info(
-                f"[{ticker}] premarket carry-forward: conf boosted to {confidence:.2f}"
+                f"[{ticker}] premarket carry-forward (boost={pm_boost:.2f}): "
+                f"conf boosted to {confidence:.2f}"
             )
 
         # Apply strategy/confidence gates.
@@ -1659,12 +1664,23 @@ def session_continuous(alpaca_client, data_client) -> None:
 
         # ── Scan for new signals ───────────────────────────────────────────
         session_label = "market_open" if cycle == 1 else "continuous"
-        # Carry pre-market buy conviction forward for the first 3 cycles (~30 min).
-        # After that the market has had time to produce its own fresh triggers.
-        _pm_ctx = _premarket_buy_tickers if cycle <= 3 else None
+        # Carry pre-market buy conviction forward until noon ET, with the boost
+        # decaying linearly from 0.15 at open (9:30) to 0.05 at noon (12:00).
+        # This lets setups that were valid at 9 AM remain actionable throughout
+        # the morning rather than being silently dropped after the first 30 min.
+        _PM_CUTOFF_ET = (12, 0)
+        if _premarket_buy_tickers and now_hm < _PM_CUTOFF_ET:
+            _mins_open = max(0, (now_hm[0] - 9) * 60 + (now_hm[1] - 30))
+            # decay: 0.15 → 0.05 over 150 minutes (open to noon)
+            _pm_boost = round(max(0.05, 0.15 - (_mins_open / 150) * 0.10), 3)
+            _pm_ctx = _premarket_buy_tickers
+        else:
+            _pm_boost = 0.0
+            _pm_ctx = None
         signals = run_full_scan(session_label, macro, alpaca_client, data_client,
                                 extra_tickers=extra_tickers,
-                                premarket_buy_tickers=_pm_ctx)
+                                premarket_buy_tickers=_pm_ctx,
+                                pm_boost=_pm_boost)
         if signals:
             execute_signals(signals, alpaca_client, data_client, macro,
                             session_label, max_trades=MAX_TRADES_PER_SESSION)
