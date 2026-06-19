@@ -328,8 +328,25 @@ def _check_earnings_proximity(open_trades) -> None:
 
 
 def is_market_open_today() -> bool:
-    nyse = mcal.get_calendar("NYSE")
     today = datetime.utcnow().strftime("%Y-%m-%d")
+    # Prefer Alpaca's calendar as the authoritative source so that any
+    # discrepancy between pandas_market_calendars and what Alpaca actually
+    # trades (e.g. Juneteenth) resolves in Alpaca's favour.
+    api_key    = os.getenv("ALPACA_API_KEY", "")
+    secret_key = os.getenv("ALPACA_SECRET_KEY", "")
+    if api_key and secret_key:
+        try:
+            from alpaca.trading.client import TradingClient
+            from alpaca.trading.requests import GetCalendarRequest
+            base_url = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+            paper = "paper-api" in base_url
+            client = TradingClient(api_key=api_key, secret_key=secret_key, paper=paper)
+            cal = client.get_calendar(GetCalendarRequest(start=today, end=today))
+            return len(cal) > 0
+        except Exception as e:
+            logger.warning(f"[is_market_open_today] Alpaca calendar check failed: {e} — falling back to mcal")
+    # Fallback when Alpaca creds are unavailable
+    nyse = mcal.get_calendar("NYSE")
     schedule = nyse.schedule(start_date=today, end_date=today)
     return not schedule.empty
 
