@@ -18,7 +18,7 @@ Every ticker is scored on a **bull/bear point system** across five signal catego
 | News | yfinance headlines, TextBlob sentiment, keyword boosts |
 
 **Net Score** = Bull Score − Bear Score  
-**Confidence** = Net Score ÷ 100
+**Confidence** = Net Score ÷ 150 (capped at 1.0)
 
 **Action thresholds:**
 - Net ≥ 65 AND confidence ≥ 0.47 → `buy`
