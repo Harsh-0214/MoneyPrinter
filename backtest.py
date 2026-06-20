@@ -71,13 +71,13 @@ QUICK_TICKERS = [
 DEFAULT_START      = "2024-06-01"
 DEFAULT_END        = "2025-06-01"
 STARTING_CAPITAL   = 100_000.0
-MIN_NET_SCORE      = 60          # no Claude: use scorer threshold directly
+MIN_NET_SCORE      = 65          # matches live bot MIN_NET_SCORE_BUY
 MAX_OPEN_POSITIONS = 5
 MAX_POSITION_PCT   = 0.10        # 10% of portfolio per trade
 RISK_PCT           = 0.02        # 2% portfolio risk per trade
 ATR_STOP_MULT      = 1.5         # stop = entry - atr * mult
 MAX_PER_SECTOR     = 2
-MIN_CONFIDENCE     = 0.65        # mirrors live bot gate
+MIN_CONFIDENCE     = 0.47        # matches live bot MIN_CONFIDENCE_BUY
 
 # Hold-period rules. NOTE: the original code looked up the STRATEGY name in a
 # dict keyed by HORIZON ({"scalp","swing","mixed"}), so every non-breakout
@@ -1793,7 +1793,7 @@ def main():
                         help="squeeze_breakout handling (default: managed unless --legacy-strategies)")
     parser.add_argument("--legacy-strategies", action="store_true",
                         help="Restore pre-router strategy behavior (old squeeze/MR/breakout defaults, no regime router)")
-    parser.add_argument("--max-stop-width-pct", type=float, default=7.0,
+    parser.add_argument("--max-stop-width-pct", type=float, default=8.0,
                         help="Skip long entries whose initial stop is more than this %% "
                              "below entry price (0 disables, default 7)")
     parser.add_argument("--squeeze-low-vol", action="store_true",
