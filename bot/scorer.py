@@ -167,16 +167,13 @@ def get_fundamental_quality(ticker: str) -> dict:
     return result
 
 # ── Trading thresholds ─────────────────────────────────────────────────────
-# FIX 2b: net scores run roughly 100-155, so confidence = net/100 saturated at
-# 1.0 for almost every trade and stopped differentiating quality. Dividing by
-# CONF_SCALE=150 spreads the live range across ~0.67-1.03 (clamped to 1.0) so
-# sizing and gating can actually discriminate. MIN_CONFIDENCE_BUY stays 0.65,
-# which under the new scale corresponds to net ~97.5; since real entries score
-# 100+, trade counts should hold. If they collapse, drop the gate to 0.47
-# (net >= 70 under this scale).
+# CONF_SCALE=150 spreads scores across 0–1 so confidence can discriminate
+# quality. MIN_CONFIDENCE_BUY=0.47 corresponds to net ~70 under this scale,
+# which is the recommended floor when trade counts collapse (as they did with
+# the previous 0.65 gate that effectively required net ~97.5).
 CONF_SCALE             = 150.0
 MIN_NET_SCORE_BUY      = 65    # strong conviction required
-MIN_CONFIDENCE_BUY     = 0.65  # conf = net/CONF_SCALE
+MIN_CONFIDENCE_BUY     = 0.47  # conf = net/CONF_SCALE; ~net>=70
 MIN_NET_SCORE_SHORT    = 70    # shorts need strong conviction, especially in bull markets
 MIN_CONFIDENCE_SHORT   = 0.70  # shorts are riskier
 
@@ -908,8 +905,8 @@ def score_ticker(
                 bull = round(bull / 1.25)
                 logger.info(f"[{ticker}] Hype override: trigger boost cancelled due to velocity penalty {total_conf_adj:.2f}")
         else:
-            net = round(net * 0.88)
-            bull = round(bull * 0.88)
+            net = round(net * 0.92)
+            bull = round(bull * 0.92)
             signals_against.append("no_fresh_trigger")
             logger.info(
                 f"[{ticker}] NO fresh bullish triggers "

@@ -80,7 +80,7 @@ EXT_NET_THRESHOLD = 130
 EXT_EMA21_MULT    = 1.04
 # Stop-width gate: skip longs whose initial stop sits more than this percent
 # below entry. Wide stops produced outsized losses when hit.
-MAX_STOP_WIDTH_PCT = 7.0
+MAX_STOP_WIDTH_PCT = 8.0
 # Set by --legacy-strategies: restores pre-router behavior (old squeeze/MR/
 # breakout handling, fixed TP brackets, no regime routing). Mirrors
 # bot.strategies.LEGACY_STRATEGIES, which the flag also sets.
@@ -589,7 +589,7 @@ def run_full_scan(session: str, macro_context: dict,
         # honoured throughout the morning without overriding afternoon price action.
         if (premarket_buy_tickers and ticker in premarket_buy_tickers
                 and pm_boost > 0 and action == "hold"
-                and (0.65 - pm_boost) <= confidence < 0.65):
+                and (0.47 - pm_boost) <= confidence < 0.47):
             confidence = round(confidence + pm_boost, 3)
             action = "buy"
             score["confidence"] = confidence
@@ -604,7 +604,7 @@ def run_full_scan(session: str, macro_context: dict,
         # 'mixed' signals are allowed through as long as confidence >= 0.65;
         # they are handled by the execute_signals pipeline which applies its
         # own position-sizing and stop-width checks.
-        if action == "buy" and confidence < 0.65:
+        if action == "buy" and confidence < 0.47:
             action = "hold"
             score["action"] = "hold"
         elif action in ("short", "sell") and confidence < 0.70:
