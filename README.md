@@ -21,7 +21,7 @@ Every ticker is scored on a **bull/bear point system** across five signal catego
 **Confidence** = Net Score ÷ 100
 
 **Action thresholds:**
-- Net ≥ 65 AND confidence ≥ 0.65 → `buy`
+- Net ≥ 65 AND confidence ≥ 0.47 → `buy`
 - Net ≥ 70 AND confidence ≥ 0.70 → `short`
 - Otherwise → `hold`
 
@@ -80,6 +80,7 @@ At the start of each scan the bot fetches live Alpaca positions. For stocks alre
 - **Kill switch**: If daily P&L falls below −3% of starting value, all new orders halt
 - Hard block on stocks with intraday move > 15%; raised threshold if move > 10%
 - **Sector cap**: Maximum 2 open positions per sector
+- **Stop width cap**: Orders blocked if ATR-derived stop is wider than 8% from entry
 
 ---
 
@@ -196,6 +197,8 @@ Go to **Settings → Secrets and variables → Actions** and add:
 | `ALPACA_SECRET_KEY` | Same as above |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
 | `NEWS_API_KEY` | [newsapi.org](https://newsapi.org) (optional — yfinance is primary) |
+| `TURSO_DATABASE_URL` | [turso.tech](https://turso.tech) (optional — enables persistent remote trade history) |
+| `TURSO_AUTH_TOKEN` | Same as above |
 
 ### 4. Enable write permissions for Actions
 Go to **Settings → Actions → General → Workflow permissions**  
@@ -225,6 +228,8 @@ python main.py --session test_ai --tickers NVDA,AAPL,MSFT
 | `DRY_RUN` | `true` | Set `false` only if pointing at a live Alpaca account |
 | `USE_CLAUDE` | `false` | Set `true` to enable Claude AI validation calls |
 | `BACKTEST_PARITY` | `true` | Exit logic matches walk-forward backtest exactly |
+| `TURSO_DATABASE_URL` | — | Turso (libSQL) database URL — if set, trades are stored remotely instead of local SQLite |
+| `TURSO_AUTH_TOKEN` | — | Auth token for Turso database (required when `TURSO_DATABASE_URL` is set) |
 
 ---
 
@@ -251,12 +256,18 @@ MoneyPrinter/
 │   ├── strategies.py          # Strategy classification and hold-period config
 │   ├── historical_context.py  # Multi-day setup maturity tracking
 │   ├── live_feed.py           # Writes data/live_feed.json for dashboard
-│   └── logger.py              # SQLite trade logger (data/trades.db)
+│   └── logger.py              # Trade logger — SQLite locally, Turso remotely (auto-creates tables)
 ├── vercel-dashboard/
 │   └── index.html             # Responsive SPA — Portfolio, Trades, Bot Status views
 ├── data/
 │   ├── trades.db              # SQLite DB (auto-committed by Actions)
 │   └── live_feed.json         # Live decision feed (auto-committed by Actions)
+├── scripts/
+│   ├── dispatch_workflow.sh   # Trigger GitHub Actions via API (used by external cron)
+│   ├── migrate_to_turso.py    # One-off: copy local trades.db into Turso
+│   └── repair_trades.py       # One-off: fix corrupted trade reconciliation data
+├── docs/
+│   └── dispatcher.md          # Guide: schedule workflows via cron-job.org / Cloud Scheduler
 ├── backtest.py                # Full historical replay engine (no Claude calls)
 ├── watchlist.json             # Static tickers to scan + company name mappings
 ├── discovered_tickers.json    # Dynamic movers promoted by discovery.py each session
