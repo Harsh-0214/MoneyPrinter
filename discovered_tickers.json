@@ -1,23 +1,11 @@
 {
   "tickers": [
-    "MRNA",
     "KLAC",
-    "BMY",
-    "TXN"
+    "TXN",
+    "SCHW",
+    "BMY"
   ],
   "meta": {
-    "MRNA": {
-      "ticker": "MRNA",
-      "source": "discovery",
-      "price": 63.93,
-      "pct_change": 3.46,
-      "vol_ratio": 3.56,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "FDA advisory panel review of Moderna's mRNA flu vaccine is a concrete regulatory catalyst that could drive near-term price action, with the Investor Day providing an additional scheduled event to sustain momentum over the next 1-3 sessions.",
-      "gap_catalyst": false
-    },
     "KLAC": {
       "ticker": "KLAC",
       "source": "discovery",
@@ -30,6 +18,30 @@
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
+    "TXN": {
+      "ticker": "TXN",
+      "source": "discovery",
+      "price": 322.58,
+      "pct_change": 6.89,
+      "vol_ratio": 2.69,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "Citi's meaningful $65 price target increase paired with a thesis around industrial end-market recovery provides a credible fundamental catalyst that could sustain momentum over the next 1-3 sessions, though proximity to the 52-week high warrants caution on entry timing.",
+      "gap_catalyst": false
+    },
+    "SCHW": {
+      "ticker": "SCHW",
+      "source": "discovery",
+      "price": 91.7,
+      "pct_change": 2.97,
+      "vol_ratio": 2.45,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "Schwab's collaboration with Cboe to launch binary options/prediction market contracts represents a credible new product catalyst that could expand retail trading revenue, driving legitimate buying interest with above-average volume confirmation.",
+      "gap_catalyst": false
+    },
     "BMY": {
       "ticker": "BMY",
       "source": "discovery",
@@ -39,19 +51,7 @@
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.62,
-      "claude_reasoning": "Positive multiple myeloma pipeline data presented at EHA26 is a credible clinical catalyst that could sustain buying interest over the next 1-3 sessions, though the macro/Fed angle is speculative and the regional GM appointment is immaterial.",
-      "gap_catalyst": false
-    },
-    "TXN": {
-      "ticker": "TXN",
-      "source": "discovery",
-      "price": 322.58,
-      "pct_change": 6.89,
-      "vol_ratio": 2.69,
-      "near_52wk": true,
-      "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "Citi's significant $65 price target increase tied to an industrial recovery thesis provides a credible fundamental catalyst beyond pure momentum, though the stock is near its 52-week high and the move may already be largely priced in without a hard earnings or product catalyst.",
+      "claude_reasoning": "Positive multiple myeloma pipeline data presented at EHA26 provides a credible near-term catalyst, with elevated volume suggesting institutional interest in the clinical readout, though the macro/Fed headline is noise and the GM appointment is immaterial to the thesis.",
       "gap_catalyst": false
     }
   }
