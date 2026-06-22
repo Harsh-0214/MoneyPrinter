@@ -1,34 +1,44 @@
 {
   "tickers": [
     "KLAC",
+    "BMY",
+    "ARM",
     "TXN",
     "SCHW",
-    "BMY"
+    "MRVL",
+    "GS",
+    "SMCI"
   ],
   "meta": {
     "KLAC": {
       "ticker": "KLAC",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 260.81,
-      "pct_change": 9.22,
-      "vol_ratio": 2.38,
-      "near_52wk": true,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 0.97,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.97,
+      "premarket_strategy": "breakout"
     },
     "TXN": {
       "ticker": "TXN",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 322.58,
-      "pct_change": 6.89,
-      "vol_ratio": 2.69,
-      "near_52wk": true,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.65,
-      "claude_reasoning": "Citi's meaningful $65 price target increase paired with a thesis around industrial end-market recovery provides a credible fundamental catalyst that could sustain momentum over the next 1-3 sessions, though proximity to the 52-week high warrants caution on entry timing.",
-      "gap_catalyst": false
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
     },
     "SCHW": {
       "ticker": "SCHW",
@@ -53,6 +63,63 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Positive multiple myeloma pipeline data presented at EHA26 provides a credible near-term catalyst, with elevated volume suggesting institutional interest in the clinical readout, though the macro/Fed headline is noise and the GM appointment is immaterial to the thesis.",
       "gap_catalyst": false
+    },
+    "MRVL": {
+      "ticker": "MRVL",
+      "source": "premarket_buy",
+      "price": 313.74,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.95,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.95,
+      "premarket_strategy": "breakout"
+    },
+    "ARM": {
+      "ticker": "ARM",
+      "source": "premarket_buy",
+      "price": 439.19,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.87,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.87,
+      "premarket_strategy": "breakout"
+    },
+    "GS": {
+      "ticker": "GS",
+      "source": "premarket_buy",
+      "price": 1096.99,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.87,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.87,
+      "premarket_strategy": "breakout"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 32.42,
+      "pct_change": 16.64,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.23,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
