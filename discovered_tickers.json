@@ -1,22 +1,45 @@
 {
   "tickers": [
-    "BAC"
+    "PLD",
+    "RUN",
+    "UBER"
   ],
   "meta": {
-    "BAC": {
-      "ticker": "BAC",
-      "source": "premarket_buy",
-      "price": 57.93,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "PLD": {
+      "ticker": "PLD",
+      "source": "discovery",
+      "price": 140.88,
+      "pct_change": 3.01,
+      "vol_ratio": 1.68,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.79,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.79,
-      "premarket_strategy": "trend_follow"
+      "claude_confidence": 0.72,
+      "claude_reasoning": "PLD is moving on a credible M&A catalyst \u2014 its unsolicited \u00a312.6bn bid for UK warehouse REIT Segro \u2014 with analysts suggesting a higher offer is likely, creating a legitimate short-term event-driven setup around deal progression or sweetened bid news over the next 1-3 sessions.",
+      "gap_catalyst": false
+    },
+    "RUN": {
+      "ticker": "RUN",
+      "source": "discovery",
+      "price": 14.42,
+      "pct_change": 12.66,
+      "vol_ratio": 6.41,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "UBER": {
+      "ticker": "UBER",
+      "source": "discovery",
+      "price": 73.86,
+      "pct_change": 5.97,
+      "vol_ratio": 1.97,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "The Reuters report on Uber launching robotaxis in London within months is a credible, newsworthy catalyst that expands its autonomous vehicle partnership strategy into a major international market, providing a legitimate fundamental driver for the 6% move.",
+      "gap_catalyst": false
     }
   }
 }
