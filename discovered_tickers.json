@@ -1,7 +1,8 @@
 {
   "tickers": [
-    "PLD",
+    "AMD",
     "RUN",
+    "PLD",
     "UBER"
   ],
   "meta": {
@@ -19,15 +20,18 @@
     },
     "RUN": {
       "ticker": "RUN",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 14.42,
-      "pct_change": 12.66,
-      "vol_ratio": 6.41,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
     },
     "UBER": {
       "ticker": "UBER",
@@ -40,6 +44,18 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "The Reuters report on Uber launching robotaxis in London within months is a credible, newsworthy catalyst that expands its autonomous vehicle partnership strategy into a major international market, providing a legitimate fundamental driver for the 6% move.",
       "gap_catalyst": false
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 543.68,
+      "pct_change": 4.64,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.19,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
