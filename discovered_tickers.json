@@ -1,38 +1,110 @@
 {
   "tickers": [
     "ABBV",
+    "ON",
+    "TXN",
+    "SNOW",
+    "LLY",
+    "MRNA",
+    "GILD",
     "AMAT"
   ],
   "meta": {
-    "AMAT": {
-      "ticker": "AMAT",
-      "source": "premarket_buy",
-      "price": 668.1,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.81,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.81,
-      "premarket_strategy": "breakout"
-    },
     "ABBV": {
       "ticker": "ABBV",
-      "source": "premarket_buy",
-      "price": 243.28,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+      "source": "discovery",
+      "price": 251.79,
+      "pct_change": 3.5,
+      "vol_ratio": 8.42,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.75,
+      "claude_reasoning": "AbbVie's acquisition of Apogee Therapeutics and Health Canada approval for Boey represent concrete, fundamental catalysts (M&A activity and regulatory milestone) that credibly explain the elevated volume and price move, warranting short-term monitoring for follow-through over 1-3 sessions.",
+      "gap_catalyst": false
+    },
+    "ON": {
+      "ticker": "ON",
+      "source": "discovery",
+      "price": 90.38,
+      "pct_change": 23.82,
+      "vol_ratio": 3.8,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.92,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.92,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "TXN": {
+      "ticker": "TXN",
+      "source": "discovery",
+      "price": 285.42,
+      "pct_change": 8.46,
+      "vol_ratio": 3.69,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "SNOW": {
+      "ticker": "SNOW",
+      "source": "discovery",
+      "price": 248.44,
+      "pct_change": 9.44,
+      "vol_ratio": 2.99,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "LLY": {
+      "ticker": "LLY",
+      "source": "discovery",
+      "price": 1206.57,
+      "pct_change": 7.0,
+      "vol_ratio": 2.41,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "MRNA": {
+      "ticker": "MRNA",
+      "source": "discovery",
+      "price": 67.27,
+      "pct_change": 12.64,
+      "vol_ratio": 2.05,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "GILD": {
+      "ticker": "GILD",
+      "source": "discovery",
+      "price": 127.25,
+      "pct_change": 2.86,
+      "vol_ratio": 2.91,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.68,
+      "claude_reasoning": "Two concrete fundamental catalysts support the move: a Cantor Fitzgerald reiteration of Overweight following positive HIV trial data (a credible clinical milestone) and a potential Trodelvy first-line TNBC approval headline that could meaningfully expand Gilead's oncology revenue base, giving the elevated volume a defensible fundamental basis for near-term follow-through.",
+      "gap_catalyst": false
+    },
+    "AMAT": {
+      "ticker": "AMAT",
+      "source": "discovery",
+      "price": 650.23,
+      "pct_change": 2.67,
+      "vol_ratio": 3.55,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "Applied Materials' introduction of a new suite of chipmaking systems is a credible product catalyst in the high-demand semiconductor equipment space, providing a fundamental basis for the elevated volume and price move beyond pure momentum.",
+      "gap_catalyst": false
     }
   }
 }
