@@ -1,21 +1,28 @@
 {
   "tickers": [
-    "CMCSA",
+    "LLY",
     "HON",
-    "VZ"
+    "AMD",
+    "VZ",
+    "AMZN",
+    "MRVL",
+    "CMCSA"
   ],
   "meta": {
     "CMCSA": {
       "ticker": "CMCSA",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 24.19,
-      "pct_change": 4.54,
-      "vol_ratio": 4.27,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.82,
-      "claude_reasoning": "Comcast's announced spin-off of NBCUniversal and Sky is a credible, major corporate restructuring catalyst that typically sustains elevated trading activity over multiple sessions as investors reprice the sum-of-parts value and institutional positioning adjusts.",
-      "gap_catalyst": false
+      "claude_confidence": 0.93,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.93,
+      "premarket_strategy": "breakout"
     },
     "HON": {
       "ticker": "HON",
@@ -40,6 +47,57 @@
       "claude_confidence": 0.65,
       "claude_reasoning": "The $4B BT-Verizon international networking joint venture is a credible structural catalyst that could unlock value by offloading capital-intensive assets while generating partnership revenue, justifying the elevated volume and price move for near-term monitoring.",
       "gap_catalyst": false
+    },
+    "LLY": {
+      "ticker": "LLY",
+      "source": "premarket_buy",
+      "price": 1229.06,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.76,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.76,
+      "premarket_strategy": "trend_follow"
+    },
+    "MRVL": {
+      "ticker": "MRVL",
+      "source": "premarket_gap_news",
+      "price": 276.42,
+      "pct_change": 3.98,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 539.75,
+      "pct_change": 3.76,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMZN": {
+      "ticker": "AMZN",
+      "source": "premarket_gap_news",
+      "price": 238.6,
+      "pct_change": 3.47,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
