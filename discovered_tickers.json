@@ -1,22 +1,28 @@
 {
   "tickers": [
+    "ENPH",
+    "LLY",
     "LRCX",
-    "NKE",
+    "MRVL",
     "PLD",
-    "ENPH"
+    "NKE",
+    "AMD"
   ],
   "meta": {
     "LRCX": {
       "ticker": "LRCX",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 433.49,
-      "pct_change": 5.52,
-      "vol_ratio": 1.61,
-      "near_52wk": true,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "Multiple tier-1 analysts (BofA, Citi) raising price targets by $135-150 citing a credible, multi-year chip equipment spending supercycle toward $250B provides a fundamental catalyst beyond pure momentum, supporting near-term continuation of the move.",
-      "gap_catalyst": false
+      "claude_confidence": 0.9,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.9,
+      "premarket_strategy": "trend_follow"
     },
     "NKE": {
       "ticker": "NKE",
@@ -53,6 +59,48 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "A credible analyst upgrade from Barclays citing a new fundamental catalyst\u2014solid-state transformers as an AI data center opportunity\u2014provides a legitimate, specific reason for the move, though ENPH's core residential solar business remains under pressure, so the durability of this thesis warrants close monitoring over 1-3 sessions.",
       "gap_catalyst": false
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_buy",
+      "price": 578.56,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.91,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.91,
+      "premarket_strategy": "trend_follow"
+    },
+    "LLY": {
+      "ticker": "LLY",
+      "source": "premarket_buy",
+      "price": 1199.38,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.93,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.93,
+      "premarket_strategy": "trend_follow"
+    },
+    "MRVL": {
+      "ticker": "MRVL",
+      "source": "premarket_gap_news",
+      "price": 286.86,
+      "pct_change": 3.25,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
