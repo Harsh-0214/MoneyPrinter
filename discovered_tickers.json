@@ -1,7 +1,11 @@
 {
   "tickers": [
-    "KTOS",
+    "SOFI",
+    "META",
     "AA",
+    "KTOS",
+    "JPM",
+    "COIN",
     "KLAC"
   ],
   "meta": {
@@ -40,6 +44,60 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "META": {
+      "ticker": "META",
+      "source": "premarket_buy",
+      "price": 604.51,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.84,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.84,
+      "premarket_strategy": "breakout"
+    },
+    "JPM": {
+      "ticker": "JPM",
+      "source": "premarket_buy",
+      "price": 334.06,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.76,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.76,
+      "premarket_strategy": "breakout"
+    },
+    "COIN": {
+      "ticker": "COIN",
+      "source": "premarket_gap_news",
+      "price": 159.32,
+      "pct_change": 8.96,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "SOFI": {
+      "ticker": "SOFI",
+      "source": "premarket_gap_news",
+      "price": 18.43,
+      "pct_change": 2.67,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
