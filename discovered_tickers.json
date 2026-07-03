@@ -1,32 +1,17 @@
 {
   "tickers": [
-    "SOFI",
-    "META",
-    "AA",
-    "KTOS",
-    "JPM",
-    "COIN",
-    "KLAC"
+    "RIVN",
+    "KLAC",
+    "XPEV",
+    "MRNA"
   ],
   "meta": {
-    "KTOS": {
-      "ticker": "KTOS",
+    "RIVN": {
+      "ticker": "RIVN",
       "source": "discovery",
-      "price": 53.03,
-      "pct_change": 6.42,
-      "vol_ratio": 1.73,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "KTOS is moving on a credible analyst upgrade/positive research call (featured in 'Best Wall Street Analyst Research Calls'), consistent with its defense/drone sector relevance and a specific headline explaining today's surge, providing a fundamental catalyst beyond pure momentum.",
-      "gap_catalyst": false
-    },
-    "AA": {
-      "ticker": "AA",
-      "source": "discovery",
-      "price": 47.47,
-      "pct_change": 8.92,
-      "vol_ratio": 3.36,
+      "price": 18.62,
+      "pct_change": 8.51,
+      "vol_ratio": 2.66,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
@@ -36,68 +21,38 @@
     "KLAC": {
       "ticker": "KLAC",
       "source": "discovery",
-      "price": 270.79,
-      "pct_change": 10.18,
-      "vol_ratio": 2.13,
+      "price": 235.81,
+      "pct_change": 11.54,
+      "vol_ratio": 2.05,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "META": {
-      "ticker": "META",
-      "source": "premarket_buy",
-      "price": 604.51,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "XPEV": {
+      "ticker": "XPEV",
+      "source": "discovery",
+      "price": 13.07,
+      "pct_change": 4.0,
+      "vol_ratio": 1.7,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.84,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.84,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.65,
+      "claude_reasoning": "XPEV's +4% move on 1.7x volume is supported by concrete catalysts: Q2 2026 delivery results (a quantifiable fundamental data point), an autonomous driving AI roadmap unveiled at a credible technical conference (CVPR), and a positive sector backdrop from broader China EV sales momentum, making the move fundamentally grounded rather than purely speculative.",
+      "gap_catalyst": false
     },
-    "JPM": {
-      "ticker": "JPM",
-      "source": "premarket_buy",
-      "price": 334.06,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
+    "MRNA": {
+      "ticker": "MRNA",
+      "source": "discovery",
+      "price": 79.85,
+      "pct_change": 10.15,
+      "vol_ratio": 1.92,
+      "near_52wk": true,
       "news_polarity": null,
-      "claude_confidence": 0.76,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.76,
-      "premarket_strategy": "breakout"
-    },
-    "COIN": {
-      "ticker": "COIN",
-      "source": "premarket_gap_news",
-      "price": 159.32,
-      "pct_change": 8.96,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.12,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "SOFI": {
-      "ticker": "SOFI",
-      "source": "premarket_gap_news",
-      "price": 18.43,
-      "pct_change": 2.67,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.14,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.62,
+      "claude_reasoning": "An FDA approval win is a legitimate, identifiable catalyst for a biotech stock move, but the duplicate headlines, moderate volume ratio of only 1.9x, and proximity to the 52-week high warrant caution \u2014 the move may already be largely priced in.",
+      "gap_catalyst": false
     }
   }
 }
