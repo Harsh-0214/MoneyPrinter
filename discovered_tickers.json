@@ -1,11 +1,22 @@
 {
   "tickers": [
+    "AA",
     "RIVN",
-    "KLAC",
-    "XPEV",
-    "MRNA"
+    "AMAT"
   ],
   "meta": {
+    "AA": {
+      "ticker": "AA",
+      "source": "discovery",
+      "price": 48.69,
+      "pct_change": 2.58,
+      "vol_ratio": 1.9,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.72,
+      "claude_reasoning": "Alcoa's $4.1B acquisition of South32 aluminum assets is a concrete, material corporate event that credibly explains the elevated volume and price move, with analyst bullishness providing additional near-term support for momentum over the next 1-3 sessions.",
+      "gap_catalyst": false
+    },
     "RIVN": {
       "ticker": "RIVN",
       "source": "discovery",
@@ -18,40 +29,16 @@
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "KLAC": {
-      "ticker": "KLAC",
+    "AMAT": {
+      "ticker": "AMAT",
       "source": "discovery",
-      "price": 235.81,
-      "pct_change": 11.54,
-      "vol_ratio": 2.05,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "XPEV": {
-      "ticker": "XPEV",
-      "source": "discovery",
-      "price": 13.07,
-      "pct_change": 4.0,
-      "vol_ratio": 1.7,
+      "price": 603.33,
+      "pct_change": 7.31,
+      "vol_ratio": 1.75,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.65,
-      "claude_reasoning": "XPEV's +4% move on 1.7x volume is supported by concrete catalysts: Q2 2026 delivery results (a quantifiable fundamental data point), an autonomous driving AI roadmap unveiled at a credible technical conference (CVPR), and a positive sector backdrop from broader China EV sales momentum, making the move fundamentally grounded rather than purely speculative.",
-      "gap_catalyst": false
-    },
-    "MRNA": {
-      "ticker": "MRNA",
-      "source": "discovery",
-      "price": 79.85,
-      "pct_change": 10.15,
-      "vol_ratio": 1.92,
-      "near_52wk": true,
-      "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "An FDA approval win is a legitimate, identifiable catalyst for a biotech stock move, but the duplicate headlines, moderate volume ratio of only 1.9x, and proximity to the 52-week high warrant caution \u2014 the move may already be largely priced in.",
+      "claude_reasoning": "AMAT's move is supported by a credible fundamental catalyst\u2014new integrated tools for HBM, chiplet, and 3D packaging addressing high-demand AI/advanced semiconductor packaging trends\u2014reinforced by a price target raise from B. Riley, giving the momentum a defensible business rationale for near-term follow-through.",
       "gap_catalyst": false
     }
   }
