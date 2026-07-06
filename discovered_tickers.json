@@ -1,8 +1,9 @@
 {
   "tickers": [
-    "AA",
+    "PLTR",
     "RIVN",
-    "AMAT"
+    "AMAT",
+    "AA"
   ],
   "meta": {
     "AA": {
@@ -19,15 +20,18 @@
     },
     "RIVN": {
       "ticker": "RIVN",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 18.62,
-      "pct_change": 8.51,
-      "vol_ratio": 2.66,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 0.92,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.92,
+      "premarket_strategy": "breakout"
     },
     "AMAT": {
       "ticker": "AMAT",
@@ -40,6 +44,18 @@
       "claude_confidence": 0.65,
       "claude_reasoning": "AMAT's move is supported by a credible fundamental catalyst\u2014new integrated tools for HBM, chiplet, and 3D packaging addressing high-demand AI/advanced semiconductor packaging trends\u2014reinforced by a price target raise from B. Riley, giving the momentum a defensible business rationale for near-term follow-through.",
       "gap_catalyst": false
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_gap_news",
+      "price": 129.07,
+      "pct_change": 2.64,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.15,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
