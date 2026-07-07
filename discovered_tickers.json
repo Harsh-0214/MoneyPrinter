@@ -1,4 +1,19 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "AMD"
+  ],
+  "meta": {
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 529.89,
+      "pct_change": 2.25,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.13,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    }
+  }
 }
