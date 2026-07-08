@@ -18,7 +18,11 @@
         "premarket",
         "market_open",
         "continuous"
-      ]
+      ],
+      "pnl_dollar": 0,
+      "trades_executed": 0,
+      "win_rate": 0,
+      "portfolio_value": 33538.41
     },
     "2026-07-07": {
       "date": "2026-07-07",
@@ -55277,11 +55281,102 @@
     }
   ],
   "portfolio": {
-    "updated": "2026-07-08T19:51:48.305823+00:00",
-    "equity": 0,
-    "cash": 0,
-    "buying_power": 0,
-    "positions": []
+    "updated": "2026-07-08T20:15:56.455532+00:00",
+    "equity": 33538.41,
+    "cash": 14272.84,
+    "buying_power": 111034.95,
+    "positions": [
+      {
+        "ticker": "AAPL",
+        "qty": 10.0,
+        "side": "long",
+        "avg_entry": 312.834,
+        "current": 313.2222,
+        "market_value": 3132.22,
+        "unrealized_pl": 3.882,
+        "unrealized_plpc": 0.00124,
+        "stop_loss": 295.5,
+        "take_profit": 355.88,
+        "strategy": "trend_follow",
+        "time_horizon": "swing",
+        "entered": "2026-07-06T19:59:14.485757+00:00"
+      },
+      {
+        "ticker": "BAC",
+        "qty": 57.0,
+        "side": "long",
+        "avg_entry": 59.77,
+        "current": 58.31,
+        "market_value": 3323.67,
+        "unrealized_pl": -83.22,
+        "unrealized_plpc": -0.02443,
+        "stop_loss": 57.11,
+        "take_profit": 65.05,
+        "strategy": "trend_follow",
+        "time_horizon": "swing",
+        "entered": "2026-07-06T13:42:46.104219+00:00"
+      },
+      {
+        "ticker": "CVX",
+        "qty": 18.0,
+        "side": "long",
+        "avg_entry": 177.711667,
+        "current": 176.0339,
+        "market_value": 3168.61,
+        "unrealized_pl": -30.199806,
+        "unrealized_plpc": -0.00944,
+        "stop_loss": 169.78,
+        "take_profit": 198.17,
+        "strategy": "trend_follow",
+        "time_horizon": "swing",
+        "entered": "2026-07-08T14:37:56.438905+00:00"
+      },
+      {
+        "ticker": "GS",
+        "qty": 3.0,
+        "side": "long",
+        "avg_entry": 1035.4,
+        "current": 1029.64,
+        "market_value": 3088.92,
+        "unrealized_pl": -17.28,
+        "unrealized_plpc": -0.00556,
+        "stop_loss": 974.16,
+        "take_profit": 1192.04,
+        "strategy": "trend_follow",
+        "time_horizon": "swing",
+        "entered": "2026-07-02T14:20:03.153937+00:00"
+      },
+      {
+        "ticker": "JPM",
+        "qty": 10.0,
+        "side": "long",
+        "avg_entry": 334.19,
+        "current": 330.5,
+        "market_value": 3305.0,
+        "unrealized_pl": -36.9,
+        "unrealized_plpc": -0.01104,
+        "stop_loss": 323.18,
+        "take_profit": 361.54,
+        "strategy": "trend_follow",
+        "time_horizon": "swing",
+        "entered": "2026-07-02T13:46:22.135635+00:00"
+      },
+      {
+        "ticker": "XOM",
+        "qty": 23.0,
+        "side": "long",
+        "avg_entry": 141.943478,
+        "current": 141.1803,
+        "market_value": 3247.15,
+        "unrealized_pl": -17.553094,
+        "unrealized_plpc": -0.00538,
+        "stop_loss": 135.57,
+        "take_profit": 158.77,
+        "strategy": "trend_follow",
+        "time_horizon": "swing",
+        "entered": "2026-07-08T14:26:39.298824+00:00"
+      }
+    ]
   },
   "trades": [
     {
