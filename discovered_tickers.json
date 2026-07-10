@@ -1,7 +1,10 @@
 {
   "tickers": [
+    "TSLA",
+    "AVGO",
     "RIVN",
-    "MARA"
+    "MARA",
+    "COIN"
   ],
   "meta": {
     "RIVN": {
@@ -27,6 +30,45 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Citizens Financial Group initiating coverage with a $24 price target (63% upside) provides a credible fundamental catalyst, and the Bitcoin miner-to-data-center narrative adds a structural re-rating story, though the move is partly Bitcoin-correlated and the 1.8x volume ratio is modest, warranting close monitoring rather than aggressive conviction.",
       "gap_catalyst": false
+    },
+    "AVGO": {
+      "ticker": "AVGO",
+      "source": "premarket_buy",
+      "price": 401.25,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.88,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.88,
+      "premarket_strategy": "trend_follow"
+    },
+    "COIN": {
+      "ticker": "COIN",
+      "source": "premarket_gap_news",
+      "price": 165.84,
+      "pct_change": 4.07,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.13,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_gap_news",
+      "price": 407.49,
+      "pct_change": 3.46,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.18,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
