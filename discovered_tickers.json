@@ -1,18 +1,31 @@
 {
   "tickers": [
-    "RIVN"
+    "RIVN",
+    "MARA"
   ],
   "meta": {
     "RIVN": {
       "ticker": "RIVN",
       "source": "discovery",
-      "price": 15.7,
-      "pct_change": 21.93,
-      "vol_ratio": 2.97,
+      "price": 18.34,
+      "pct_change": 10.15,
+      "vol_ratio": 2.54,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "MARA": {
+      "ticker": "MARA",
+      "source": "discovery",
+      "price": 13.53,
+      "pct_change": 12.66,
+      "vol_ratio": 1.81,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Citizens Financial Group initiating coverage with a $24 price target (63% upside) provides a credible fundamental catalyst, and the Bitcoin miner-to-data-center narrative adds a structural re-rating story, though the move is partly Bitcoin-correlated and the 1.8x volume ratio is modest, warranting close monitoring rather than aggressive conviction.",
       "gap_catalyst": false
     }
   }
