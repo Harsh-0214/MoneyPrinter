@@ -1,38 +1,4 @@
 {
-  "tickers": [
-    "AMD",
-    "META"
-  ],
-  "meta": {
-    "META": {
-      "ticker": "META",
-      "source": "premarket_buy",
-      "price": 662.53,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.87,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.87,
-      "premarket_strategy": "breakout"
-    },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_buy",
-      "price": 543.63,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.77,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.77,
-      "premarket_strategy": "trend_follow"
-    }
-  }
+  "tickers": [],
+  "meta": {}
 }
