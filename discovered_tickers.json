@@ -1,4 +1,22 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "BAC"
+  ],
+  "meta": {
+    "BAC": {
+      "ticker": "BAC",
+      "source": "premarket_buy",
+      "price": 59.54,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.88,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.88,
+      "premarket_strategy": "squeeze_breakout"
+    }
+  }
 }
