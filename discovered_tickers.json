@@ -1,22 +1,71 @@
 {
   "tickers": [
-    "BAC"
+    "C",
+    "WFC",
+    "CLSK",
+    "MS",
+    "NU"
   ],
   "meta": {
-    "BAC": {
-      "ticker": "BAC",
-      "source": "premarket_buy",
-      "price": 59.54,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "C": {
+      "ticker": "C",
+      "source": "discovery",
+      "price": 133.28,
+      "pct_change": 5.29,
+      "vol_ratio": 2.66,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.88,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.88,
-      "premarket_strategy": "squeeze_breakout"
+      "claude_confidence": 0.82,
+      "claude_reasoning": "Citigroup's Q2 2026 earnings show a credible fundamental catalyst with 45% profit growth and 14% revenue increase driven by investment banking and trading strength, justifying the elevated volume and price move as a legitimate post-earnings re-rating.",
+      "gap_catalyst": false
+    },
+    "WFC": {
+      "ticker": "WFC",
+      "source": "discovery",
+      "price": 85.36,
+      "pct_change": 2.65,
+      "vol_ratio": 2.35,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.78,
+      "claude_reasoning": "WFC is moving on a credible fundamental catalyst \u2014 a Q2 2026 earnings beat driven by strength in wealth management and investment banking, confirmed by multiple outlets, consistent with a healthy macro backdrop also lifting sector peers like BAC and JPM.",
+      "gap_catalyst": false
+    },
+    "CLSK": {
+      "ticker": "CLSK",
+      "source": "discovery",
+      "price": 13.42,
+      "pct_change": 8.44,
+      "vol_ratio": 3.58,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "MS": {
+      "ticker": "MS",
+      "source": "discovery",
+      "price": 228.13,
+      "pct_change": 3.17,
+      "vol_ratio": 1.61,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "Morgan Stanley is a direct beneficiary of the reported $39B Wall Street trading windfall driven by elevated market volatility and capital markets activity, providing a credible fundamental catalyst for near-term earnings upside that justifies the volume and price move despite proximity to 52-week highs.",
+      "gap_catalyst": false
+    },
+    "NU": {
+      "ticker": "NU",
+      "source": "discovery",
+      "price": 13.98,
+      "pct_change": 2.12,
+      "vol_ratio": 2.72,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Needham's Buy initiation provides a credible fundamental catalyst (analyst coverage with a new investment thesis) for a Latin American fintech, and the $4.2B Mexico investment headline aligns with Nu Holdings' core operating geography, supporting the elevated volume as institutionally driven rather than pure momentum.",
+      "gap_catalyst": false
     }
   }
 }
