@@ -1,8 +1,14 @@
 {
   "tickers": [
-    "CLSK",
+    "PYPL",
     "BABA",
-    "PYPL"
+    "JPM",
+    "MSFT",
+    "GS",
+    "BAC",
+    "GOOGL",
+    "AMZN",
+    "CLSK"
   ],
   "meta": {
     "CLSK": {
@@ -40,6 +46,90 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "GOOGL": {
+      "ticker": "GOOGL",
+      "source": "premarket_buy",
+      "price": 370.98,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.82,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.82,
+      "premarket_strategy": "trend_follow"
+    },
+    "JPM": {
+      "ticker": "JPM",
+      "source": "premarket_buy",
+      "price": 347.02,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "GS": {
+      "ticker": "GS",
+      "source": "premarket_buy",
+      "price": 1151.95,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.86,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.86,
+      "premarket_strategy": "trend_follow"
+    },
+    "BAC": {
+      "ticker": "BAC",
+      "source": "premarket_buy",
+      "price": 61.62,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "AMZN": {
+      "ticker": "AMZN",
+      "source": "premarket_gap_news",
+      "price": 254.94,
+      "pct_change": 3.01,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "MSFT": {
+      "ticker": "MSFT",
+      "source": "premarket_gap_news",
+      "price": 396.0,
+      "pct_change": 2.87,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
