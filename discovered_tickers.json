@@ -1,8 +1,9 @@
 {
   "tickers": [
+    "PLD",
     "ISRG",
-    "TSM",
-    "PLD"
+    "BAC",
+    "TSM"
   ],
   "meta": {
     "ISRG": {
@@ -31,15 +32,33 @@
     },
     "PLD": {
       "ticker": "PLD",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 149.93,
-      "pct_change": 4.47,
-      "vol_ratio": 1.7,
-      "near_52wk": true,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "Prologis is pursuing a $16.9B acquisition of SEGRO, a credible M&A catalyst that justifies the move, though SEGRO's rejection introduces deal uncertainty that could create near-term volatility in both directions over the next 1-3 sessions.",
-      "gap_catalyst": false
+      "claude_confidence": 0.9,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.9,
+      "premarket_strategy": "breakout"
+    },
+    "BAC": {
+      "ticker": "BAC",
+      "source": "premarket_buy",
+      "price": 61.52,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.79,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.79,
+      "premarket_strategy": "squeeze_breakout"
     }
   }
 }
