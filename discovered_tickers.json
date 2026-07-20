@@ -1,8 +1,9 @@
 {
   "tickers": [
+    "NU",
     "ISRG",
     "NFLX",
-    "NU"
+    "AMD"
   ],
   "meta": {
     "ISRG": {
@@ -40,6 +41,18 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Needham initiating coverage at Buy provides a credible fundamental catalyst, and the Mexico investment headline aligns with Nu Holdings' Latin American expansion thesis, giving the modest volume uptick a identifiable business reason worth monitoring.",
       "gap_catalyst": false
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 514.48,
+      "pct_change": 2.62,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
