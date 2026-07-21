@@ -1,58 +1,19 @@
 {
   "tickers": [
-    "NU",
-    "ISRG",
-    "NFLX",
-    "AMD"
+    "NU"
   ],
   "meta": {
-    "ISRG": {
-      "ticker": "ISRG",
-      "source": "discovery",
-      "price": 345.4,
-      "pct_change": 14.2,
-      "vol_ratio": 4.45,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "NFLX": {
-      "ticker": "NFLX",
-      "source": "discovery",
-      "price": 68.87,
-      "pct_change": 7.66,
-      "vol_ratio": 3.32,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
     "NU": {
       "ticker": "NU",
       "source": "discovery",
-      "price": 13.59,
-      "pct_change": 1.56,
-      "vol_ratio": 1.8,
+      "price": 13.99,
+      "pct_change": 2.98,
+      "vol_ratio": 2.52,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "Needham initiating coverage at Buy provides a credible fundamental catalyst, and the Mexico investment headline aligns with Nu Holdings' Latin American expansion thesis, giving the modest volume uptick a identifiable business reason worth monitoring.",
+      "claude_confidence": 0.65,
+      "claude_reasoning": "Needham initiating coverage at Buy provides a credible fundamental catalyst, and a $4.2B investment into Mexico (a core Nu Holdings market) supports the thesis given Nu's significant and growing Mexican operations, justifying short-term momentum with a legitimate basis.",
       "gap_catalyst": false
-    },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_gap_news",
-      "price": 514.48,
-      "pct_change": 2.62,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.14,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
     }
   }
 }
