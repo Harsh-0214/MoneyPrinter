@@ -5,15 +5,18 @@
   "meta": {
     "NU": {
       "ticker": "NU",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 13.99,
-      "pct_change": 2.98,
-      "vol_ratio": 2.52,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.65,
-      "claude_reasoning": "Needham initiating coverage at Buy provides a credible fundamental catalyst, and a $4.2B investment into Mexico (a core Nu Holdings market) supports the thesis given Nu's significant and growing Mexican operations, justifying short-term momentum with a legitimate basis.",
-      "gap_catalyst": false
+      "claude_confidence": 0.77,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.77,
+      "premarket_strategy": "breakout"
     }
   }
 }
