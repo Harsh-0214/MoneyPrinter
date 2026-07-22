@@ -1,22 +1,45 @@
 {
   "tickers": [
+    "HAL",
+    "MMM",
     "NU"
   ],
   "meta": {
-    "NU": {
-      "ticker": "NU",
-      "source": "premarket_buy",
-      "price": 13.99,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "HAL": {
+      "ticker": "HAL",
+      "source": "discovery",
+      "price": 33.2,
+      "pct_change": 5.49,
+      "vol_ratio": 2.87,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.77,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.77,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.72,
+      "claude_reasoning": "Halliburton reported Q2 earnings with a 3.7% revenue increase to $5.7B and higher profits, providing a clear fundamental catalyst (earnings beat) that justifies the elevated volume and price move.",
+      "gap_catalyst": false
+    },
+    "MMM": {
+      "ticker": "MMM",
+      "source": "discovery",
+      "price": 170.72,
+      "pct_change": 7.16,
+      "vol_ratio": 2.84,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "NU": {
+      "ticker": "NU",
+      "source": "discovery",
+      "price": 14.38,
+      "pct_change": 2.82,
+      "vol_ratio": 2.24,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Needham's Buy initiation provides a credible fundamental catalyst (analyst coverage with presumably a price target and thesis), and the $4.2B Mexico investment headline aligns with Nu Holdings' Latin American fintech expansion narrative, supporting a multi-session momentum trade; however, the moderate volume ratio and duplicate headline suggest limited incremental conviction.",
+      "gap_catalyst": false
     }
   }
 }
