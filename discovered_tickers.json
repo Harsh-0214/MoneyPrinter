@@ -1,8 +1,11 @@
 {
   "tickers": [
     "HAL",
+    "TSLA",
     "MMM",
-    "NU"
+    "NU",
+    "AMD",
+    "SMCI"
   ],
   "meta": {
     "HAL": {
@@ -19,27 +22,69 @@
     },
     "MMM": {
       "ticker": "MMM",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 170.72,
-      "pct_change": 7.16,
-      "vol_ratio": 2.84,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 1.1,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.1,
+      "premarket_strategy": "breakout"
     },
     "NU": {
       "ticker": "NU",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 14.38,
-      "pct_change": 2.82,
-      "vol_ratio": 2.24,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "Needham's Buy initiation provides a credible fundamental catalyst (analyst coverage with presumably a price target and thesis), and the $4.2B Mexico investment headline aligns with Nu Holdings' Latin American fintech expansion narrative, supporting a multi-session momentum trade; however, the moderate volume ratio and duplicate headline suggest limited incremental conviction.",
-      "gap_catalyst": false
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 28.99,
+      "pct_change": 21.68,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 530.52,
+      "pct_change": 5.38,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.1,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_gap_news",
+      "price": 379.47,
+      "pct_change": 2.65,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
