@@ -1,20 +1,28 @@
 {
   "tickers": [
     "T",
-    "PLD"
+    "PLD",
+    "JPM",
+    "MMM",
+    "SMCI",
+    "GS",
+    "NU"
   ],
   "meta": {
     "T": {
       "ticker": "T",
-      "source": "discovery",
-      "price": 23.05,
-      "pct_change": 3.46,
-      "vol_ratio": 3.34,
+      "source": "premarket_buy",
+      "price": 23.32,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.75,
-      "claude_reasoning": "AT&T shares are moving on a credible fundamental catalyst \u2014 a Q2 earnings beat coupled with stronger-than-expected subscriber growth \u2014 which provides a durable, identifiable reason for the elevated volume and price appreciation.",
-      "gap_catalyst": false
+      "claude_confidence": 0.97,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.97,
+      "premarket_strategy": "breakout"
     },
     "PLD": {
       "ticker": "PLD",
@@ -27,6 +35,78 @@
       "claude_confidence": 0.72,
       "claude_reasoning": "Prologis's $18.7B final bid for Segro is a major M&A catalyst driving legitimate price discovery, with Norway's Oil Fund (a top Segro shareholder) publicly urging constructive talks, suggesting deal momentum that could sustain interest over the next 1-3 sessions pending Segro's formal response.",
       "gap_catalyst": false
+    },
+    "JPM": {
+      "ticker": "JPM",
+      "source": "premarket_buy",
+      "price": 348.41,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.76,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.76,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "GS": {
+      "ticker": "GS",
+      "source": "premarket_buy",
+      "price": 1098.19,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.92,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.92,
+      "premarket_strategy": "trend_follow"
+    },
+    "MMM": {
+      "ticker": "MMM",
+      "source": "premarket_buy",
+      "price": 170.81,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.1,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.1,
+      "premarket_strategy": "trend_follow"
+    },
+    "NU": {
+      "ticker": "NU",
+      "source": "premarket_buy",
+      "price": 14.51,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.84,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.84,
+      "premarket_strategy": "mean_reversion"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 30.55,
+      "pct_change": 19.85,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
