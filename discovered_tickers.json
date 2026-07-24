@@ -1,10 +1,13 @@
 {
   "tickers": [
-    "HON",
+    "BAC",
     "RTX",
-    "NOW",
+    "HON",
+    "NU",
     "CLF",
-    "NU"
+    "SMCI",
+    "JPM",
+    "NOW"
   ],
   "meta": {
     "HON": {
@@ -21,15 +24,18 @@
     },
     "RTX": {
       "ticker": "RTX",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 209.09,
-      "pct_change": 7.37,
-      "vol_ratio": 1.84,
-      "near_52wk": true,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "RTX secured a credible $1.8 billion SPY-6 radar hardware manufacturing and sustainment contract, providing a clear fundamental catalyst for the move near 52-week highs, consistent with continued defense spending tailwinds.",
-      "gap_catalyst": false
+      "claude_confidence": 1.1,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.1,
+      "premarket_strategy": "breakout"
     },
     "NOW": {
       "ticker": "NOW",
@@ -66,6 +72,48 @@
       "claude_confidence": 0.68,
       "claude_reasoning": "Dual catalysts of a Needham Buy initiation (new analyst coverage with a credible fintech growth thesis) and a strategic acquisition to secure a Brazilian banking license provide legitimate fundamental reasons for the elevated volume and price move, though the modest +2.2% gain warrants caution about near-term upside without a defined price target or earnings catalyst.",
       "gap_catalyst": false
+    },
+    "JPM": {
+      "ticker": "JPM",
+      "source": "premarket_buy",
+      "price": 349.79,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.85,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.85,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "BAC": {
+      "ticker": "BAC",
+      "source": "premarket_buy",
+      "price": 61.3,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.79,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.79,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 31.22,
+      "pct_change": 2.19,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.22,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
