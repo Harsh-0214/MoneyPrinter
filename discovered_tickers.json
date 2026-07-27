@@ -1,22 +1,25 @@
 {
   "tickers": [
     "PLD",
-    "CLF",
+    "VZ",
     "SLB",
-    "VZ"
+    "CLF"
   ],
   "meta": {
     "PLD": {
       "ticker": "PLD",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 147.59,
-      "pct_change": 1.74,
-      "vol_ratio": 1.69,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "Prologis' proposed $18.7B takeover of Segro represents a major M&A catalyst with board backing, signaling potential for significant European logistics portfolio expansion and investor re-rating of PLD's growth strategy over the near term.",
-      "gap_catalyst": false
+      "claude_confidence": 0.94,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.94,
+      "premarket_strategy": "breakout"
     },
     "CLF": {
       "ticker": "CLF",
@@ -32,15 +35,18 @@
     },
     "SLB": {
       "ticker": "SLB",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 52.45,
-      "pct_change": 11.15,
-      "vol_ratio": 2.04,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 0.78,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.78,
+      "premarket_strategy": "breakout"
     },
     "VZ": {
       "ticker": "VZ",
