@@ -1,4 +1,48 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "MSFT",
+    "BAC",
+    "PLTR"
+  ],
+  "meta": {
+    "BAC": {
+      "ticker": "BAC",
+      "source": "premarket_buy",
+      "price": 62.17,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.83,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.83,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "MSFT": {
+      "ticker": "MSFT",
+      "source": "premarket_gap_news",
+      "price": 395.35,
+      "pct_change": 3.55,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_gap_news",
+      "price": 126.79,
+      "pct_change": 3.14,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    }
+  }
 }
