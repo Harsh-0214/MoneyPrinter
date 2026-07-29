@@ -1,48 +1,32 @@
 {
   "tickers": [
-    "MSFT",
-    "BAC",
-    "PLTR"
+    "SOXL",
+    "UPS"
   ],
   "meta": {
-    "BAC": {
-      "ticker": "BAC",
-      "source": "premarket_buy",
-      "price": 62.17,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "SOXL": {
+      "ticker": "SOXL",
+      "source": "discovery",
+      "price": 105.05,
+      "pct_change": 17.91,
+      "vol_ratio": 2.05,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.83,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.83,
-      "premarket_strategy": "squeeze_breakout"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     },
-    "MSFT": {
-      "ticker": "MSFT",
-      "source": "premarket_gap_news",
-      "price": 395.35,
-      "pct_change": 3.55,
-      "vol_ratio": null,
+    "UPS": {
+      "ticker": "UPS",
+      "source": "discovery",
+      "price": 105.56,
+      "pct_change": 6.51,
+      "vol_ratio": 2.54,
       "near_52wk": false,
-      "news_polarity": 0.14,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "PLTR": {
-      "ticker": "PLTR",
-      "source": "premarket_gap_news",
-      "price": 126.79,
-      "pct_change": 3.14,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.11,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "UPS appears to be moving on a credible fundamental catalyst: completion of its Amazon volume 'glide down' and job cuts signals a structural cost reset and potential margin recovery, giving the move a durable business rationale beyond pure momentum.",
+      "gap_catalyst": false
     }
   }
 }
