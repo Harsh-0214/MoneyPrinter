@@ -1,4 +1,32 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "MSFT",
+    "XOM"
+  ],
+  "meta": {
+    "MSFT": {
+      "ticker": "MSFT",
+      "source": "premarket_gap_news",
+      "price": 426.8,
+      "pct_change": 8.48,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "XOM": {
+      "ticker": "XOM",
+      "source": "premarket_gap_news",
+      "price": 156.86,
+      "pct_change": 2.39,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    }
+  }
 }
