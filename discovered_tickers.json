@@ -1,6 +1,9 @@
 {
   "tickers": [
-    "RBLX"
+    "MSFT",
+    "RBLX",
+    "SMCI",
+    "SBUX"
   ],
   "meta": {
     "RBLX": {
@@ -14,6 +17,45 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "SBUX": {
+      "ticker": "SBUX",
+      "source": "premarket_buy",
+      "price": 105.81,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.1,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.1,
+      "premarket_strategy": "breakout"
+    },
+    "MSFT": {
+      "ticker": "MSFT",
+      "source": "premarket_gap_news",
+      "price": 450.12,
+      "pct_change": 15.12,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.19,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 27.73,
+      "pct_change": 7.86,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.24,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
