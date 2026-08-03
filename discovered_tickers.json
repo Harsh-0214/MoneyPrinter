@@ -1,61 +1,45 @@
 {
   "tickers": [
-    "MSFT",
     "RBLX",
-    "SMCI",
-    "SBUX"
+    "DXCM",
+    "RIVN"
   ],
   "meta": {
     "RBLX": {
       "ticker": "RBLX",
       "source": "discovery",
-      "price": 38.0,
-      "pct_change": 24.29,
-      "vol_ratio": 2.32,
+      "price": 35.63,
+      "pct_change": 26.75,
+      "vol_ratio": 5.39,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "SBUX": {
-      "ticker": "SBUX",
-      "source": "premarket_buy",
-      "price": 105.81,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "DXCM": {
+      "ticker": "DXCM",
+      "source": "discovery",
+      "price": 83.46,
+      "pct_change": 11.94,
+      "vol_ratio": 2.11,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "RIVN": {
+      "ticker": "RIVN",
+      "source": "discovery",
+      "price": 15.22,
+      "pct_change": 9.3,
+      "vol_ratio": 1.56,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 1.1,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.1,
-      "premarket_strategy": "breakout"
-    },
-    "MSFT": {
-      "ticker": "MSFT",
-      "source": "premarket_gap_news",
-      "price": 450.12,
-      "pct_change": 15.12,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.19,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 27.73,
-      "pct_change": 7.86,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.24,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.62,
+      "claude_reasoning": "RIVN appears to be moving on Q2 earnings results and forward guidance around the R2 platform ramp-up, which represents a credible fundamental catalyst tied to production scaling milestones and near-term delivery visibility.",
+      "gap_catalyst": false
     }
   }
 }
