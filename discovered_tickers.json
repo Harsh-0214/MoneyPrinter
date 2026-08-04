@@ -1,7 +1,10 @@
 {
   "tickers": [
+    "GOOGL",
     "GME",
-    "FSLR"
+    "FSLR",
+    "PLTR",
+    "AMZN"
   ],
   "meta": {
     "GME": {
@@ -18,15 +21,60 @@
     },
     "FSLR": {
       "ticker": "FSLR",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 232.8,
-      "pct_change": 10.25,
-      "vol_ratio": 2.08,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 0.99,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.99,
+      "premarket_strategy": "breakout"
+    },
+    "AMZN": {
+      "ticker": "AMZN",
+      "source": "premarket_buy",
+      "price": 284.12,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.88,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.88,
+      "premarket_strategy": "breakout"
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_buy",
+      "price": 140.96,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.93,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.93,
+      "premarket_strategy": "breakout"
+    },
+    "GOOGL": {
+      "ticker": "GOOGL",
+      "source": "premarket_gap_news",
+      "price": 373.51,
+      "pct_change": 4.9,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.19,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
