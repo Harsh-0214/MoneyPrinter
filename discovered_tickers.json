@@ -1,87 +1,32 @@
 {
   "tickers": [
-    "DXCM",
-    "RBLX",
-    "META",
-    "MSFT",
-    "SMCI",
-    "RIVN"
+    "GME",
+    "FSLR"
   ],
   "meta": {
-    "RBLX": {
-      "ticker": "RBLX",
+    "GME": {
+      "ticker": "GME",
       "source": "discovery",
-      "price": 35.63,
-      "pct_change": 26.75,
-      "vol_ratio": 5.39,
+      "price": 19.03,
+      "pct_change": 12.36,
+      "vol_ratio": 6.62,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "DXCM": {
-      "ticker": "DXCM",
-      "source": "premarket_buy",
-      "price": 83.46,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
-    },
-    "RIVN": {
-      "ticker": "RIVN",
+    "FSLR": {
+      "ticker": "FSLR",
       "source": "discovery",
-      "price": 15.22,
-      "pct_change": 9.3,
-      "vol_ratio": 1.56,
+      "price": 232.8,
+      "pct_change": 10.25,
+      "vol_ratio": 2.08,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "RIVN appears to be moving on Q2 earnings results and forward guidance around the R2 platform ramp-up, which represents a credible fundamental catalyst tied to production scaling milestones and near-term delivery visibility.",
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
-    },
-    "META": {
-      "ticker": "META",
-      "source": "premarket_gap_news",
-      "price": 567.3,
-      "pct_change": 5.31,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.25,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "MSFT": {
-      "ticker": "MSFT",
-      "source": "premarket_gap_news",
-      "price": 474.27,
-      "pct_change": 5.03,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.19,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 28.4,
-      "pct_change": 2.42,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.23,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
     }
   }
 }
