@@ -1,22 +1,31 @@
 {
   "tickers": [
-    "CAT",
+    "FANG",
+    "SMCI",
+    "MMM",
     "W",
+    "ARM",
+    "GOOGL",
     "SHOP",
-    "FANG"
+    "NVDA",
+    "CAT",
+    "BAC"
   ],
   "meta": {
     "CAT": {
       "ticker": "CAT",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 877.09,
-      "pct_change": 5.54,
-      "vol_ratio": 1.96,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.82,
-      "claude_reasoning": "Caterpillar reported record quarterly revenue with a profit beat and raised its 2026 sales growth target, providing a clear and credible fundamental catalyst for the price move and sustained institutional interest over the next 1-3 sessions.",
-      "gap_catalyst": false
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
     },
     "W": {
       "ticker": "W",
@@ -53,6 +62,87 @@
       "claude_confidence": 0.68,
       "claude_reasoning": "Diamondback Energy's raised 2026 output forecast following a production milestone provides a credible fundamental catalyst, supported by a bullish macro narrative on sustained high oil prices, justifying the modest volume uptick and price appreciation in an E&P name.",
       "gap_catalyst": false
+    },
+    "NVDA": {
+      "ticker": "NVDA",
+      "source": "premarket_buy",
+      "price": 215.22,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.77,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.77,
+      "premarket_strategy": "trend_follow"
+    },
+    "BAC": {
+      "ticker": "BAC",
+      "source": "premarket_buy",
+      "price": 62.91,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.81,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.81,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "MMM": {
+      "ticker": "MMM",
+      "source": "premarket_buy",
+      "price": 181.44,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.75,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.75,
+      "premarket_strategy": "trend_follow"
+    },
+    "ARM": {
+      "ticker": "ARM",
+      "source": "premarket_gap_news",
+      "price": 268.19,
+      "pct_change": 12.22,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 31.34,
+      "pct_change": 9.43,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.22,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "GOOGL": {
+      "ticker": "GOOGL",
+      "source": "premarket_gap_news",
+      "price": 382.43,
+      "pct_change": 2.39,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.2,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
