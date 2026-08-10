@@ -1,103 +1,71 @@
 {
   "tickers": [
-    "MSFT",
-    "UBER",
-    "DASH",
-    "DDOG",
-    "ETSY",
+    "NET",
     "TTD",
-    "AMD"
+    "ABNB",
+    "MP",
+    "FSLR"
   ],
   "meta": {
+    "NET": {
+      "ticker": "NET",
+      "source": "discovery",
+      "price": 300.78,
+      "pct_change": 5.9,
+      "vol_ratio": 2.21,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.75,
+      "claude_reasoning": "Cloudflare raised its 2026 revenue outlook and expanded its AI-agent platform, providing a credible fundamental catalyst (forward guidance upgrade + AI infrastructure demand) that justifies the elevated volume and price move.",
+      "gap_catalyst": false
+    },
     "TTD": {
       "ticker": "TTD",
       "source": "discovery",
-      "price": 12.68,
-      "pct_change": 33.05,
-      "vol_ratio": 4.8,
+      "price": 13.47,
+      "pct_change": 23.81,
+      "vol_ratio": 6.54,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "DDOG": {
-      "ticker": "DDOG",
-      "source": "premarket_buy",
-      "price": 229.23,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.81,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.81,
-      "premarket_strategy": "breakdown"
-    },
-    "ETSY": {
-      "ticker": "ETSY",
+    "ABNB": {
+      "ticker": "ABNB",
       "source": "discovery",
-      "price": 82.28,
-      "pct_change": 4.11,
-      "vol_ratio": 2.5,
-      "near_52wk": false,
+      "price": 178.19,
+      "pct_change": 17.45,
+      "vol_ratio": 4.09,
+      "near_52wk": true,
       "news_polarity": null,
-      "claude_confidence": 0.65,
-      "claude_reasoning": "Etsy's 12% workforce reduction signals a credible cost-cutting restructuring catalyst that markets are interpreting positively as a margin improvement story, driving the volume-backed rally with a clear fundamental basis.",
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "DASH": {
-      "ticker": "DASH",
-      "source": "premarket_buy",
-      "price": 213.36,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "MP": {
+      "ticker": "MP",
+      "source": "discovery",
+      "price": 51.09,
+      "pct_change": 7.51,
+      "vol_ratio": 2.01,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     },
-    "UBER": {
-      "ticker": "UBER",
+    "FSLR": {
+      "ticker": "FSLR",
       "source": "discovery",
-      "price": 70.47,
-      "pct_change": 3.41,
-      "vol_ratio": 1.54,
+      "price": 250.06,
+      "pct_change": 2.46,
+      "vol_ratio": 2.11,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.62,
-      "claude_reasoning": "Uber's Q2 earnings report highlighting infrastructure buildout for autonomous mobility at global scale is a credible fundamental catalyst that could sustain buying interest over the next 1-3 sessions, though the modest volume ratio (1.5x) and mixed headline quality temper conviction.",
+      "claude_reasoning": "Trump's polysilicon tariffs create a credible near-term fundamental catalyst for First Solar, which manufactures domestically using cadmium telluride rather than polysilicon, giving it a structural competitive advantage that analysts are actively repricing\u2014however, the duplicate headline and opinion-piece framing temper conviction.",
       "gap_catalyst": false
-    },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_gap_news",
-      "price": 502.52,
-      "pct_change": 4.39,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.24,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "MSFT": {
-      "ticker": "MSFT",
-      "source": "premarket_gap_news",
-      "price": 500.04,
-      "pct_change": 2.58,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.12,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
     }
   }
 }
