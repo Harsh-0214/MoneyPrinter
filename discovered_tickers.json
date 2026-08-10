@@ -1,23 +1,29 @@
 {
   "tickers": [
-    "NET",
-    "TTD",
-    "ABNB",
     "MP",
-    "FSLR"
+    "ABNB",
+    "TSLA",
+    "NET",
+    "SMCI",
+    "TTD",
+    "FSLR",
+    "UBER"
   ],
   "meta": {
     "NET": {
       "ticker": "NET",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 300.78,
-      "pct_change": 5.9,
-      "vol_ratio": 2.21,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.75,
-      "claude_reasoning": "Cloudflare raised its 2026 revenue outlook and expanded its AI-agent platform, providing a credible fundamental catalyst (forward guidance upgrade + AI infrastructure demand) that justifies the elevated volume and price move.",
-      "gap_catalyst": false
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
     },
     "TTD": {
       "ticker": "TTD",
@@ -66,6 +72,45 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Trump's polysilicon tariffs create a credible near-term fundamental catalyst for First Solar, which manufactures domestically using cadmium telluride rather than polysilicon, giving it a structural competitive advantage that analysts are actively repricing\u2014however, the duplicate headline and opinion-piece framing temper conviction.",
       "gap_catalyst": false
+    },
+    "UBER": {
+      "ticker": "UBER",
+      "source": "premarket_buy",
+      "price": 74.96,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.77,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.77,
+      "premarket_strategy": "breakout"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 31.85,
+      "pct_change": 8.41,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.24,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_gap_news",
+      "price": 327.5,
+      "pct_change": 2.48,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.13,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
