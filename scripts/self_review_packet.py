@@ -59,6 +59,21 @@ def _day(ts) -> str:
     return (ts or "")[:10]
 
 
+def _parse_ts(ts) -> datetime | None:
+    """Parse a stored timestamp to an aware UTC datetime.
+
+    Rows migrated from the pre-Turso SQLite file can carry naive timestamps,
+    so anything without a tzinfo is assumed to be UTC.
+    """
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def _pct(n: int, d: int) -> str:
     return f"{(n / d * 100):.1f}%" if d else "—"
 
@@ -126,12 +141,8 @@ def _bucket(v: float, edges: list[float]) -> str:
 
 
 def _hold_days(t: dict) -> float | None:
-    try:
-        a = datetime.fromisoformat((t["timestamp"] or "").replace("Z", "+00:00"))
-        b = datetime.fromisoformat((t["exit_timestamp"] or "").replace("Z", "+00:00"))
-        return (b - a).total_seconds() / 86400
-    except Exception:
-        return None
+    a, b = _parse_ts(t.get("timestamp")), _parse_ts(t.get("exit_timestamp"))
+    return (b - a).total_seconds() / 86400 if a and b else None
 
 
 # ── collectors ────────────────────────────────────────────────────────────────
@@ -148,8 +159,11 @@ def collect_db(days: int) -> dict:
 
         return {
             "open": q("SELECT * FROM trades WHERE status='open' ORDER BY timestamp"),
-            "closed": q("SELECT * FROM trades WHERE status!='open' AND exit_timestamp >= ? "
-                        "ORDER BY exit_timestamp DESC", (cutoff,)),
+            # Fall back to the entry timestamp so a closed trade with a missing
+            # exit_timestamp (possible on repaired rows) still gets reviewed.
+            "closed": q("SELECT * FROM trades WHERE status!='open' AND "
+                        "COALESCE(exit_timestamp, timestamp) >= ? "
+                        "ORDER BY COALESCE(exit_timestamp, timestamp) DESC", (cutoff,)),
             "all_closed_n": q("SELECT COUNT(*) AS n FROM trades WHERE status!='open'")[0]["n"],
             "summaries": q("SELECT * FROM daily_summary WHERE date >= ? ORDER BY date DESC", (cutoff,)),
             "rejections": q("SELECT rejection_reason, COUNT(*) AS n, AVG(net_score) AS avg_net, "
@@ -199,6 +213,23 @@ def collect_ci(limit: int = 30) -> list[dict]:
         return []
 
 
+def collect_code_changes(days: int, limit: int = 40) -> list[str]:
+    """Non-bot commits in the window, so the reviewer can attribute performance
+    shifts to code changes (including its own previous proposals)."""
+    try:
+        raw = subprocess.run(
+            ["git", "log", f"--since={days} days ago", "--date=short",
+             "--pretty=format:%ad|%h|%s", "--no-merges"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if raw.returncode != 0:
+            return []
+        return [ln for ln in raw.stdout.splitlines()
+                if "[skip ci]" not in ln and not ln.split("|")[-1].startswith("bot:")][:limit]
+    except Exception:
+        return []
+
+
 def collect_local_logs(max_lines: int = 60) -> list[str]:
     """Tail of ERROR/WARNING lines from any committed log files."""
     lines: list[str] = []
@@ -214,7 +245,8 @@ def collect_local_logs(max_lines: int = 60) -> list[str]:
 
 # ── rendering ─────────────────────────────────────────────────────────────────
 
-def render(db: dict, live: dict, ci: list[dict], log_lines: list[str], days: int) -> str:
+def render(db: dict, live: dict, ci: list[dict], log_lines: list[str],
+           commits: list[str], days: int) -> str:
     now = datetime.now(timezone.utc)
     open_tr, closed = db["open"], db["closed"]
     L: list[str] = []
@@ -246,9 +278,8 @@ def render(db: dict, live: dict, ci: list[dict], log_lines: list[str], days: int
         if (t.get("action") or "") in ("short", "sell"):
             pnl = -pnl
         stop, tgt = _f(t.get("stop_loss")), _f(t.get("take_profit"))
-        held = (now - datetime.fromisoformat(
-            (t["timestamp"] or now.isoformat()).replace("Z", "+00:00"))).days \
-            if t.get("timestamp") else None
+        opened = _parse_ts(t.get("timestamp"))
+        held = (now - opened).days if opened else None
         rows.append([
             tk, t.get("action"), t.get("strategy"), t.get("time_horizon"),
             _i(t.get("quantity")), f"${entry:.2f}", f"${cur:.2f}", f"{pnl:+.2f}%",
@@ -379,6 +410,13 @@ def render(db: dict, live: dict, ci: list[dict], log_lines: list[str], days: int
     else:
         add("_gh CLI unavailable — no CI data._\n")
 
+    # ── code changes in the window ──
+    add("\n## Code changes in this window\n")
+    add("_Performance shifts should be read against these — including changes "
+        "landed by previous self-improve runs._\n")
+    add(_table(["date", "commit", "subject"],
+               [ln.split("|", 2) for ln in commits if ln.count("|") >= 2]))
+
     if log_lines:
         add("\n## Recent error lines\n\n```\n" + "\n".join(log_lines) + "\n```\n")
 
@@ -401,7 +439,8 @@ def main() -> int:
     db = collect_db(args.days)
     live = {} if args.no_live else collect_live_positions()
     ci = [] if args.no_ci else collect_ci()
-    text = render(db, live, ci, collect_local_logs(), args.days)
+    text = render(db, live, ci, collect_local_logs(),
+                  collect_code_changes(args.days), args.days)
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
