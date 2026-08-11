@@ -1,4 +1,35 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "XOM",
+    "ABNB"
+  ],
+  "meta": {
+    "ABNB": {
+      "ticker": "ABNB",
+      "source": "premarket_buy",
+      "price": 184.56,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.92,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.92,
+      "premarket_strategy": "breakout"
+    },
+    "XOM": {
+      "ticker": "XOM",
+      "source": "premarket_gap_news",
+      "price": 159.78,
+      "pct_change": 4.48,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.15,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    }
+  }
 }
