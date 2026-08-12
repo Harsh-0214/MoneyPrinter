@@ -1,0 +1,142 @@
+name: Self-Improve (nightly review + PR)
+
+# Reads the bot's own holdings, trade history and CI health, then lets Claude
+# propose a small, evidence-backed change as a pull request. Never merges.
+
+on:
+  schedule:
+    # 03:30 UTC Tue–Sat = ~23:30 ET Mon–Fri, after the EOD summary has landed.
+    - cron: "30 3 * * 2-6"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lookback window in days"
+        required: false
+        default: "30"
+      focus:
+        description: "Optional area to focus on (e.g. 'exit logic', 'scorer thresholds')"
+        required: false
+        default: ""
+      packet_only:
+        description: "Build the review packet and stop (no Claude, no PR)"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: self-improve
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  self_improve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyyaml
+
+      - name: Build self-review packet
+        env:
+          ALPACA_API_KEY:     ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY:  ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL:    https://paper-api.alpaca.markets
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN:   ${{ secrets.TURSO_AUTH_TOKEN }}
+          GH_TOKEN:           ${{ github.token }}
+        run: |
+          python scripts/self_review_packet.py \
+            --days "${{ github.event.inputs.days || '30' }}" \
+            --out reports/self_review/latest.md
+          echo "### Self-review packet" >> "$GITHUB_STEP_SUMMARY"
+          head -c 60000 reports/self_review/latest.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload packet
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-review-packet
+          path: reports/self_review/
+          retention-days: 30
+
+      - name: Discard packet from the working tree
+        # reports/ is bot-owned state on main; the review reads it from disk but
+        # it must not end up in the PR diff.
+        run: rm -rf reports/self_review
+
+      - name: Review and propose changes
+        if: github.event.inputs.packet_only != 'true'
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --max-turns 60
+            --allowedTools Read,Edit,Write,Glob,Grep,Bash
+          prompt: |
+            You are reviewing an autonomous paper-trading bot against its own
+            production results, then landing ONE improvement as a pull request.
+
+            The performance packet for the last ${{ github.event.inputs.days || '30' }} days is
+            the artifact `self-review-packet`; the same content was printed to
+            the job summary. Rebuild it locally to read it:
+
+                python scripts/self_review_packet.py --days ${{ github.event.inputs.days || '30' }} --no-live --no-ci --out /tmp/packet.md
+
+            (Live broker enrichment needs credentials that this step does not
+            have — the DB-derived sections are the ones that matter.)
+
+            Read `CLAUDE.md` first. Its invariants are binding.
+            ${{ github.event.inputs.focus && format('Focus area requested by the maintainer: {0}', github.event.inputs.focus) || '' }}
+
+            Method:
+            1. Read the packet. Find the single most costly, best-evidenced
+               problem — a strategy with negative expectancy over a meaningful
+               sample, an exit rule that consistently gives back gains, a
+               confidence or score band that does not predict outcomes, a
+               rejection reason firing far more than it should, a recurring CI
+               failure, or a crash in the error lines.
+            2. Confirm it in the code before changing anything. Quote the
+               numbers that justify it (sample size, win rate, expectancy).
+            3. Make the smallest change that addresses it. Prefer tightening a
+               threshold, fixing a bug, or adding a guard over rewriting a
+               module. Touch as few files as possible.
+            4. Run `./scripts/selfcheck.sh`. It must pass.
+            5. Commit on a new branch `claude/self-improve-$(date +%Y-%m-%d)`
+               and open a PR against `main` with `gh pr create`, adding the
+               label `self-improve` if it exists.
+
+            The PR body must contain, in this order:
+            - **Evidence** — the packet numbers that motivated the change.
+            - **Change** — what you changed and why it should help.
+            - **Risk** — what could go wrong, and how the next review would
+              detect it (which packet metric should move, and in which
+              direction).
+            - **Rejected alternatives** — what else you considered.
+
+            Hard rules:
+            - Never loosen a risk limit, never weaken the kill switch, never
+              switch off paper trading. Read the invariant list in CLAUDE.md.
+            - Sample size under 10 closed trades is not evidence. Say so and
+              pick something else.
+            - Do not push to `main`. Do not merge. Do not touch
+              `data/live_feed.json`, `discovered_tickers.json`, or `reports/`.
+            - If nothing in the packet clears that bar, make NO code change.
+              Write your findings to the job summary
+              (`>> "$GITHUB_STEP_SUMMARY"`) explaining what you looked at and
+              why nothing was worth changing today, and stop. A no-op night is
+              a valid and expected outcome.
