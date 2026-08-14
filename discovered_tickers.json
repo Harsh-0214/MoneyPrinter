@@ -1,6 +1,10 @@
 {
   "tickers": [
-    "JD"
+    "CVX",
+    "JD",
+    "SMCI",
+    "SOFI",
+    "ARM"
   ],
   "meta": {
     "JD": {
@@ -14,6 +18,57 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "CVX": {
+      "ticker": "CVX",
+      "source": "premarket_buy",
+      "price": 197.72,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.89,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.89,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 39.11,
+      "pct_change": 4.07,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.21,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "SOFI": {
+      "ticker": "SOFI",
+      "source": "premarket_gap_news",
+      "price": 18.48,
+      "pct_change": 3.07,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.2,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "ARM": {
+      "ticker": "ARM",
+      "source": "premarket_gap_news",
+      "price": 278.58,
+      "pct_change": 2.5,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.19,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
