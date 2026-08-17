@@ -1,20 +1,25 @@
 {
   "tickers": [
+    "CVX",
+    "MP",
     "NU",
-    "MP"
+    "AMD"
   ],
   "meta": {
     "NU": {
       "ticker": "NU",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 15.2,
-      "pct_change": 9.35,
-      "vol_ratio": 2.07,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 0.85,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.85,
+      "premarket_strategy": "breakout"
     },
     "MP": {
       "ticker": "MP",
@@ -27,6 +32,33 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "MP Materials is moving on a credible policy catalyst \u2014 Trump administration drone/defense supply chain news driving demand expectations for domestically sourced rare earths \u2014 which represents a tangible macro/geopolitical driver rather than pure momentum, though policy-driven moves can be volatile and short-lived.",
       "gap_catalyst": false
+    },
+    "CVX": {
+      "ticker": "CVX",
+      "source": "premarket_buy",
+      "price": 200.02,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.84,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.84,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 514.39,
+      "pct_change": 6.51,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.16,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
