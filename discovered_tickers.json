@@ -1,74 +1,32 @@
 {
   "tickers": [
-    "CVX",
-    "JD",
-    "SMCI",
-    "SOFI",
-    "ARM"
+    "NU",
+    "MP"
   ],
   "meta": {
-    "JD": {
-      "ticker": "JD",
+    "NU": {
+      "ticker": "NU",
       "source": "discovery",
-      "price": 29.3,
-      "pct_change": 7.31,
-      "vol_ratio": 3.57,
+      "price": 15.2,
+      "pct_change": 9.35,
+      "vol_ratio": 2.07,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "CVX": {
-      "ticker": "CVX",
-      "source": "premarket_buy",
-      "price": 197.72,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "MP": {
+      "ticker": "MP",
+      "source": "discovery",
+      "price": 58.74,
+      "pct_change": 5.55,
+      "vol_ratio": 1.75,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.89,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.89,
-      "premarket_strategy": "squeeze_breakout"
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 39.11,
-      "pct_change": 4.07,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.21,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "SOFI": {
-      "ticker": "SOFI",
-      "source": "premarket_gap_news",
-      "price": 18.48,
-      "pct_change": 3.07,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.2,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "ARM": {
-      "ticker": "ARM",
-      "source": "premarket_gap_news",
-      "price": 278.58,
-      "pct_change": 2.5,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.19,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.62,
+      "claude_reasoning": "MP Materials is moving on a credible policy catalyst \u2014 Trump administration drone/defense supply chain news driving demand expectations for domestically sourced rare earths \u2014 which represents a tangible macro/geopolitical driver rather than pure momentum, though policy-driven moves can be volatile and short-lived.",
+      "gap_catalyst": false
     }
   }
 }
