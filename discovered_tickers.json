@@ -1,38 +1,4 @@
 {
-  "tickers": [
-    "XOM",
-    "CVX"
-  ],
-  "meta": {
-    "XOM": {
-      "ticker": "XOM",
-      "source": "premarket_buy",
-      "price": 163.64,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.8,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.8,
-      "premarket_strategy": "squeeze_breakout"
-    },
-    "CVX": {
-      "ticker": "CVX",
-      "source": "premarket_buy",
-      "price": 202.73,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.85,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.85,
-      "premarket_strategy": "squeeze_breakout"
-    }
-  }
+  "tickers": [],
+  "meta": {}
 }
