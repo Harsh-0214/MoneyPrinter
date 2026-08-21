@@ -1,7 +1,9 @@
 {
   "tickers": [
+    "WMT",
     "MRNA",
-    "WMT"
+    "COIN",
+    "DE"
   ],
   "meta": {
     "MRNA": {
@@ -27,6 +29,36 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "COIN": {
+      "ticker": "COIN",
+      "source": "premarket_buy",
+      "price": 172.24,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.83,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.83,
+      "premarket_strategy": "breakout"
+    },
+    "DE": {
+      "ticker": "DE",
+      "source": "premarket_buy",
+      "price": 620.72,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.87,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.87,
+      "premarket_strategy": "breakout"
     }
   }
 }
