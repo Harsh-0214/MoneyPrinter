@@ -1,64 +1,32 @@
 {
   "tickers": [
-    "SOFI",
     "MRNA",
-    "TGT",
-    "MRVL"
+    "WMT"
   ],
   "meta": {
     "MRNA": {
       "ticker": "MRNA",
       "source": "discovery",
-      "price": 182.63,
-      "pct_change": 190.21,
-      "vol_ratio": 29.05,
-      "near_52wk": true,
+      "price": 133.23,
+      "pct_change": 23.55,
+      "vol_ratio": 10.01,
+      "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "MRVL": {
-      "ticker": "MRVL",
-      "source": "premarket_buy",
-      "price": 230.87,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "WMT": {
+      "ticker": "WMT",
+      "source": "discovery",
+      "price": 103.85,
+      "pct_change": 9.22,
+      "vol_ratio": 3.48,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.8,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.8,
-      "premarket_strategy": "breakout"
-    },
-    "TGT": {
-      "ticker": "TGT",
-      "source": "premarket_buy",
-      "price": 159.14,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
-    },
-    "SOFI": {
-      "ticker": "SOFI",
-      "source": "premarket_gap_news",
-      "price": 18.81,
-      "pct_change": 6.48,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.11,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     }
   }
 }
