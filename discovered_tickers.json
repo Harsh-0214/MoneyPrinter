@@ -1,119 +1,45 @@
 {
   "tickers": [
-    "PLTR",
-    "SMCI",
-    "SOFI",
-    "FCX",
-    "DE",
-    "BABA",
+    "XPEV",
     "MRNA",
-    "HOOD"
+    "HAL"
   ],
   "meta": {
-    "HOOD": {
-      "ticker": "HOOD",
-      "source": "premarket_buy",
-      "price": 108.96,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "XPEV": {
+      "ticker": "XPEV",
+      "source": "discovery",
+      "price": 11.19,
+      "pct_change": 8.28,
+      "vol_ratio": 3.65,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     },
     "MRNA": {
       "ticker": "MRNA",
       "source": "discovery",
-      "price": 145.1,
-      "pct_change": 8.91,
-      "vol_ratio": 7.63,
+      "price": 140.76,
+      "pct_change": 2.99,
+      "vol_ratio": 2.48,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "claude_confidence": 0.68,
+      "claude_reasoning": "Credible Phase III clinical trial data for intismeran (mRNA-based melanoma vaccine) represents a genuine, durable fundamental catalyst\u2014positive oncology readouts historically sustain multi-session momentum, though the sensationalist headline ('WORLDCHANGING') warrants caution about retail-driven froth layered on top of the real news.",
       "gap_catalyst": false
     },
-    "BABA": {
-      "ticker": "BABA",
+    "HAL": {
+      "ticker": "HAL",
       "source": "discovery",
-      "price": 119.33,
-      "pct_change": 8.6,
-      "vol_ratio": 2.71,
+      "price": 34.62,
+      "pct_change": 1.98,
+      "vol_ratio": 1.51,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Strong quarterly results and new tech partnerships provide credible fundamental catalysts supporting the move, with Halliburton's push beyond traditional oilfield services representing a durable business story worth monitoring, though modest volume (1.5x) and a mild +2% move warrant cautious position sizing.",
       "gap_catalyst": false
-    },
-    "FCX": {
-      "ticker": "FCX",
-      "source": "premarket_buy",
-      "price": 76.62,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
-    },
-    "DE": {
-      "ticker": "DE",
-      "source": "premarket_buy",
-      "price": 647.75,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
-    },
-    "SOFI": {
-      "ticker": "SOFI",
-      "source": "premarket_gap_news",
-      "price": 18.91,
-      "pct_change": 5.59,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.11,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "PLTR": {
-      "ticker": "PLTR",
-      "source": "premarket_gap_news",
-      "price": 178.54,
-      "pct_change": 2.65,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.1,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 37.23,
-      "pct_change": 2.06,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.17,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
     }
   }
 }
