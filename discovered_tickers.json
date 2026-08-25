@@ -1,8 +1,9 @@
 {
   "tickers": [
-    "XPEV",
     "MRNA",
-    "HAL"
+    "XPEV",
+    "HAL",
+    "VALE"
   ],
   "meta": {
     "XPEV": {
@@ -40,6 +41,21 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Strong quarterly results and new tech partnerships provide credible fundamental catalysts supporting the move, with Halliburton's push beyond traditional oilfield services representing a durable business story worth monitoring, though modest volume (1.5x) and a mild +2% move warrant cautious position sizing.",
       "gap_catalyst": false
+    },
+    "VALE": {
+      "ticker": "VALE",
+      "source": "premarket_buy",
+      "price": 15.04,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
     }
   }
 }
