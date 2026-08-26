@@ -1,61 +1,19 @@
 {
   "tickers": [
-    "MRNA",
-    "XPEV",
-    "HAL",
-    "VALE"
+    "MRNA"
   ],
   "meta": {
-    "XPEV": {
-      "ticker": "XPEV",
+    "MRNA": {
+      "ticker": "MRNA",
       "source": "discovery",
-      "price": 11.19,
-      "pct_change": 8.28,
-      "vol_ratio": 3.65,
+      "price": 158.81,
+      "pct_change": 14.4,
+      "vol_ratio": 3.73,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
-    },
-    "MRNA": {
-      "ticker": "MRNA",
-      "source": "discovery",
-      "price": 140.76,
-      "pct_change": 2.99,
-      "vol_ratio": 2.48,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.68,
-      "claude_reasoning": "Credible Phase III clinical trial data for intismeran (mRNA-based melanoma vaccine) represents a genuine, durable fundamental catalyst\u2014positive oncology readouts historically sustain multi-session momentum, though the sensationalist headline ('WORLDCHANGING') warrants caution about retail-driven froth layered on top of the real news.",
-      "gap_catalyst": false
-    },
-    "HAL": {
-      "ticker": "HAL",
-      "source": "discovery",
-      "price": 34.62,
-      "pct_change": 1.98,
-      "vol_ratio": 1.51,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "Strong quarterly results and new tech partnerships provide credible fundamental catalysts supporting the move, with Halliburton's push beyond traditional oilfield services representing a durable business story worth monitoring, though modest volume (1.5x) and a mild +2% move warrant cautious position sizing.",
-      "gap_catalyst": false
-    },
-    "VALE": {
-      "ticker": "VALE",
-      "source": "premarket_buy",
-      "price": 15.04,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
     }
   }
 }
