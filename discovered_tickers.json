@@ -1,4 +1,19 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "MRVL"
+  ],
+  "meta": {
+    "MRVL": {
+      "ticker": "MRVL",
+      "source": "premarket_gap_news",
+      "price": 254.03,
+      "pct_change": 5.68,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    }
+  }
 }
