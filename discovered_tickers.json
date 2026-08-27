@@ -1,32 +1,4 @@
 {
-  "tickers": [
-    "SMCI",
-    "MRNA"
-  ],
-  "meta": {
-    "MRNA": {
-      "ticker": "MRNA",
-      "source": "discovery",
-      "price": 158.81,
-      "pct_change": 14.4,
-      "vol_ratio": 3.73,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 38.47,
-      "pct_change": 9.43,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.15,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    }
-  }
+  "tickers": [],
+  "meta": {}
 }
