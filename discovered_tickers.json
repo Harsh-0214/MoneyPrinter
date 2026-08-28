@@ -1,19 +1,32 @@
 {
   "tickers": [
-    "MRVL"
+    "CRM",
+    "CRWD"
   ],
   "meta": {
-    "MRVL": {
-      "ticker": "MRVL",
-      "source": "premarket_gap_news",
-      "price": 254.03,
-      "pct_change": 5.68,
-      "vol_ratio": null,
+    "CRM": {
+      "ticker": "CRM",
+      "source": "discovery",
+      "price": 252.19,
+      "pct_change": 22.57,
+      "vol_ratio": 3.76,
       "near_52wk": false,
-      "news_polarity": 0.12,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "CRWD": {
+      "ticker": "CRWD",
+      "source": "discovery",
+      "price": 227.99,
+      "pct_change": 20.32,
+      "vol_ratio": 2.2,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     }
   }
 }
