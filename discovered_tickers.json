@@ -1,6 +1,9 @@
 {
   "tickers": [
+    "SOFI",
+    "TSLA",
     "CRM",
+    "NVDA",
     "CRWD"
   ],
   "meta": {
@@ -27,6 +30,48 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "NVDA": {
+      "ticker": "NVDA",
+      "source": "premarket_buy",
+      "price": 227.72,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
+    },
+    "SOFI": {
+      "ticker": "SOFI",
+      "source": "premarket_buy",
+      "price": 19.17,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.79,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.79,
+      "premarket_strategy": "mean_reversion"
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_gap_news",
+      "price": 354.48,
+      "pct_change": 2.51,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.17,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
