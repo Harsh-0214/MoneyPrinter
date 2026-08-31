@@ -1,8 +1,9 @@
 {
   "tickers": [
+    "MSFT",
     "PYPL",
-    "CRM",
-    "MRNA"
+    "MRNA",
+    "CRM"
   ],
   "meta": {
     "PYPL": {
@@ -40,6 +41,21 @@
       "claude_confidence": 0.68,
       "claude_reasoning": "Multiple legitimate catalysts support the move: FDA approval of updated COVID vaccines provides near-term revenue visibility, and positive data from the Moderna/Merck mRNA cancer vaccine trial (mRNA-4157/V940) represents a credible pipeline catalyst driving sector-wide healthcare rotation, making the 3.4% gain on 1.8x volume fundamentally grounded rather than speculative.",
       "gap_catalyst": false
+    },
+    "MSFT": {
+      "ticker": "MSFT",
+      "source": "premarket_buy",
+      "price": 513.67,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.8,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.8,
+      "premarket_strategy": "squeeze_breakout"
     }
   }
 }
