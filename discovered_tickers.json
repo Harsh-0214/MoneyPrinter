@@ -1,7 +1,9 @@
 {
   "tickers": [
     "PANW",
-    "SNOW"
+    "SNOW",
+    "CVX",
+    "NVDA"
   ],
   "meta": {
     "PANW": {
@@ -27,6 +29,33 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "CVX": {
+      "ticker": "CVX",
+      "source": "premarket_buy",
+      "price": 211.82,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.81,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.81,
+      "premarket_strategy": "trend_follow"
+    },
+    "NVDA": {
+      "ticker": "NVDA",
+      "source": "premarket_gap_news",
+      "price": 225.96,
+      "pct_change": 3.89,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
