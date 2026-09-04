@@ -1,61 +1,32 @@
 {
   "tickers": [
-    "PANW",
     "SNOW",
-    "CVX",
-    "NVDA"
+    "HOOD"
   ],
   "meta": {
-    "PANW": {
-      "ticker": "PANW",
-      "source": "discovery",
-      "price": 328.45,
-      "pct_change": 9.28,
-      "vol_ratio": 1.94,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.78,
-      "claude_reasoning": "PANW is moving on a clear fundamental catalyst \u2014 an earnings beat that exceeded forecasts \u2014 with the AI security spend narrative providing a credible and durable tailwind, making the move justifiable for short-term follow-through monitoring.",
-      "gap_catalyst": false
-    },
     "SNOW": {
       "ticker": "SNOW",
       "source": "discovery",
-      "price": 368.0,
-      "pct_change": 15.04,
-      "vol_ratio": 2.13,
-      "near_52wk": true,
+      "price": 353.29,
+      "pct_change": 15.13,
+      "vol_ratio": 3.99,
+      "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "CVX": {
-      "ticker": "CVX",
-      "source": "premarket_buy",
-      "price": 211.82,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "HOOD": {
+      "ticker": "HOOD",
+      "source": "discovery",
+      "price": 124.2,
+      "pct_change": 16.06,
+      "vol_ratio": 2.11,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.81,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.81,
-      "premarket_strategy": "trend_follow"
-    },
-    "NVDA": {
-      "ticker": "NVDA",
-      "source": "premarket_gap_news",
-      "price": 225.96,
-      "pct_change": 3.89,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.11,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     }
   }
 }
