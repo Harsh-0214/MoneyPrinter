@@ -1,7 +1,11 @@
 {
   "tickers": [
-    "SNOW",
-    "HOOD"
+    "SMCI",
+    "NVDA",
+    "MSTR",
+    "HOOD",
+    "META",
+    "SNOW"
   ],
   "meta": {
     "SNOW": {
@@ -27,6 +31,57 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_buy",
+      "price": 37.87,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.9,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.9,
+      "premarket_strategy": "trend_follow"
+    },
+    "MSTR": {
+      "ticker": "MSTR",
+      "source": "premarket_gap_news",
+      "price": 136.98,
+      "pct_change": 11.2,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "META": {
+      "ticker": "META",
+      "source": "premarket_gap_news",
+      "price": 610.68,
+      "pct_change": 2.99,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.16,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "NVDA": {
+      "ticker": "NVDA",
+      "source": "premarket_gap_news",
+      "price": 230.7,
+      "pct_change": 2.79,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
