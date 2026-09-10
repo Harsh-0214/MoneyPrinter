@@ -1,38 +1,19 @@
 {
   "tickers": [
-    "AMD",
-    "SMCI"
+    "CHWY"
   ],
   "meta": {
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_buy",
-      "price": 505.63,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "CHWY": {
+      "ticker": "CHWY",
+      "source": "discovery",
+      "price": 20.75,
+      "pct_change": 10.85,
+      "vol_ratio": 2.49,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.97,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.97,
-      "premarket_strategy": "breakout"
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_buy",
-      "price": 40.2,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.83,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.83,
-      "premarket_strategy": "trend_follow"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     }
   }
 }
