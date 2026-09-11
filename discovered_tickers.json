@@ -1,19 +1,83 @@
 {
   "tickers": [
+    "XOM",
+    "AMD",
+    "CVX",
+    "AAPL",
     "SWKS"
   ],
   "meta": {
     "SWKS": {
       "ticker": "SWKS",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 84.06,
-      "pct_change": 9.84,
-      "vol_ratio": 2.01,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 0.81,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.81,
+      "premarket_strategy": "breakout"
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_buy",
+      "price": 512.59,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.93,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.93,
+      "premarket_strategy": "trend_follow"
+    },
+    "XOM": {
+      "ticker": "XOM",
+      "source": "premarket_buy",
+      "price": 165.27,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.85,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.85,
+      "premarket_strategy": "trend_follow"
+    },
+    "CVX": {
+      "ticker": "CVX",
+      "source": "premarket_buy",
+      "price": 212.78,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.77,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.77,
+      "premarket_strategy": "trend_follow"
+    },
+    "AAPL": {
+      "ticker": "AAPL",
+      "source": "premarket_gap_news",
+      "price": 325.75,
+      "pct_change": 3.27,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
