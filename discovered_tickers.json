@@ -1,45 +1,19 @@
 {
   "tickers": [
-    "META",
-    "XOM",
-    "CHWY"
+    "SWKS"
   ],
   "meta": {
-    "CHWY": {
-      "ticker": "CHWY",
+    "SWKS": {
+      "ticker": "SWKS",
       "source": "discovery",
-      "price": 20.75,
-      "pct_change": 10.85,
-      "vol_ratio": 2.49,
+      "price": 84.06,
+      "pct_change": 9.84,
+      "vol_ratio": 2.01,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
-    },
-    "META": {
-      "ticker": "META",
-      "source": "premarket_gap_news",
-      "price": 650.5,
-      "pct_change": 6.06,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.2,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "XOM": {
-      "ticker": "XOM",
-      "source": "premarket_gap_news",
-      "price": 164.16,
-      "pct_change": 2.16,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.16,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
     }
   }
 }
