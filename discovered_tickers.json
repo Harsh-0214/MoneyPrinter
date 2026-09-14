@@ -1,83 +1,32 @@
 {
   "tickers": [
-    "XOM",
-    "AMD",
-    "CVX",
-    "AAPL",
-    "SWKS"
+    "SWKS",
+    "GME"
   ],
   "meta": {
     "SWKS": {
       "ticker": "SWKS",
-      "source": "premarket_buy",
-      "price": 84.06,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+      "source": "discovery",
+      "price": 88.38,
+      "pct_change": 5.14,
+      "vol_ratio": 1.93,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.81,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.81,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.75,
+      "claude_reasoning": "Skyworks is moving on a credible, identifiable catalyst: the CEO publicly stated the $22B Qorvo merger is in final stages with a 2024 close target and $500M in synergies, providing a clear M&A-driven fundamental reason for the price action with potential near-term follow-through as deal closure approaches.",
+      "gap_catalyst": false
     },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_buy",
-      "price": 512.59,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "GME": {
+      "ticker": "GME",
+      "source": "discovery",
+      "price": 21.16,
+      "pct_change": 3.75,
+      "vol_ratio": 1.66,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.93,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.93,
-      "premarket_strategy": "trend_follow"
-    },
-    "XOM": {
-      "ticker": "XOM",
-      "source": "premarket_buy",
-      "price": 165.27,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.85,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.85,
-      "premarket_strategy": "trend_follow"
-    },
-    "CVX": {
-      "ticker": "CVX",
-      "source": "premarket_buy",
-      "price": 212.78,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.77,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.77,
-      "premarket_strategy": "trend_follow"
-    },
-    "AAPL": {
-      "ticker": "AAPL",
-      "source": "premarket_gap_news",
-      "price": 325.75,
-      "pct_change": 3.27,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.11,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Ryan Cohen's $20M insider purchase of 1 million shares is a credible, identifiable catalyst representing a meaningful vote of confidence by the CEO/chairman, which historically draws short-term momentum and institutional attention, though GME's weak underlying fundamentals and meme-stock history warrant tight risk management.",
+      "gap_catalyst": false
     }
   }
 }
