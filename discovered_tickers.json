@@ -1,5 +1,6 @@
 {
   "tickers": [
+    "MRVL",
     "SWKS",
     "GME"
   ],
@@ -27,6 +28,18 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Ryan Cohen's $20M insider purchase of 1 million shares is a credible, identifiable catalyst representing a meaningful vote of confidence by the CEO/chairman, which historically draws short-term momentum and institutional attention, though GME's weak underlying fundamentals and meme-stock history warrant tight risk management.",
       "gap_catalyst": false
+    },
+    "MRVL": {
+      "ticker": "MRVL",
+      "source": "premarket_gap_news",
+      "price": 236.08,
+      "pct_change": 4.04,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.22,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
