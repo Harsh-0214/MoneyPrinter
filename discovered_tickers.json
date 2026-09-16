@@ -1,60 +1,31 @@
 {
   "tickers": [
-    "CRWD",
-    "ZS",
     "SWKS",
-    "RBLX"
+    "GE"
   ],
   "meta": {
     "SWKS": {
       "ticker": "SWKS",
       "source": "discovery",
-      "price": 79.25,
-      "pct_change": 10.34,
-      "vol_ratio": 1.9,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "The move is driven by a credible, specific catalyst: Skyworks' CEO publicly confirmed the $22B Qorvo merger is in final stages with a targeted $500M in synergies, providing a durable near-term catalyst around deal-close expectations and potential arbitrage/re-rating activity over the next 1-3 sessions.",
-      "gap_catalyst": false
-    },
-    "CRWD": {
-      "ticker": "CRWD",
-      "source": "premarket_buy",
-      "price": 230.94,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
-    },
-    "ZS": {
-      "ticker": "ZS",
-      "source": "discovery",
-      "price": 191.62,
-      "pct_change": 16.42,
-      "vol_ratio": 2.55,
-      "near_52wk": false,
+      "price": 90.0,
+      "pct_change": 13.57,
+      "vol_ratio": 2.16,
+      "near_52wk": true,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "RBLX": {
-      "ticker": "RBLX",
+    "GE": {
+      "ticker": "GE",
       "source": "discovery",
-      "price": 51.28,
-      "pct_change": 12.73,
-      "vol_ratio": 1.57,
+      "price": 307.17,
+      "pct_change": 3.26,
+      "vol_ratio": 1.77,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.62,
-      "claude_reasoning": "Roblox is moving on a credible product expansion catalyst \u2014 allowing standalone app distribution via Steam/Epic/GOG and offline play broadens its addressable market and monetization surface, representing a meaningful platform evolution that justifies near-term investor attention, though the 1.6x volume ratio is modest and durability depends on developer adoption details yet to emerge.",
+      "claude_reasoning": "GE Aerospace's $11.75\u2013$12B CPP acquisition represents a major strategic M&A catalyst with clear fundamental implications for growth trajectory, justifying the volume spike and price move, though the competitive pressure framing in headlines warrants caution about near-term sentiment volatility.",
       "gap_catalyst": false
     }
   }
