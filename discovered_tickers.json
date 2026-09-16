@@ -1,7 +1,11 @@
 {
   "tickers": [
+    "CVX",
+    "XOM",
+    "GE",
+    "PANW",
     "SWKS",
-    "GE"
+    "CRWD"
   ],
   "meta": {
     "SWKS": {
@@ -27,6 +31,66 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "GE Aerospace's $11.75\u2013$12B CPP acquisition represents a major strategic M&A catalyst with clear fundamental implications for growth trajectory, justifying the volume spike and price move, though the competitive pressure framing in headlines warrants caution about near-term sentiment volatility.",
       "gap_catalyst": false
+    },
+    "XOM": {
+      "ticker": "XOM",
+      "source": "premarket_buy",
+      "price": 169.27,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.91,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.91,
+      "premarket_strategy": "trend_follow"
+    },
+    "CVX": {
+      "ticker": "CVX",
+      "source": "premarket_buy",
+      "price": 217.71,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.85,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.85,
+      "premarket_strategy": "squeeze_breakout"
+    },
+    "CRWD": {
+      "ticker": "CRWD",
+      "source": "premarket_buy",
+      "price": 242.52,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
+    },
+    "PANW": {
+      "ticker": "PANW",
+      "source": "premarket_buy",
+      "price": 375.09,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.79,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.79,
+      "premarket_strategy": "trend_follow"
     }
   }
 }
