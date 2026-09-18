@@ -1,103 +1,19 @@
 {
   "tickers": [
-    "NVDA",
-    "SLB",
-    "PANW",
-    "CRWD",
-    "AMD",
-    "FANG",
-    "SMCI"
+    "BA"
   ],
   "meta": {
-    "FANG": {
-      "ticker": "FANG",
+    "BA": {
+      "ticker": "BA",
       "source": "discovery",
-      "price": 194.53,
-      "pct_change": 7.99,
-      "vol_ratio": 7.54,
+      "price": 197.03,
+      "pct_change": 2.46,
+      "vol_ratio": 2.1,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "claude_confidence": 0.65,
+      "claude_reasoning": "The Korean Air order for 103 Boeing aircraft is a credible, material commercial catalyst that justifies the elevated volume and price move, providing a fundamental basis for near-term momentum over the next 1-3 sessions, though the turbulence-incident headline warrants monitoring as a potential sentiment headwind.",
       "gap_catalyst": false
-    },
-    "SLB": {
-      "ticker": "SLB",
-      "source": "discovery",
-      "price": 52.31,
-      "pct_change": 3.47,
-      "vol_ratio": 1.55,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "SLB's 3.5% move on 1.6x volume is supported by a credible fundamental catalyst: the completion of S&P Global's divestiture of its Upstream Energy Software Portfolio to SLB, which expands SLB's digital/software capabilities and could attract institutional rebalancing and analyst coverage over the next 1-3 sessions.",
-      "gap_catalyst": false
-    },
-    "CRWD": {
-      "ticker": "CRWD",
-      "source": "premarket_buy",
-      "price": 238.57,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.75,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.75,
-      "premarket_strategy": "trend_follow"
-    },
-    "PANW": {
-      "ticker": "PANW",
-      "source": "premarket_buy",
-      "price": 375.6,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.9,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.9,
-      "premarket_strategy": "trend_follow"
-    },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_gap_news",
-      "price": 529.5,
-      "pct_change": 5.01,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.23,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 36.85,
-      "pct_change": 3.41,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.14,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "NVDA": {
-      "ticker": "NVDA",
-      "source": "premarket_gap_news",
-      "price": 218.48,
-      "pct_change": 2.98,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.17,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
     }
   }
 }
