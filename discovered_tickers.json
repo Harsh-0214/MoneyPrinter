@@ -1,4 +1,54 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "GOOGL",
+    "COIN",
+    "AMD"
+  ],
+  "meta": {
+    "GOOGL": {
+      "ticker": "GOOGL",
+      "source": "premarket_buy",
+      "price": 350.05,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.79,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.79,
+      "premarket_strategy": "breakout"
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_buy",
+      "price": 580.77,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.93,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.93,
+      "premarket_strategy": "breakout"
+    },
+    "COIN": {
+      "ticker": "COIN",
+      "source": "premarket_buy",
+      "price": 194.31,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.97,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.97,
+      "premarket_strategy": "breakout"
+    }
+  }
 }
