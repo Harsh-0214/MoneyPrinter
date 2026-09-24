@@ -1,8 +1,11 @@
 {
   "tickers": [
-    "ABNB",
     "MCD",
-    "SHOP"
+    "SMCI",
+    "PLTR",
+    "TSLA",
+    "SHOP",
+    "ABNB"
   ],
   "meta": {
     "ABNB": {
@@ -40,6 +43,51 @@
       "claude_confidence": 0.65,
       "claude_reasoning": "Shopify's Shop Pay integration with Meta's newly launched Muse AI agent is a concrete, named product partnership that could drive incremental commerce volume, giving a credible near-term catalyst beyond pure momentum.",
       "gap_catalyst": false
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_buy",
+      "price": 380.25,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.85,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.85,
+      "premarket_strategy": "mean_reversion"
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_buy",
+      "price": 191.78,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.97,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.97,
+      "premarket_strategy": "trend_follow"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_buy",
+      "price": 40.5,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.89,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.89,
+      "premarket_strategy": "trend_follow"
     }
   }
 }
