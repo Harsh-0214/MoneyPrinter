@@ -1,8 +1,13 @@
 {
   "tickers": [
-    "DVN",
+    "SHOP",
+    "SMCI",
+    "BA",
+    "META",
+    "PLTR",
     "FSLR",
-    "BA"
+    "DVN",
+    "AMD"
   ],
   "meta": {
     "DVN": {
@@ -40,6 +45,78 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Turkish Airlines placing its largest-ever Boeing narrowbody order and Biman Bangladesh expanding its backorder represent credible, fundamental demand catalysts supporting near-term sentiment, though the modest +1.5% move and 1.6x volume suggest measured rather than decisive institutional conviction.",
       "gap_catalyst": false
+    },
+    "META": {
+      "ticker": "META",
+      "source": "premarket_buy",
+      "price": 777.73,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.94,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.94,
+      "premarket_strategy": "breakout"
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_buy",
+      "price": 192.61,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.97,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.97,
+      "premarket_strategy": "trend_follow"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_buy",
+      "price": 41.5,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.93,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.93,
+      "premarket_strategy": "trend_follow"
+    },
+    "SHOP": {
+      "ticker": "SHOP",
+      "source": "premarket_buy",
+      "price": 145.19,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.75,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.75,
+      "premarket_strategy": "trend_follow"
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 629.0,
+      "pct_change": 2.3,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.24,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
