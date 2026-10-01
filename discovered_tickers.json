@@ -1,20 +1,23 @@
 {
   "tickers": [
-    "WBD",
-    "HOOD"
+    "HOOD",
+    "WBD"
   ],
   "meta": {
     "WBD": {
       "ticker": "WBD",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 30.94,
-      "pct_change": 0.31,
-      "vol_ratio": 3.39,
-      "near_52wk": true,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.68,
-      "claude_reasoning": "WBD is experiencing elevated volume driven by credible M&A catalyst headlines surrounding a major merger with Sky (PSKY), including executive appointment news suggesting the deal is progressing toward execution, which supports near-term price discovery.",
-      "gap_catalyst": false
+      "claude_confidence": 0.79,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.79,
+      "premarket_strategy": "breakout"
     },
     "HOOD": {
       "ticker": "HOOD",
