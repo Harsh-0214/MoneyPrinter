@@ -1,48 +1,32 @@
 {
   "tickers": [
-    "SHOP",
-    "AVGO",
-    "BA"
+    "WBD",
+    "HOOD"
   ],
   "meta": {
-    "BA": {
-      "ticker": "BA",
+    "WBD": {
+      "ticker": "WBD",
       "source": "discovery",
-      "price": 187.75,
-      "pct_change": 1.89,
-      "vol_ratio": 1.74,
-      "near_52wk": false,
+      "price": 30.94,
+      "pct_change": 0.31,
+      "vol_ratio": 3.39,
+      "near_52wk": true,
       "news_polarity": null,
-      "claude_confidence": 0.65,
-      "claude_reasoning": "Multiple confirmed government defense contracts (F/A-XX and F-15EX Lot 7) provide legitimate, near-term fundamental catalysts supporting the modest price move and elevated volume, though Boeing's ongoing operational headwinds and Starliner uncertainty warrant cautious position sizing.",
+      "claude_confidence": 0.68,
+      "claude_reasoning": "WBD is experiencing elevated volume driven by credible M&A catalyst headlines surrounding a major merger with Sky (PSKY), including executive appointment news suggesting the deal is progressing toward execution, which supports near-term price discovery.",
       "gap_catalyst": false
     },
-    "SHOP": {
-      "ticker": "SHOP",
-      "source": "premarket_buy",
-      "price": 148.23,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "HOOD": {
+      "ticker": "HOOD",
+      "source": "discovery",
+      "price": 112.5,
+      "pct_change": 3.19,
+      "vol_ratio": 1.65,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.95,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.95,
-      "premarket_strategy": "trend_follow"
-    },
-    "AVGO": {
-      "ticker": "AVGO",
-      "source": "premarket_gap_news",
-      "price": 357.19,
-      "pct_change": 2.14,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.12,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Robinhood's announcement of 24/7 weekend trading hours, AI agent integration, and new KPI prediction market contracts with Cboe represent concrete product expansion catalysts that credibly explain the elevated volume and price action, though the moderate volume ratio (1.6x) warrants position sizing discipline.",
+      "gap_catalyst": false
     }
   }
 }
