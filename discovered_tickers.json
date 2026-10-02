@@ -1,34 +1,31 @@
 {
   "tickers": [
-    "HOOD",
-    "WBD"
+    "BA",
+    "NKE"
   ],
   "meta": {
-    "WBD": {
-      "ticker": "WBD",
-      "source": "premarket_buy",
-      "price": 30.94,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.79,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.79,
-      "premarket_strategy": "breakout"
-    },
-    "HOOD": {
-      "ticker": "HOOD",
+    "BA": {
+      "ticker": "BA",
       "source": "discovery",
-      "price": 112.5,
-      "pct_change": 3.19,
-      "vol_ratio": 1.65,
+      "price": 192.42,
+      "pct_change": 3.41,
+      "vol_ratio": 2.17,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "Robinhood's announcement of 24/7 weekend trading hours, AI agent integration, and new KPI prediction market contracts with Cboe represent concrete product expansion catalysts that credibly explain the elevated volume and price action, though the moderate volume ratio (1.6x) warrants position sizing discipline.",
+      "claude_confidence": 0.78,
+      "claude_reasoning": "Boeing's $20 billion DOD/Navy contract award for the F/A-XX next-generation strike fighter is a major, credible defense catalyst that justifies elevated volume and price appreciation, with additional positive sentiment from Trump's endorsement of Boeing's commercial aircraft.",
+      "gap_catalyst": false
+    },
+    "NKE": {
+      "ticker": "NKE",
+      "source": "discovery",
+      "price": 32.53,
+      "pct_change": 8.06,
+      "vol_ratio": 4.26,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     }
   }
