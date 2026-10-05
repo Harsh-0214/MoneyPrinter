@@ -1,77 +1,32 @@
 {
   "tickers": [
-    "NVDA",
-    "SMCI",
-    "BA",
-    "NKE",
-    "MSFT"
+    "ON",
+    "WOLF"
   ],
   "meta": {
-    "BA": {
-      "ticker": "BA",
+    "ON": {
+      "ticker": "ON",
       "source": "discovery",
-      "price": 192.42,
-      "pct_change": 3.41,
-      "vol_ratio": 2.17,
+      "price": 84.88,
+      "pct_change": 6.01,
+      "vol_ratio": 2.33,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.78,
-      "claude_reasoning": "Boeing's $20 billion DOD/Navy contract award for the F/A-XX next-generation strike fighter is a major, credible defense catalyst that justifies elevated volume and price appreciation, with additional positive sentiment from Trump's endorsement of Boeing's commercial aircraft.",
+      "claude_confidence": 0.72,
+      "claude_reasoning": "ON Semiconductor's 6% move is driven by a concrete, identifiable catalyst \u2014 a revised acquisition offer for Synaptics that replaces a $7B stock bid with a $5.7B cash deal, which markets appear to view favorably as it reduces dilution risk for ON shareholders, representing a legitimate fundamental reason to monitor the stock over the next 1-3 sessions.",
       "gap_catalyst": false
     },
-    "NKE": {
-      "ticker": "NKE",
+    "WOLF": {
+      "ticker": "WOLF",
       "source": "discovery",
-      "price": 32.53,
-      "pct_change": 8.06,
-      "vol_ratio": 4.26,
+      "price": 35.22,
+      "pct_change": 12.79,
+      "vol_ratio": 2.07,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
-    },
-    "MSFT": {
-      "ticker": "MSFT",
-      "source": "premarket_buy",
-      "price": 518.63,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.85,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.85,
-      "premarket_strategy": "trend_follow"
-    },
-    "NVDA": {
-      "ticker": "NVDA",
-      "source": "premarket_buy",
-      "price": 235.98,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.79,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.79,
-      "premarket_strategy": "trend_follow"
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 41.92,
-      "pct_change": 2.07,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.23,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
     }
   }
 }
