@@ -1,32 +1,83 @@
 {
   "tickers": [
+    "AVGO",
     "NU",
+    "SMCI",
+    "MPWR",
     "ABBV"
   ],
   "meta": {
     "NU": {
       "ticker": "NU",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 15.2,
-      "pct_change": 13.18,
-      "vol_ratio": 2.17,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 0.96,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.96,
+      "premarket_strategy": "breakout"
     },
     "ABBV": {
       "ticker": "ABBV",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 265.75,
-      "pct_change": 1.08,
-      "vol_ratio": 1.55,
-      "near_52wk": true,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "BofA price target boost citing pipeline strength, combined with positive Phase 1 data for ABBV-295 (a potential GLP-1 competitor in the high-value obesity/metabolic space), provides a credible fundamental catalyst supporting the modest move near 52-week highs.",
-      "gap_catalyst": false
+      "claude_confidence": 0.84,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.84,
+      "premarket_strategy": "breakout"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_buy",
+      "price": 43.2,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.79,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.79,
+      "premarket_strategy": "trend_follow"
+    },
+    "MPWR": {
+      "ticker": "MPWR",
+      "source": "premarket_buy",
+      "price": 1480.2,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.83,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.83,
+      "premarket_strategy": "trend_follow"
+    },
+    "AVGO": {
+      "ticker": "AVGO",
+      "source": "premarket_gap_news",
+      "price": 365.72,
+      "pct_change": 2.98,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.17,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
