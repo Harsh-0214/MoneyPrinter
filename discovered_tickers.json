@@ -1,83 +1,19 @@
 {
   "tickers": [
-    "AVGO",
-    "NU",
-    "SMCI",
-    "MPWR",
-    "ABBV"
+    "WBD"
   ],
   "meta": {
-    "NU": {
-      "ticker": "NU",
-      "source": "premarket_buy",
-      "price": 15.2,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
+    "WBD": {
+      "ticker": "WBD",
+      "source": "discovery",
+      "price": 30.99,
+      "pct_change": 0.16,
+      "vol_ratio": 14.2,
+      "near_52wk": true,
       "news_polarity": null,
-      "claude_confidence": 0.96,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.96,
-      "premarket_strategy": "breakout"
-    },
-    "ABBV": {
-      "ticker": "ABBV",
-      "source": "premarket_buy",
-      "price": 265.75,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.84,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.84,
-      "premarket_strategy": "breakout"
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_buy",
-      "price": 43.2,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.79,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.79,
-      "premarket_strategy": "trend_follow"
-    },
-    "MPWR": {
-      "ticker": "MPWR",
-      "source": "premarket_buy",
-      "price": 1480.2,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.83,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.83,
-      "premarket_strategy": "trend_follow"
-    },
-    "AVGO": {
-      "ticker": "AVGO",
-      "source": "premarket_gap_news",
-      "price": 365.72,
-      "pct_change": 2.98,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.17,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.65,
+      "claude_reasoning": "The 14.2x volume surge is tied to a confirmed, closing merger between Paramount and Warner Bros. Discovery \u2014 a major, verifiable corporate event with clear near-term price discovery implications as deal mechanics, leadership changes (Zaslav exit), and arbitrage activity play out over the next 1-3 sessions.",
+      "gap_catalyst": false
     }
   }
 }
