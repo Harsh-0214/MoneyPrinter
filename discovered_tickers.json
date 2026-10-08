@@ -1,83 +1,19 @@
 {
   "tickers": [
-    "MRVL",
-    "PLTR",
-    "WBD",
-    "AMD",
-    "MSFT"
+    "WOLF"
   ],
   "meta": {
-    "WBD": {
-      "ticker": "WBD",
-      "source": "premarket_buy",
-      "price": 30.99,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "WOLF": {
+      "ticker": "WOLF",
+      "source": "discovery",
+      "price": 35.63,
+      "pct_change": 11.94,
+      "vol_ratio": 2.04,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
-    },
-    "MSFT": {
-      "ticker": "MSFT",
-      "source": "premarket_buy",
-      "price": 527.12,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.77,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.77,
-      "premarket_strategy": "trend_follow"
-    },
-    "MRVL": {
-      "ticker": "MRVL",
-      "source": "premarket_buy",
-      "price": 282.12,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
-    },
-    "PLTR": {
-      "ticker": "PLTR",
-      "source": "premarket_buy",
-      "price": 192.1,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.91,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.91,
-      "premarket_strategy": "trend_follow"
-    },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_gap_news",
-      "price": 649.53,
-      "pct_change": 2.78,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.23,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     }
   }
 }
