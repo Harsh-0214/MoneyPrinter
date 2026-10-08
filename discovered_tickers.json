@@ -1,6 +1,10 @@
 {
   "tickers": [
-    "WOLF"
+    "WBD",
+    "WOLF",
+    "PLTR",
+    "TSLA",
+    "SMCI"
   ],
   "meta": {
     "WOLF": {
@@ -14,6 +18,66 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_buy",
+      "price": 377.69,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.76,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.76,
+      "premarket_strategy": "trend_follow"
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_buy",
+      "price": 194.08,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.86,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.86,
+      "premarket_strategy": "trend_follow"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_buy",
+      "price": 44.17,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.78,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.78,
+      "premarket_strategy": "trend_follow"
+    },
+    "WBD": {
+      "ticker": "WBD",
+      "source": "premarket_buy",
+      "price": 30.99,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
     }
   }
 }
