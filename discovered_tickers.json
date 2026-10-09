@@ -1,4 +1,38 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "WBD",
+    "PLTR"
+  ],
+  "meta": {
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_buy",
+      "price": 198.77,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
+    },
+    "WBD": {
+      "ticker": "WBD",
+      "source": "premarket_buy",
+      "price": 30.99,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
+    }
+  }
 }
