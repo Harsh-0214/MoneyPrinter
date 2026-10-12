@@ -1,8 +1,11 @@
 {
   "tickers": [
-    "VZ",
+    "WBD",
+    "TSLA",
+    "PLTR",
+    "T",
     "AMT",
-    "T"
+    "VZ"
   ],
   "meta": {
     "VZ": {
@@ -19,15 +22,18 @@
     },
     "AMT": {
       "ticker": "AMT",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 182.47,
-      "pct_change": 9.41,
-      "vol_ratio": 3.25,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 0.77,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.77,
+      "premarket_strategy": "breakout"
     },
     "T": {
       "ticker": "T",
@@ -40,6 +46,48 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_buy",
+      "price": 209.03,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
+    },
+    "WBD": {
+      "ticker": "WBD",
+      "source": "premarket_buy",
+      "price": 30.99,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_gap_news",
+      "price": 383.09,
+      "pct_change": 2.14,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.17,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
