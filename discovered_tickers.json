@@ -1,38 +1,45 @@
 {
   "tickers": [
-    "WBD",
-    "PLTR"
+    "VZ",
+    "AMT",
+    "T"
   ],
   "meta": {
-    "PLTR": {
-      "ticker": "PLTR",
-      "source": "premarket_buy",
-      "price": 198.77,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "VZ": {
+      "ticker": "VZ",
+      "source": "discovery",
+      "price": 41.65,
+      "pct_change": 10.15,
+      "vol_ratio": 4.39,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     },
-    "WBD": {
-      "ticker": "WBD",
-      "source": "premarket_buy",
-      "price": 30.99,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "AMT": {
+      "ticker": "AMT",
+      "source": "discovery",
+      "price": 182.47,
+      "pct_change": 9.41,
+      "vol_ratio": 3.25,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "T": {
+      "ticker": "T",
+      "source": "discovery",
+      "price": 22.18,
+      "pct_change": 10.87,
+      "vol_ratio": 3.12,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     }
   }
 }
