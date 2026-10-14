@@ -1,8 +1,9 @@
 {
   "tickers": [
     "JNJ",
-    "C",
-    "AMAT"
+    "AMAT",
+    "CVX",
+    "C"
   ],
   "meta": {
     "JNJ": {
@@ -40,6 +41,21 @@
       "claude_confidence": 0.68,
       "claude_reasoning": "Applied Materials' $5B R&D facility opening is a concrete, credible catalyst tied to AI-driven semiconductor capex demand, providing a fundamental basis for the move beyond pure momentum, though the 1.6x volume ratio is modest and the news may already be partially priced in.",
       "gap_catalyst": false
+    },
+    "CVX": {
+      "ticker": "CVX",
+      "source": "premarket_buy",
+      "price": 217.82,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.82,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.82,
+      "premarket_strategy": "squeeze_breakout"
     }
   }
 }
