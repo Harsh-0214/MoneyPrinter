@@ -1,61 +1,19 @@
 {
   "tickers": [
-    "JNJ",
-    "AMAT",
-    "CVX",
-    "C"
+    "MS"
   ],
   "meta": {
-    "JNJ": {
-      "ticker": "JNJ",
+    "MS": {
+      "ticker": "MS",
       "source": "discovery",
-      "price": 248.57,
-      "pct_change": 5.88,
-      "vol_ratio": 2.38,
+      "price": 181.58,
+      "pct_change": 2.7,
+      "vol_ratio": 2.02,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.82,
-      "claude_reasoning": "JNJ reported a Q3 earnings beat and raised full-year 2026 guidance, providing a credible fundamental catalyst that justifies the elevated volume and price move, with potential for continued institutional re-rating over the next 1-3 sessions.",
+      "claude_reasoning": "Morgan Stanley delivered a clear fundamental catalyst \u2014 a Q3 earnings beat driven by equities trading revenue exceeding expectations by $909 million, providing a credible and durable reason for the +2.7% move on 2x volume.",
       "gap_catalyst": false
-    },
-    "C": {
-      "ticker": "C",
-      "source": "discovery",
-      "price": 124.55,
-      "pct_change": 5.6,
-      "vol_ratio": 2.11,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.78,
-      "claude_reasoning": "Citigroup's 40% profit jump driven by strong investment banking, services, and wealth revenue with 8% top-line growth is a credible fundamental catalyst (earnings beat) supporting the move and likely to sustain institutional interest over the next 1-3 sessions.",
-      "gap_catalyst": false
-    },
-    "AMAT": {
-      "ticker": "AMAT",
-      "source": "discovery",
-      "price": 464.34,
-      "pct_change": 6.68,
-      "vol_ratio": 1.59,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.68,
-      "claude_reasoning": "Applied Materials' $5B R&D facility opening is a concrete, credible catalyst tied to AI-driven semiconductor capex demand, providing a fundamental basis for the move beyond pure momentum, though the 1.6x volume ratio is modest and the news may already be partially priced in.",
-      "gap_catalyst": false
-    },
-    "CVX": {
-      "ticker": "CVX",
-      "source": "premarket_buy",
-      "price": 217.82,
-      "pct_change": 0.0,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.82,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.82,
-      "premarket_strategy": "squeeze_breakout"
     }
   }
 }
