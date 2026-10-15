@@ -1,6 +1,7 @@
 {
   "tickers": [
-    "MS"
+    "MS",
+    "BIIB"
   ],
   "meta": {
     "MS": {
@@ -14,6 +15,21 @@
       "claude_confidence": 0.82,
       "claude_reasoning": "Morgan Stanley delivered a clear fundamental catalyst \u2014 a Q3 earnings beat driven by equities trading revenue exceeding expectations by $909 million, providing a credible and durable reason for the +2.7% move on 2x volume.",
       "gap_catalyst": false
+    },
+    "BIIB": {
+      "ticker": "BIIB",
+      "source": "premarket_buy",
+      "price": 232.9,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
     }
   }
 }
