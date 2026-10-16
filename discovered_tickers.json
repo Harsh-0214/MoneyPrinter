@@ -1,11 +1,11 @@
 {
   "tickers": [
-    "SCHW",
-    "TSM",
-    "ETSY",
     "SOXL",
     "UNH",
-    "AMAT"
+    "AMAT",
+    "ETSY",
+    "TSM",
+    "SCHW"
   ],
   "meta": {
     "SCHW": {
