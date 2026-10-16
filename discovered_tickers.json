@@ -1,35 +1,84 @@
 {
   "tickers": [
-    "MS",
-    "BIIB"
+    "SCHW",
+    "TSM",
+    "ETSY",
+    "SOXL",
+    "UNH",
+    "AMAT"
   ],
   "meta": {
-    "MS": {
-      "ticker": "MS",
+    "SCHW": {
+      "ticker": "SCHW",
       "source": "discovery",
-      "price": 181.58,
-      "pct_change": 2.7,
+      "price": 94.18,
+      "pct_change": 2.69,
+      "vol_ratio": 2.34,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.72,
+      "claude_reasoning": "Schwab's Q3 revenue beat with 17% growth to $7.2B is a credible fundamental catalyst supporting the elevated volume and price move, suggesting institutional buying on earnings strength.",
+      "gap_catalyst": false
+    },
+    "TSM": {
+      "ticker": "TSM",
+      "source": "discovery",
+      "price": 423.38,
+      "pct_change": 1.57,
+      "vol_ratio": 2.06,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.72,
+      "claude_reasoning": "TSMC's record profit driven by 'extremely robust' AI chip demand provides a credible fundamental catalyst, with the Texas expansion news adding a near-term policy/geopolitical tailwind that supports continued institutional interest over the next 1-3 sessions.",
+      "gap_catalyst": false
+    },
+    "ETSY": {
+      "ticker": "ETSY",
+      "source": "discovery",
+      "price": 89.17,
+      "pct_change": 7.62,
+      "vol_ratio": 2.02,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "SOXL": {
+      "ticker": "SOXL",
+      "source": "discovery",
+      "price": 105.79,
+      "pct_change": 4.33,
+      "vol_ratio": 2.15,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "SOXL (3x leveraged semiconductor ETF) is moving on a credible, broad-based semiconductor sector catalyst\u2014TSMC's record AI-driven profits and ASML's surging demand signal genuine fundamental strength in the chip cycle, providing a durable near-term tailwind, though leveraged ETF decay and volatility risk warrant tight risk management.",
+      "gap_catalyst": false
+    },
+    "UNH": {
+      "ticker": "UNH",
+      "source": "discovery",
+      "price": 406.66,
+      "pct_change": 2.77,
       "vol_ratio": 2.02,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.82,
-      "claude_reasoning": "Morgan Stanley delivered a clear fundamental catalyst \u2014 a Q3 earnings beat driven by equities trading revenue exceeding expectations by $909 million, providing a credible and durable reason for the +2.7% move on 2x volume.",
+      "claude_confidence": 0.62,
+      "claude_reasoning": "A major bank analyst upgrade with a materially raised price target (~40% upside) citing a credible fundamental catalyst (2027 earnings visibility flagged by CFO) provides a clear, identifiable reason for the move, and the 2.0x volume confirms institutional accumulation following the call.",
       "gap_catalyst": false
     },
-    "BIIB": {
-      "ticker": "BIIB",
-      "source": "premarket_buy",
-      "price": 232.9,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "AMAT": {
+      "ticker": "AMAT",
+      "source": "discovery",
+      "price": 430.09,
+      "pct_change": 3.7,
+      "vol_ratio": 1.77,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.62,
+      "claude_reasoning": "AMAT is moving on credible fundamental tailwinds\u2014CEO commentary linking agentic AI to wafer demand and a strategic investment in chip packaging technology provide a legitimate catalyst tied to the ongoing AI infrastructure buildout, though the 3.7% move on 1.8x volume is moderate and warrants monitoring rather than aggressive positioning.",
+      "gap_catalyst": false
     }
   }
 }
