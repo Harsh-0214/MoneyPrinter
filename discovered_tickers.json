@@ -1,9 +1,10 @@
 {
   "tickers": [
+    "ETSY",
     "SHOP",
     "AA",
     "AI",
-    "ETSY"
+    "CVX"
   ],
   "meta": {
     "SHOP": {
@@ -20,15 +21,18 @@
     },
     "AA": {
       "ticker": "AA",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 41.46,
-      "pct_change": 2.55,
-      "vol_ratio": 3.06,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "Alcoa (AA) appears to have posted an earnings beat driving Friday's pop, which is a credible fundamental catalyst justifying the elevated volume and price move, though broader market weakness (largest drops since June per headlines) creates meaningful headwind risk over the next 1-3 sessions.",
-      "gap_catalyst": false
+      "claude_confidence": 0.83,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.83,
+      "premarket_strategy": "breakout"
     },
     "AI": {
       "ticker": "AI",
@@ -53,6 +57,18 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Etsy's move appears driven by spillover from eBay takeover speculation creating a sector-wide re-rating of e-commerce marketplace names, which is a credible short-term catalyst, though the durability depends entirely on whether eBay deal rumors are confirmed \u2014 with earnings due October 28 providing an additional near-term fundamental catalyst to monitor.",
       "gap_catalyst": false
+    },
+    "CVX": {
+      "ticker": "CVX",
+      "source": "premarket_gap_news",
+      "price": 224.99,
+      "pct_change": 2.56,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
