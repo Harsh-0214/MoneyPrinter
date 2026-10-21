@@ -1,9 +1,11 @@
 {
   "tickers": [
-    "GE",
-    "MMM",
+    "HAL",
     "CLF",
-    "HAL"
+    "TSLA",
+    "MMM",
+    "GE",
+    "SMCI"
   ],
   "meta": {
     "GE": {
@@ -44,15 +46,42 @@
     },
     "HAL": {
       "ticker": "HAL",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 33.61,
-      "pct_change": 1.85,
-      "vol_ratio": 1.83,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "Halliburton's Q3 2026 earnings beat on both revenue and profit is a credible fundamental catalyst supporting the price move, with volume confirming institutional interest and the stock not extended near a 52-week high.",
-      "gap_catalyst": false
+      "claude_confidence": 0.83,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.83,
+      "premarket_strategy": "breakout"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 36.55,
+      "pct_change": 13.93,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_gap_news",
+      "price": 379.77,
+      "pct_change": 3.22,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.1,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
