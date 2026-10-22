@@ -1,5 +1,7 @@
 {
   "tickers": [
+    "AMD",
+    "SMCI",
     "T",
     "TXN"
   ],
@@ -18,15 +20,42 @@
     },
     "TXN": {
       "ticker": "TXN",
-      "source": "discovery",
+      "source": "premarket_buy",
       "price": 284.7,
-      "pct_change": 2.48,
-      "vol_ratio": 1.67,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "Texas Instruments reported earnings with an analog rebound narrative that provides a credible fundamental catalyst, though the modest 2.5% move and ambiguous headline sentiment warrant cautious monitoring rather than aggressive positioning.",
-      "gap_catalyst": false
+      "claude_confidence": 0.93,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.93,
+      "premarket_strategy": "breakout"
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 35.55,
+      "pct_change": 9.52,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 553.78,
+      "pct_change": 3.64,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.1,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
