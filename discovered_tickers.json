@@ -1,61 +1,84 @@
 {
   "tickers": [
-    "AMD",
-    "SMCI",
-    "T",
-    "TXN"
+    "CMCSA",
+    "SOXL",
+    "MRNA",
+    "LRCX",
+    "KLAC",
+    "CLF"
   ],
   "meta": {
-    "T": {
-      "ticker": "T",
+    "CMCSA": {
+      "ticker": "CMCSA",
       "source": "discovery",
-      "price": 21.91,
-      "pct_change": 6.59,
-      "vol_ratio": 1.94,
+      "price": 22.86,
+      "pct_change": 3.6,
+      "vol_ratio": 1.9,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.72,
-      "claude_reasoning": "AT&T reported an earnings beat with raised full-year profit guidance driven by strong bundled plan demand, providing a credible fundamental catalyst for the 6.6% move, though muted wireless subscriber growth is a near-term overhang that limits upside durability.",
+      "claude_reasoning": "Comcast's earnings beat with record NBCU content performance and Peacock reaching profitability ahead of a planned spinoff provides a credible fundamental catalyst for the 3.6% move on elevated volume, warranting short-term monitoring for continuation.",
       "gap_catalyst": false
     },
-    "TXN": {
-      "ticker": "TXN",
-      "source": "premarket_buy",
-      "price": 284.7,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "SOXL": {
+      "ticker": "SOXL",
+      "source": "discovery",
+      "price": 83.08,
+      "pct_change": 19.57,
+      "vol_ratio": 2.64,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.93,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.93,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 35.55,
-      "pct_change": 9.52,
-      "vol_ratio": null,
+    "MRNA": {
+      "ticker": "MRNA",
+      "source": "discovery",
+      "price": 194.46,
+      "pct_change": 20.93,
+      "vol_ratio": 2.51,
       "near_52wk": false,
-      "news_polarity": 0.14,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_gap_news",
-      "price": 553.78,
-      "pct_change": 3.64,
-      "vol_ratio": null,
+    "LRCX": {
+      "ticker": "LRCX",
+      "source": "discovery",
+      "price": 229.97,
+      "pct_change": 11.9,
+      "vol_ratio": 2.45,
       "near_52wk": false,
-      "news_polarity": 0.1,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "KLAC": {
+      "ticker": "KLAC",
+      "source": "discovery",
+      "price": 148.73,
+      "pct_change": 8.97,
+      "vol_ratio": 2.03,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "CLF": {
+      "ticker": "CLF",
+      "source": "discovery",
+      "price": 13.04,
+      "pct_change": 7.02,
+      "vol_ratio": 1.79,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "CLF is moving on a credible fundamental catalyst: Q3 2026 earnings with adjusted EBITDA more than doubling and described as the strongest quarter in three years, justifying a post-earnings momentum trade, though the prior session's profit-taking (-6%) warrants caution on entry timing.",
+      "gap_catalyst": false
     }
   }
 }
