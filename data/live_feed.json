@@ -18,7 +18,11 @@
         "premarket",
         "market_open",
         "continuous"
-      ]
+      ],
+      "pnl_dollar": 0,
+      "trades_executed": 0,
+      "win_rate": 0,
+      "portfolio_value": 33767.27
     },
     "2026-10-22": {
       "date": "2026-10-22",
@@ -54864,20 +54868,20 @@
     }
   ],
   "portfolio": {
-    "updated": "2026-10-23T19:56:43.000024+00:00",
-    "equity": 33763.0,
+    "updated": "2026-10-23T20:15:38.492951+00:00",
+    "equity": 33766.46,
     "cash": 27000.71,
-    "buying_power": 124254.77,
+    "buying_power": 124270.34,
     "positions": [
       {
         "ticker": "TSLA",
         "qty": 9.0,
         "side": "long",
         "avg_entry": 368.0,
-        "current": 372.565,
-        "market_value": 3353.09,
-        "unrealized_pl": 41.085,
-        "unrealized_plpc": 0.0124,
+        "current": 371.75,
+        "market_value": 3345.75,
+        "unrealized_pl": 33.75,
+        "unrealized_plpc": 0.01019,
         "stop_loss": 344.76,
         "take_profit": 426.71,
         "strategy": "trend_follow",
@@ -54889,10 +54893,10 @@
         "qty": 12.0,
         "side": "long",
         "avg_entry": 281.75,
-        "current": 284.1,
-        "market_value": 3409.2,
-        "unrealized_pl": 28.2,
-        "unrealized_plpc": 0.00834,
+        "current": 285.0,
+        "market_value": 3420.0,
+        "unrealized_pl": 39.0,
+        "unrealized_plpc": 0.01154,
         "stop_loss": 267.77,
         "take_profit": 314.41,
         "strategy": "trend_follow",
