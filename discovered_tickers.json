@@ -1,8 +1,10 @@
 {
   "tickers": [
+    "MRVL",
+    "XOM",
+    "VZ",
     "SLB",
-    "T",
-    "VZ"
+    "T"
   ],
   "meta": {
     "SLB": {
@@ -40,6 +42,30 @@
       "claude_confidence": 0.65,
       "claude_reasoning": "Verizon reports Q3 earnings tomorrow, providing a clear fundamental catalyst for the elevated volume and price movement, making it worth monitoring for a post-earnings trade setup in the next 1-3 sessions.",
       "gap_catalyst": false
+    },
+    "XOM": {
+      "ticker": "XOM",
+      "source": "premarket_gap_news",
+      "price": 183.21,
+      "pct_change": 2.82,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.1,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "MRVL": {
+      "ticker": "MRVL",
+      "source": "premarket_gap_news",
+      "price": 228.61,
+      "pct_change": 2.3,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
