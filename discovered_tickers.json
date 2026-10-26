@@ -1,83 +1,44 @@
 {
   "tickers": [
-    "CMCSA",
-    "SOXL",
-    "MRNA",
-    "LRCX",
-    "KLAC",
-    "CLF"
+    "SLB",
+    "T",
+    "VZ"
   ],
   "meta": {
-    "CMCSA": {
-      "ticker": "CMCSA",
+    "SLB": {
+      "ticker": "SLB",
       "source": "discovery",
-      "price": 22.86,
-      "pct_change": 3.6,
-      "vol_ratio": 1.9,
+      "price": 53.05,
+      "pct_change": 7.01,
+      "vol_ratio": 1.54,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.72,
-      "claude_reasoning": "Comcast's earnings beat with record NBCU content performance and Peacock reaching profitability ahead of a planned spinoff provides a credible fundamental catalyst for the 3.6% move on elevated volume, warranting short-term monitoring for continuation.",
+      "claude_reasoning": "SLB's +7% move is supported by a credible fundamental catalyst: Q3 revenue of $9.4B (+6% YoY) combined with positive forward guidance around Middle East oil field recovery, providing a durable basis for near-term momentum over 1-3 sessions.",
       "gap_catalyst": false
     },
-    "SOXL": {
-      "ticker": "SOXL",
+    "T": {
+      "ticker": "T",
       "source": "discovery",
-      "price": 83.08,
-      "pct_change": 19.57,
-      "vol_ratio": 2.64,
+      "price": 20.93,
+      "pct_change": 8.08,
+      "vol_ratio": 2.32,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "MRNA": {
-      "ticker": "MRNA",
+    "VZ": {
+      "ticker": "VZ",
       "source": "discovery",
-      "price": 194.46,
-      "pct_change": 20.93,
-      "vol_ratio": 2.51,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "LRCX": {
-      "ticker": "LRCX",
-      "source": "discovery",
-      "price": 229.97,
-      "pct_change": 11.9,
-      "vol_ratio": 2.45,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "KLAC": {
-      "ticker": "KLAC",
-      "source": "discovery",
-      "price": 148.73,
-      "pct_change": 8.97,
-      "vol_ratio": 2.03,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "CLF": {
-      "ticker": "CLF",
-      "source": "discovery",
-      "price": 13.04,
-      "pct_change": 7.02,
-      "vol_ratio": 1.79,
+      "price": 44.25,
+      "pct_change": 2.09,
+      "vol_ratio": 2.23,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.65,
-      "claude_reasoning": "CLF is moving on a credible fundamental catalyst: Q3 2026 earnings with adjusted EBITDA more than doubling and described as the strongest quarter in three years, justifying a post-earnings momentum trade, though the prior session's profit-taking (-6%) warrants caution on entry timing.",
+      "claude_reasoning": "Verizon reports Q3 earnings tomorrow, providing a clear fundamental catalyst for the elevated volume and price movement, making it worth monitoring for a post-earnings trade setup in the next 1-3 sessions.",
       "gap_catalyst": false
     }
   }
