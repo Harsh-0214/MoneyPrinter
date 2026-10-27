@@ -1,8 +1,12 @@
 {
   "tickers": [
+    "NU",
+    "XOM",
     "DASH",
+    "NVDA",
     "VZ",
-    "NU"
+    "TSLA",
+    "SOFI"
   ],
   "meta": {
     "DASH": {
@@ -40,6 +44,57 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "XOM": {
+      "ticker": "XOM",
+      "source": "premarket_buy",
+      "price": 184.54,
+      "pct_change": 0.0,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.83,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 0.83,
+      "premarket_strategy": "trend_follow"
+    },
+    "SOFI": {
+      "ticker": "SOFI",
+      "source": "premarket_gap_news",
+      "price": 16.03,
+      "pct_change": 9.68,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.18,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_gap_news",
+      "price": 396.29,
+      "pct_change": 6.49,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.2,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "NVDA": {
+      "ticker": "NVDA",
+      "source": "premarket_gap_news",
+      "price": 216.18,
+      "pct_change": 2.45,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
