@@ -1,71 +1,45 @@
 {
   "tickers": [
-    "MRVL",
-    "XOM",
+    "DASH",
     "VZ",
-    "SLB",
-    "T"
+    "NU"
   ],
   "meta": {
-    "SLB": {
-      "ticker": "SLB",
+    "DASH": {
+      "ticker": "DASH",
       "source": "discovery",
-      "price": 53.05,
-      "pct_change": 7.01,
-      "vol_ratio": 1.54,
+      "price": 168.39,
+      "pct_change": 6.12,
+      "vol_ratio": 2.01,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.72,
-      "claude_reasoning": "SLB's +7% move is supported by a credible fundamental catalyst: Q3 revenue of $9.4B (+6% YoY) combined with positive forward guidance around Middle East oil field recovery, providing a durable basis for near-term momentum over 1-3 sessions.",
-      "gap_catalyst": false
-    },
-    "T": {
-      "ticker": "T",
-      "source": "discovery",
-      "price": 20.93,
-      "pct_change": 8.08,
-      "vol_ratio": 2.32,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "claude_reasoning": "DoorDash is in active M&A talks to potentially acquire Instacart, a credible strategic catalyst that could significantly expand its grocery delivery market share, justifying the elevated volume and price move over the next 1-3 sessions as deal speculation develops.",
       "gap_catalyst": false
     },
     "VZ": {
       "ticker": "VZ",
       "source": "discovery",
-      "price": 44.25,
-      "pct_change": 2.09,
-      "vol_ratio": 2.23,
+      "price": 43.11,
+      "pct_change": 3.35,
+      "vol_ratio": 1.95,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.65,
-      "claude_reasoning": "Verizon reports Q3 earnings tomorrow, providing a clear fundamental catalyst for the elevated volume and price movement, making it worth monitoring for a post-earnings trade setup in the next 1-3 sessions.",
+      "claude_confidence": 0.72,
+      "claude_reasoning": "Verizon reported a credible fundamental catalyst\u2014Q3 earnings beat on profit and wireless subscriber additions with raised guidance\u2014justifying the elevated volume and price move, though revenue coming in light tempers enthusiasm and limits upside durability beyond 1-2 sessions.",
       "gap_catalyst": false
     },
-    "XOM": {
-      "ticker": "XOM",
-      "source": "premarket_gap_news",
-      "price": 183.21,
-      "pct_change": 2.82,
-      "vol_ratio": null,
+    "NU": {
+      "ticker": "NU",
+      "source": "discovery",
+      "price": 12.73,
+      "pct_change": 16.0,
+      "vol_ratio": 4.7,
       "near_52wk": false,
-      "news_polarity": 0.1,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "MRVL": {
-      "ticker": "MRVL",
-      "source": "premarket_gap_news",
-      "price": 228.61,
-      "pct_change": 2.3,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.12,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     }
   }
 }
