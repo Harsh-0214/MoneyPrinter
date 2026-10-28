@@ -1,100 +1,58 @@
 {
   "tickers": [
-    "NU",
-    "XOM",
-    "DASH",
-    "NVDA",
-    "VZ",
-    "TSLA",
-    "SOFI"
+    "UPS",
+    "BA",
+    "ENPH",
+    "PYPL"
   ],
   "meta": {
-    "DASH": {
-      "ticker": "DASH",
+    "UPS": {
+      "ticker": "UPS",
       "source": "discovery",
-      "price": 168.39,
-      "pct_change": 6.12,
-      "vol_ratio": 2.01,
+      "price": 106.15,
+      "pct_change": 5.91,
+      "vol_ratio": 2.33,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "DoorDash is in active M&A talks to potentially acquire Instacart, a credible strategic catalyst that could significantly expand its grocery delivery market share, justifying the elevated volume and price move over the next 1-3 sessions as deal speculation develops.",
+      "claude_confidence": 0.78,
+      "claude_reasoning": "UPS beat earnings estimates and raised forward guidance driven by an efficiency initiative gaining traction, providing a clear fundamental catalyst that credibly justifies the elevated volume and price move.",
       "gap_catalyst": false
     },
-    "VZ": {
-      "ticker": "VZ",
+    "BA": {
+      "ticker": "BA",
       "source": "discovery",
-      "price": 43.11,
-      "pct_change": 3.35,
-      "vol_ratio": 1.95,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "Verizon reported a credible fundamental catalyst\u2014Q3 earnings beat on profit and wireless subscriber additions with raised guidance\u2014justifying the elevated volume and price move, though revenue coming in light tempers enthusiasm and limits upside durability beyond 1-2 sessions.",
-      "gap_catalyst": false
-    },
-    "NU": {
-      "ticker": "NU",
-      "source": "discovery",
-      "price": 12.73,
-      "pct_change": 16.0,
-      "vol_ratio": 4.7,
+      "price": 168.06,
+      "pct_change": 10.67,
+      "vol_ratio": 7.0,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "XOM": {
-      "ticker": "XOM",
-      "source": "premarket_buy",
-      "price": 184.54,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "ENPH": {
+      "ticker": "ENPH",
+      "source": "discovery",
+      "price": 24.01,
+      "pct_change": 20.97,
+      "vol_ratio": 3.6,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.83,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 0.83,
-      "premarket_strategy": "trend_follow"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     },
-    "SOFI": {
-      "ticker": "SOFI",
-      "source": "premarket_gap_news",
-      "price": 16.03,
-      "pct_change": 9.68,
-      "vol_ratio": null,
+    "PYPL": {
+      "ticker": "PYPL",
+      "source": "discovery",
+      "price": 56.09,
+      "pct_change": 2.06,
+      "vol_ratio": 1.65,
       "near_52wk": false,
-      "news_polarity": 0.18,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "TSLA": {
-      "ticker": "TSLA",
-      "source": "premarket_gap_news",
-      "price": 396.29,
-      "pct_change": 6.49,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.2,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "NVDA": {
-      "ticker": "NVDA",
-      "source": "premarket_gap_news",
-      "price": 216.18,
-      "pct_change": 2.45,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.11,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.68,
+      "claude_reasoning": "PayPal's Q3 earnings beat on profit with a raised 2026 profit forecast signals credible turnaround progress, providing a fundamental catalyst for near-term momentum despite the revenue and merchant volume miss which may cap upside and warrant close monitoring of post-earnings price action over the next 1-3 sessions.",
+      "gap_catalyst": false
     }
   }
 }
