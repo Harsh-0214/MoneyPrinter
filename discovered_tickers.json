@@ -1,6 +1,9 @@
 {
   "tickers": [
+    "SMCI",
+    "SOFI",
     "ENPH",
+    "AMD",
     "ORCL"
   ],
   "meta": {
@@ -18,15 +21,54 @@
     },
     "ORCL": {
       "ticker": "ORCL",
-      "source": "discovery",
-      "price": 141.54,
-      "pct_change": 8.41,
-      "vol_ratio": 2.77,
+      "source": "premarket_buy",
+      "price": 141.64,
+      "pct_change": 0.0,
+      "vol_ratio": null,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
+      "claude_confidence": 1.0,
+      "claude_reasoning": null,
+      "gap_catalyst": false,
+      "premarket_buy": true,
+      "premarket_conf": 1.0,
+      "premarket_strategy": "breakout"
+    },
+    "SOFI": {
+      "ticker": "SOFI",
+      "source": "premarket_gap_news",
+      "price": 17.13,
+      "pct_change": 4.42,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.15,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 578.43,
+      "pct_change": 3.27,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.16,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 35.83,
+      "pct_change": 2.14,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.19,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
