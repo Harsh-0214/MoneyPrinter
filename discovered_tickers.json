@@ -1,12 +1,13 @@
 {
   "tickers": [
-    "LLY",
     "RTX",
-    "DASH",
-    "MA",
-    "NOW",
+    "SOFI",
     "CAT",
-    "KTOS"
+    "LLY",
+    "NOW",
+    "KTOS",
+    "MA",
+    "DASH"
   ],
   "meta": {
     "LLY": {
@@ -92,6 +93,18 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "Kratos is a credible beneficiary of rising European defense drone demand, with the Airbus combat drone test and potential Eurofighter teaming in 2027 providing a tangible near-term catalyst tied to increased NATO/European defense spending, though the volume ratio is modest and the vague 'Why Is Kratos Stock Trending' headline suggests some noise rather than a hard news catalyst.",
       "gap_catalyst": false
+    },
+    "SOFI": {
+      "ticker": "SOFI",
+      "source": "premarket_gap_news",
+      "price": 17.61,
+      "pct_change": 2.8,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
