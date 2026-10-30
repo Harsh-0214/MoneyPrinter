@@ -1,74 +1,97 @@
 {
   "tickers": [
-    "SMCI",
-    "SOFI",
-    "ENPH",
-    "AMD",
-    "ORCL"
+    "LLY",
+    "RTX",
+    "DASH",
+    "MA",
+    "NOW",
+    "CAT",
+    "KTOS"
   ],
   "meta": {
-    "ENPH": {
-      "ticker": "ENPH",
+    "LLY": {
+      "ticker": "LLY",
       "source": "discovery",
-      "price": 24.99,
-      "pct_change": 15.93,
-      "vol_ratio": 5.67,
+      "price": 1373.46,
+      "pct_change": 6.41,
+      "vol_ratio": 1.76,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.82,
+      "claude_reasoning": "Eli Lilly reported a clear fundamental catalyst \u2014 a Q3 2026 earnings beat with raised full-year guidance driven by sustained strong demand for Zepbound and Mounjaro \u2014 justifying the elevated volume and price move as durable rather than speculative.",
+      "gap_catalyst": false
+    },
+    "RTX": {
+      "ticker": "RTX",
+      "source": "discovery",
+      "price": 199.59,
+      "pct_change": 1.78,
+      "vol_ratio": 2.65,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.78,
+      "claude_reasoning": "RTX is moving on a credible fundamental catalyst \u2014 a strong earnings beat with a raised forward outlook \u2014 which is a durable, acceptable driver for short-term price momentum, though the receivables-selling headline warrants monitoring for any cash flow quality concerns.",
+      "gap_catalyst": false
+    },
+    "DASH": {
+      "ticker": "DASH",
+      "source": "discovery",
+      "price": 179.02,
+      "pct_change": 5.69,
+      "vol_ratio": 2.42,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.72,
+      "claude_reasoning": "DoorDash's announced $17B acquisition of Instacart is a confirmed major M&A catalyst that expands its addressable market into grocery delivery, justifying the elevated volume and price move, though integration risk and deal financing concerns may create near-term volatility worth monitoring over the next 1-3 sessions.",
+      "gap_catalyst": false
+    },
+    "MA": {
+      "ticker": "MA",
+      "source": "discovery",
+      "price": 635.82,
+      "pct_change": 4.1,
+      "vol_ratio": 1.53,
+      "near_52wk": true,
+      "news_polarity": null,
+      "claude_confidence": 0.72,
+      "claude_reasoning": "Mastercard reported a strong Q3 earnings beat with 14% revenue growth to $9.8B, providing a credible fundamental catalyst for the move near 52-week highs, though the 1.5x volume ratio is modest and the post-earnings drift window is short.",
+      "gap_catalyst": false
+    },
+    "NOW": {
+      "ticker": "NOW",
+      "source": "discovery",
+      "price": 109.62,
+      "pct_change": 26.87,
+      "vol_ratio": 5.18,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "ORCL": {
-      "ticker": "ORCL",
-      "source": "premarket_buy",
-      "price": 141.64,
-      "pct_change": 0.0,
-      "vol_ratio": null,
+    "CAT": {
+      "ticker": "CAT",
+      "source": "discovery",
+      "price": 647.01,
+      "pct_change": 9.44,
+      "vol_ratio": 3.13,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 1.0,
-      "claude_reasoning": null,
-      "gap_catalyst": false,
-      "premarket_buy": true,
-      "premarket_conf": 1.0,
-      "premarket_strategy": "breakout"
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     },
-    "SOFI": {
-      "ticker": "SOFI",
-      "source": "premarket_gap_news",
-      "price": 17.13,
-      "pct_change": 4.42,
-      "vol_ratio": null,
+    "KTOS": {
+      "ticker": "KTOS",
+      "source": "discovery",
+      "price": 43.59,
+      "pct_change": 5.8,
+      "vol_ratio": 1.54,
       "near_52wk": false,
-      "news_polarity": 0.15,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_gap_news",
-      "price": 578.43,
-      "pct_change": 3.27,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.16,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 35.83,
-      "pct_change": 2.14,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.19,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Kratos is a credible beneficiary of rising European defense drone demand, with the Airbus combat drone test and potential Eurofighter teaming in 2027 providing a tangible near-term catalyst tied to increased NATO/European defense spending, though the volume ratio is modest and the vague 'Why Is Kratos Stock Trending' headline suggests some noise rather than a hard news catalyst.",
+      "gap_catalyst": false
     }
   }
 }
