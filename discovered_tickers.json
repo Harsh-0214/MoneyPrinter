@@ -1,15 +1,15 @@
 {
   "tickers": [
-    "DXCM",
-    "KLAC",
-    "LRCX",
     "INTC",
-    "SOXL",
-    "RBLX",
-    "QCOM",
     "TQQQ",
+    "KLAC",
+    "RBLX",
+    "DXCM",
+    "LRCX",
     "LLY",
-    "GILD"
+    "QCOM",
+    "GILD",
+    "SOXL"
   ],
   "meta": {
     "DXCM": {
