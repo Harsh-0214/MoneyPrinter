@@ -1,135 +1,18 @@
 {
   "tickers": [
-    "INTC",
-    "TQQQ",
-    "KLAC",
-    "RBLX",
-    "DXCM",
-    "LRCX",
-    "LLY",
-    "QCOM",
-    "GILD",
-    "SOXL"
+    "RIVN"
   ],
   "meta": {
-    "DXCM": {
-      "ticker": "DXCM",
+    "RIVN": {
+      "ticker": "RIVN",
       "source": "discovery",
-      "price": 82.3,
-      "pct_change": 3.04,
-      "vol_ratio": 1.95,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.78,
-      "claude_reasoning": "DexCom (DXCM), a continuous glucose monitoring device maker, beat earnings estimates and raised its sales guidance, providing a clear fundamental catalyst for the +3% move on elevated volume.",
-      "gap_catalyst": false
-    },
-    "KLAC": {
-      "ticker": "KLAC",
-      "source": "discovery",
-      "price": 157.83,
-      "pct_change": 5.89,
-      "vol_ratio": 2.25,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "KLAC is moving ahead of Q3 earnings tomorrow, which is a legitimate near-term catalyst \u2014 the elevated volume and price action reflect pre-earnings positioning, and a beat could sustain momentum given secular tailwinds from rising semiconductor complexity discussed in analyst coverage.",
-      "gap_catalyst": false
-    },
-    "LRCX": {
-      "ticker": "LRCX",
-      "source": "discovery",
-      "price": 239.16,
-      "pct_change": 6.03,
-      "vol_ratio": 2.05,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "SK Hynix signaling a memory shortage extending into 2030 is a credible fundamental catalyst driving sector-wide rotation into chip equipment names, with LRCX as a direct beneficiary of increased NAND/DRAM capex spending, supported by broad peer confirmation (AMAT, KLA also rallying).",
-      "gap_catalyst": false
-    },
-    "INTC": {
-      "ticker": "INTC",
-      "source": "discovery",
-      "price": 65.02,
-      "pct_change": 29.39,
-      "vol_ratio": 4.48,
+      "price": 13.2,
+      "pct_change": 8.33,
+      "vol_ratio": 2.76,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "SOXL": {
-      "ticker": "SOXL",
-      "source": "discovery",
-      "price": 79.17,
-      "pct_change": 22.71,
-      "vol_ratio": 3.02,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "RBLX": {
-      "ticker": "RBLX",
-      "source": "discovery",
-      "price": 42.98,
-      "pct_change": 18.15,
-      "vol_ratio": 2.52,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "QCOM": {
-      "ticker": "QCOM",
-      "source": "discovery",
-      "price": 164.78,
-      "pct_change": 11.12,
-      "vol_ratio": 2.11,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "TQQQ": {
-      "ticker": "TQQQ",
-      "source": "discovery",
-      "price": 63.23,
-      "pct_change": 8.67,
-      "vol_ratio": 2.1,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "LLY": {
-      "ticker": "LLY",
-      "source": "discovery",
-      "price": 1409.54,
-      "pct_change": 2.63,
-      "vol_ratio": 2.09,
-      "near_52wk": true,
-      "news_polarity": null,
-      "claude_confidence": 0.68,
-      "claude_reasoning": "Eli Lilly is moving on a credible fundamental catalyst \u2014 an explosive earnings beat combined with news that cheaper drug formulations (likely GLP-1s like tirzepatide) are expanding the addressable market, providing a durable near-term reason to monitor for continuation or pullback trades over the next 1-3 sessions.",
-      "gap_catalyst": false
-    },
-    "GILD": {
-      "ticker": "GILD",
-      "source": "discovery",
-      "price": 170.95,
-      "pct_change": 3.24,
-      "vol_ratio": 1.89,
-      "near_52wk": true,
-      "news_polarity": null,
-      "claude_confidence": 0.68,
-      "claude_reasoning": "Gilead's raised sales guidance driven by HIV portfolio strength, combined with reported best sales growth in a decade, represents a credible fundamental catalyst (guidance revision + earnings momentum) that can sustain price action over 1-3 sessions, though the $45M Texas settlement and proximity to 52-week highs warrant tight risk management.",
       "gap_catalyst": false
     }
   }
