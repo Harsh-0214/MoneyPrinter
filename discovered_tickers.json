@@ -1,32 +1,32 @@
 {
   "tickers": [
-    "AMZN",
-    "RIVN"
+    "SHOP",
+    "RIOT"
   ],
   "meta": {
-    "RIVN": {
-      "ticker": "RIVN",
+    "SHOP": {
+      "ticker": "SHOP",
       "source": "discovery",
-      "price": 13.2,
-      "pct_change": 8.33,
-      "vol_ratio": 2.76,
+      "price": 142.7,
+      "pct_change": 8.71,
+      "vol_ratio": 2.68,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "AMZN": {
-      "ticker": "AMZN",
-      "source": "premarket_gap_news",
-      "price": 248.74,
-      "pct_change": 3.49,
-      "vol_ratio": null,
+    "RIOT": {
+      "ticker": "RIOT",
+      "source": "discovery",
+      "price": 16.87,
+      "pct_change": 42.54,
+      "vol_ratio": 2.19,
       "near_52wk": false,
-      "news_polarity": 0.16,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
     }
   }
 }
