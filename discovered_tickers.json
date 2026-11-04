@@ -1,7 +1,9 @@
 {
   "tickers": [
+    "SMCI",
     "SHOP",
-    "RIOT"
+    "RIOT",
+    "AMZN"
   ],
   "meta": {
     "SHOP": {
@@ -27,6 +29,30 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "AMZN": {
+      "ticker": "AMZN",
+      "source": "premarket_gap_news",
+      "price": 260.14,
+      "pct_change": 5.86,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.15,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 31.14,
+      "pct_change": 2.23,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.3,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
