@@ -1,11 +1,13 @@
 {
   "tickers": [
-    "KTOS",
-    "LLY",
+    "KLAC",
     "TTD",
-    "HIMS",
     "SOXL",
-    "KLAC"
+    "KTOS",
+    "AMZN",
+    "AAPL",
+    "HIMS",
+    "LLY"
   ],
   "meta": {
     "KTOS": {
@@ -79,6 +81,30 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "AAPL": {
+      "ticker": "AAPL",
+      "source": "premarket_gap_news",
+      "price": 352.36,
+      "pct_change": 2.91,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.21,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMZN": {
+      "ticker": "AMZN",
+      "source": "premarket_gap_news",
+      "price": 265.16,
+      "pct_change": 2.2,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
