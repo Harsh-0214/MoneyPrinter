@@ -18,7 +18,11 @@
         "premarket",
         "market_open",
         "continuous"
-      ]
+      ],
+      "pnl_dollar": 0,
+      "trades_executed": 0,
+      "win_rate": 0,
+      "portfolio_value": 33084.69
     },
     "2026-11-09": {
       "date": "2026-11-09",
@@ -55550,20 +55554,20 @@
     }
   ],
   "portfolio": {
-    "updated": "2026-11-10T20:53:28.756296+00:00",
-    "equity": 33089.66,
+    "updated": "2026-11-10T21:15:41.334201+00:00",
+    "equity": 33084.69,
     "cash": 26589.9,
-    "buying_power": 124558.93,
+    "buying_power": 124545.01,
     "positions": [
       {
         "ticker": "MSFT",
         "qty": 6.0,
         "side": "long",
         "avg_entry": 551.196667,
-        "current": 534.725,
-        "market_value": 3208.35,
-        "unrealized_pl": -98.830002,
-        "unrealized_plpc": -0.02988,
+        "current": 533.74,
+        "market_value": 3202.44,
+        "unrealized_pl": -104.740002,
+        "unrealized_plpc": -0.03167,
         "stop_loss": 522.41,
         "take_profit": 622.61,
         "strategy": "trend_follow",
@@ -55575,10 +55579,10 @@
         "qty": 47.0,
         "side": "long",
         "avg_entry": 71.228298,
-        "current": 70.03,
-        "market_value": 3291.41,
-        "unrealized_pl": -56.320006,
-        "unrealized_plpc": -0.01682,
+        "current": 70.05,
+        "market_value": 3292.35,
+        "unrealized_pl": -55.380006,
+        "unrealized_plpc": -0.01654,
         "stop_loss": 67.29,
         "take_profit": 81.11,
         "strategy": "trend_follow",
