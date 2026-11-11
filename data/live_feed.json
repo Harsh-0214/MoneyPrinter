@@ -18,7 +18,11 @@
         "premarket",
         "market_open",
         "continuous"
-      ]
+      ],
+      "pnl_dollar": -3.02,
+      "trades_executed": 1,
+      "win_rate": 0.0,
+      "portfolio_value": 33099.45
     },
     "2026-11-10": {
       "date": "2026-11-10",
@@ -55295,20 +55299,20 @@
     }
   ],
   "portfolio": {
-    "updated": "2026-11-11T20:57:28.298786+00:00",
-    "equity": 33104.04,
+    "updated": "2026-11-11T21:15:41.744769+00:00",
+    "equity": 33099.45,
     "cash": 29901.75,
-    "buying_power": 128573.41,
+    "buying_power": 128560.56,
     "positions": [
       {
         "ticker": "AAPL",
         "qty": 9.0,
         "side": "long",
         "avg_entry": 355.06,
-        "current": 355.8387,
-        "market_value": 3202.55,
-        "unrealized_pl": 7.0083,
-        "unrealized_plpc": 0.00219,
+        "current": 355.3,
+        "market_value": 3197.7,
+        "unrealized_pl": 2.16,
+        "unrealized_plpc": 0.00068,
         "stop_loss": 337.78,
         "take_profit": 398.04,
         "strategy": "trend_follow",
