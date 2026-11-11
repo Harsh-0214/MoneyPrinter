@@ -1,57 +1,18 @@
 {
   "tickers": [
-    "KLAC",
-    "TTD",
-    "SOXL",
-    "KTOS",
-    "AMZN",
-    "AAPL",
     "HIMS",
-    "LLY"
+    "SOXL",
+    "CVS",
+    "OXY",
+    "TTD"
   ],
   "meta": {
-    "KTOS": {
-      "ticker": "KTOS",
-      "source": "discovery",
-      "price": 37.68,
-      "pct_change": 7.34,
-      "vol_ratio": 1.54,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.75,
-      "claude_reasoning": "KTOS is moving on record Q3 2026 earnings results, a credible fundamental catalyst supporting the price action, with defense sector tailwinds providing additional durability for near-term follow-through.",
-      "gap_catalyst": false
-    },
-    "LLY": {
-      "ticker": "LLY",
-      "source": "discovery",
-      "price": 1423.68,
-      "pct_change": 5.09,
-      "vol_ratio": 1.59,
-      "near_52wk": true,
-      "news_polarity": null,
-      "claude_confidence": 0.72,
-      "claude_reasoning": "FDA approval of imlunestrant for breast cancer is a concrete, credible catalyst with commercial revenue implications, and the GLP-1 knee osteoarthritis data expands the addressable market for tirzepatide, providing dual fundamental drivers for the move despite proximity to 52-week highs and competitive noise from Pfizer.",
-      "gap_catalyst": false
-    },
-    "TTD": {
-      "ticker": "TTD",
-      "source": "discovery",
-      "price": 14.06,
-      "pct_change": 8.74,
-      "vol_ratio": 5.07,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
     "HIMS": {
       "ticker": "HIMS",
       "source": "discovery",
-      "price": 22.39,
-      "pct_change": 13.93,
-      "vol_ratio": 4.67,
+      "price": 19.15,
+      "pct_change": 16.52,
+      "vol_ratio": 5.26,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
@@ -61,50 +22,50 @@
     "SOXL": {
       "ticker": "SOXL",
       "source": "discovery",
-      "price": 51.85,
-      "pct_change": 13.04,
-      "vol_ratio": 3.03,
+      "price": 64.87,
+      "pct_change": 15.34,
+      "vol_ratio": 2.33,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "KLAC": {
-      "ticker": "KLAC",
+    "CVS": {
+      "ticker": "CVS",
       "source": "discovery",
-      "price": 151.42,
-      "pct_change": 9.77,
-      "vol_ratio": 2.01,
+      "price": 89.09,
+      "pct_change": 4.5,
+      "vol_ratio": 1.73,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "claude_confidence": 0.68,
+      "claude_reasoning": "CVS announced a concrete structural catalyst \u2014 a planned separation into two public companies by 2028 \u2014 which is a credible, fundamental reason for the price move and could sustain momentum over 1-3 sessions as investors reprice the sum-of-parts value, though the 2028 timeline and lack of acquisition offers for the retail unit introduce execution uncertainty that limits conviction.",
       "gap_catalyst": false
     },
-    "AAPL": {
-      "ticker": "AAPL",
-      "source": "premarket_gap_news",
-      "price": 352.36,
-      "pct_change": 2.91,
-      "vol_ratio": null,
+    "OXY": {
+      "ticker": "OXY",
+      "source": "discovery",
+      "price": 56.89,
+      "pct_change": 1.97,
+      "vol_ratio": 1.95,
       "near_52wk": false,
-      "news_polarity": 0.21,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "OXY's move is driven by WTI crude topping $103/barrel, a credible macro catalyst for an oil producer, supported by a Wall Street analyst call, giving the momentum a fundamental basis worth monitoring over the next 1-3 sessions.",
+      "gap_catalyst": false
     },
-    "AMZN": {
-      "ticker": "AMZN",
-      "source": "premarket_gap_news",
-      "price": 265.16,
-      "pct_change": 2.2,
-      "vol_ratio": null,
+    "TTD": {
+      "ticker": "TTD",
+      "source": "discovery",
+      "price": 15.43,
+      "pct_change": 3.21,
+      "vol_ratio": 3.13,
       "near_52wk": false,
-      "news_polarity": 0.11,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "A Q3 earnings beat with an analyst valuation suggesting ~21% upside provides a credible fundamental catalyst supporting the elevated volume and modest price move, though the vague headline 'What's Going On With TTD' and lack of a specific near-term catalyst warrant cautious position sizing.",
+      "gap_catalyst": false
     }
   }
 }
