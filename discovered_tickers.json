@@ -1,10 +1,11 @@
 {
   "tickers": [
-    "HIMS",
+    "TTD",
+    "OXY",
+    "SMCI",
     "SOXL",
     "CVS",
-    "OXY",
-    "TTD"
+    "HIMS"
   ],
   "meta": {
     "HIMS": {
@@ -66,6 +67,18 @@
       "claude_confidence": 0.62,
       "claude_reasoning": "A Q3 earnings beat with an analyst valuation suggesting ~21% upside provides a credible fundamental catalyst supporting the elevated volume and modest price move, though the vague headline 'What's Going On With TTD' and lack of a specific near-term catalyst warrant cautious position sizing.",
       "gap_catalyst": false
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 29.4,
+      "pct_change": 2.76,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.17,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
