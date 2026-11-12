@@ -1,84 +1,32 @@
 {
   "tickers": [
-    "TTD",
-    "OXY",
-    "SMCI",
     "SOXL",
-    "CVS",
     "HIMS"
   ],
   "meta": {
-    "HIMS": {
-      "ticker": "HIMS",
-      "source": "discovery",
-      "price": 19.15,
-      "pct_change": 16.52,
-      "vol_ratio": 5.26,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
     "SOXL": {
       "ticker": "SOXL",
       "source": "discovery",
-      "price": 64.87,
-      "pct_change": 15.34,
-      "vol_ratio": 2.33,
+      "price": 60.58,
+      "pct_change": 8.41,
+      "vol_ratio": 2.53,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "CVS": {
-      "ticker": "CVS",
+    "HIMS": {
+      "ticker": "HIMS",
       "source": "discovery",
-      "price": 89.09,
-      "pct_change": 4.5,
-      "vol_ratio": 1.73,
+      "price": 20.81,
+      "pct_change": 8.67,
+      "vol_ratio": 2.01,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.68,
-      "claude_reasoning": "CVS announced a concrete structural catalyst \u2014 a planned separation into two public companies by 2028 \u2014 which is a credible, fundamental reason for the price move and could sustain momentum over 1-3 sessions as investors reprice the sum-of-parts value, though the 2028 timeline and lack of acquisition offers for the retail unit introduce execution uncertainty that limits conviction.",
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
-    },
-    "OXY": {
-      "ticker": "OXY",
-      "source": "discovery",
-      "price": 56.89,
-      "pct_change": 1.97,
-      "vol_ratio": 1.95,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.65,
-      "claude_reasoning": "OXY's move is driven by WTI crude topping $103/barrel, a credible macro catalyst for an oil producer, supported by a Wall Street analyst call, giving the momentum a fundamental basis worth monitoring over the next 1-3 sessions.",
-      "gap_catalyst": false
-    },
-    "TTD": {
-      "ticker": "TTD",
-      "source": "discovery",
-      "price": 15.43,
-      "pct_change": 3.21,
-      "vol_ratio": 3.13,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.62,
-      "claude_reasoning": "A Q3 earnings beat with an analyst valuation suggesting ~21% upside provides a credible fundamental catalyst supporting the elevated volume and modest price move, though the vague headline 'What's Going On With TTD' and lack of a specific near-term catalyst warrant cautious position sizing.",
-      "gap_catalyst": false
-    },
-    "SMCI": {
-      "ticker": "SMCI",
-      "source": "premarket_gap_news",
-      "price": 29.4,
-      "pct_change": 2.76,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.17,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
     }
   }
 }
