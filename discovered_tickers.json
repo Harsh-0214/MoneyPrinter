@@ -1,6 +1,9 @@
 {
   "tickers": [
-    "OXY"
+    "GOOGL",
+    "OXY",
+    "AMD",
+    "AVGO"
   ],
   "meta": {
     "OXY": {
@@ -14,6 +17,42 @@
       "claude_confidence": 0.68,
       "claude_reasoning": "OXY is moving on Q3 2026 earnings results with elevated volume and analyst research attention, providing a credible fundamental catalyst; the durability depends on whether earnings beat expectations and guidance was constructive, which warrants closer monitoring over the next 1-3 sessions.",
       "gap_catalyst": false
+    },
+    "AVGO": {
+      "ticker": "AVGO",
+      "source": "premarket_gap_news",
+      "price": 365.51,
+      "pct_change": 5.79,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 570.98,
+      "pct_change": 3.28,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.1,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "GOOGL": {
+      "ticker": "GOOGL",
+      "source": "premarket_gap_news",
+      "price": 302.86,
+      "pct_change": 3.17,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.16,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
