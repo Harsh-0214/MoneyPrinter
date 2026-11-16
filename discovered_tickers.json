@@ -1,7 +1,8 @@
 {
   "tickers": [
-    "NU",
-    "SOXL"
+    "SOXL",
+    "META",
+    "NU"
   ],
   "meta": {
     "NU": {
@@ -27,6 +28,18 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "META": {
+      "ticker": "META",
+      "source": "premarket_gap_news",
+      "price": 638.01,
+      "pct_change": 2.33,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
