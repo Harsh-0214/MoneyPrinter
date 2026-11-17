@@ -1,45 +1,4 @@
 {
-  "tickers": [
-    "SOXL",
-    "META",
-    "NU"
-  ],
-  "meta": {
-    "NU": {
-      "ticker": "NU",
-      "source": "discovery",
-      "price": 12.98,
-      "pct_change": 10.05,
-      "vol_ratio": 1.9,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.82,
-      "claude_reasoning": "Nu Holdings reported a record Q3 earnings beat with strong revenue growth and eased Brazil macro concerns while showing accelerating expansion in Mexico and Colombia, providing a credible fundamental catalyst for sustained buying interest over the next 1-3 sessions.",
-      "gap_catalyst": false
-    },
-    "SOXL": {
-      "ticker": "SOXL",
-      "source": "discovery",
-      "price": 50.92,
-      "pct_change": 22.25,
-      "vol_ratio": 2.1,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "META": {
-      "ticker": "META",
-      "source": "premarket_gap_news",
-      "price": 638.01,
-      "pct_change": 2.33,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.11,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    }
-  }
+  "tickers": [],
+  "meta": {}
 }
