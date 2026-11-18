@@ -18,7 +18,11 @@
         "premarket",
         "market_open",
         "continuous"
-      ]
+      ],
+      "pnl_dollar": 0,
+      "trades_executed": 0,
+      "win_rate": 0,
+      "portfolio_value": 33073.31
     },
     "2026-11-17": {
       "date": "2026-11-17",
@@ -54447,20 +54451,20 @@
     }
   ],
   "portfolio": {
-    "updated": "2026-11-18T20:59:05.326481+00:00",
-    "equity": 33081.14,
+    "updated": "2026-11-18T21:15:39.645617+00:00",
+    "equity": 33073.31,
     "cash": 29996.86,
-    "buying_power": 128623.41,
+    "buying_power": 128601.5,
     "positions": [
       {
         "ticker": "META",
         "qty": 5.0,
         "side": "long",
         "avg_entry": 626.218,
-        "current": 616.865,
-        "market_value": 3084.32,
-        "unrealized_pl": -46.765,
-        "unrealized_plpc": -0.01494,
+        "current": 615.29,
+        "market_value": 3076.45,
+        "unrealized_pl": -54.64,
+        "unrealized_plpc": -0.01745,
         "stop_loss": 579.97,
         "take_profit": 740.77,
         "strategy": "trend_follow",
