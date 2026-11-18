@@ -1,4 +1,45 @@
 {
-  "tickers": [],
-  "meta": {}
+  "tickers": [
+    "JD",
+    "HD",
+    "NKE"
+  ],
+  "meta": {
+    "JD": {
+      "ticker": "JD",
+      "source": "discovery",
+      "price": 25.41,
+      "pct_change": 7.73,
+      "vol_ratio": 3.19,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "HD": {
+      "ticker": "HD",
+      "source": "discovery",
+      "price": 339.02,
+      "pct_change": 2.48,
+      "vol_ratio": 1.55,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "Home Depot's CEO succession announcement (CFO Richard McPhail elevated to CEO) is a credible corporate catalyst that could sustain near-term price action as investors reassess strategic direction, though the modest +2.5% move and 1.6x volume suggest measured rather than aggressive institutional repositioning.",
+      "gap_catalyst": false
+    },
+    "NKE": {
+      "ticker": "NKE",
+      "source": "discovery",
+      "price": 35.86,
+      "pct_change": 6.35,
+      "vol_ratio": 2.08,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.62,
+      "claude_reasoning": "Nike's first investor day in 9 years is a credible fundamental catalyst that could signal a strategic reset and attract institutional interest, justifying the elevated volume and price move over the next 1-3 sessions.",
+      "gap_catalyst": false
+    }
+  }
 }
