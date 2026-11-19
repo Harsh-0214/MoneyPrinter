@@ -1,8 +1,12 @@
 {
   "tickers": [
+    "AMZN",
+    "AMD",
+    "PLTR",
     "UNH",
-    "PANW",
-    "FCX"
+    "FCX",
+    "GOOGL",
+    "PANW"
   ],
   "meta": {
     "UNH": {
@@ -40,6 +44,54 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 538.48,
+      "pct_change": 6.99,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.13,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMZN": {
+      "ticker": "AMZN",
+      "source": "premarket_gap_news",
+      "price": 272.19,
+      "pct_change": 5.54,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.12,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "GOOGL": {
+      "ticker": "GOOGL",
+      "source": "premarket_gap_news",
+      "price": 293.87,
+      "pct_change": 4.9,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.17,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_gap_news",
+      "price": 160.45,
+      "pct_change": 2.47,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.13,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
