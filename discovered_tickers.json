@@ -1,20 +1,30 @@
 {
   "tickers": [
-    "AMZN",
-    "AMD",
-    "PLTR",
-    "UNH",
-    "FCX",
-    "GOOGL",
-    "PANW"
+    "PDD",
+    "SOXL",
+    "PANW",
+    "TQQQ",
+    "RIOT"
   ],
   "meta": {
-    "UNH": {
-      "ticker": "UNH",
+    "PDD": {
+      "ticker": "PDD",
       "source": "discovery",
-      "price": 349.9,
-      "pct_change": 10.21,
-      "vol_ratio": 3.29,
+      "price": 85.07,
+      "pct_change": 9.88,
+      "vol_ratio": 3.78,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "SOXL": {
+      "ticker": "SOXL",
+      "source": "discovery",
+      "price": 40.57,
+      "pct_change": 17.71,
+      "vol_ratio": 3.04,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
@@ -24,74 +34,38 @@
     "PANW": {
       "ticker": "PANW",
       "source": "discovery",
-      "price": 370.67,
-      "pct_change": 19.89,
-      "vol_ratio": 2.8,
+      "price": 364.5,
+      "pct_change": 7.31,
+      "vol_ratio": 3.02,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "FCX": {
-      "ticker": "FCX",
+    "TQQQ": {
+      "ticker": "TQQQ",
       "source": "discovery",
-      "price": 51.44,
-      "pct_change": 7.03,
-      "vol_ratio": 2.24,
+      "price": 46.12,
+      "pct_change": 12.09,
+      "vol_ratio": 2.81,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "AMD": {
-      "ticker": "AMD",
-      "source": "premarket_gap_news",
-      "price": 538.48,
-      "pct_change": 6.99,
-      "vol_ratio": null,
+    "RIOT": {
+      "ticker": "RIOT",
+      "source": "discovery",
+      "price": 17.73,
+      "pct_change": 2.77,
+      "vol_ratio": 1.59,
       "near_52wk": false,
-      "news_polarity": 0.13,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "AMZN": {
-      "ticker": "AMZN",
-      "source": "premarket_gap_news",
-      "price": 272.19,
-      "pct_change": 5.54,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.12,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "GOOGL": {
-      "ticker": "GOOGL",
-      "source": "premarket_gap_news",
-      "price": 293.87,
-      "pct_change": 4.9,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.17,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
-    },
-    "PLTR": {
-      "ticker": "PLTR",
-      "source": "premarket_gap_news",
-      "price": 160.45,
-      "pct_change": 2.47,
-      "vol_ratio": null,
-      "near_52wk": false,
-      "news_polarity": 0.13,
-      "claude_confidence": null,
-      "claude_reasoning": null,
-      "gap_catalyst": true
+      "news_polarity": null,
+      "claude_confidence": 0.65,
+      "claude_reasoning": "Riot Platforms appears to be moving on credible fundamental catalyst: AI data center lease deals (specifically Anthropic partnerships) that represent a business model diversification beyond Bitcoin mining, with Q3 2026 results providing a concrete valuation anchor for the data center narrative \u2014 this is a legitimate re-rating story worth monitoring for 1-3 sessions.",
+      "gap_catalyst": false
     }
   }
 }
