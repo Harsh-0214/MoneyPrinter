@@ -18,7 +18,11 @@
         "premarket",
         "market_open",
         "continuous"
-      ]
+      ],
+      "pnl_dollar": 0,
+      "trades_executed": 0,
+      "win_rate": 0,
+      "portfolio_value": 33088.47
     },
     "2026-11-19": {
       "date": "2026-11-19",
@@ -47088,7 +47092,7 @@
     }
   ],
   "portfolio": {
-    "updated": "2026-11-20T20:54:40.684009+00:00",
+    "updated": "2026-11-20T21:15:50.173274+00:00",
     "equity": 33088.47,
     "cash": 33088.47,
     "buying_power": 132353.88,
