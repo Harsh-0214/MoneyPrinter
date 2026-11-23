@@ -1,42 +1,20 @@
 {
   "tickers": [
-    "PDD",
     "SOXL",
-    "PANW",
     "TQQQ",
-    "RIOT"
+    "LRCX",
+    "MU",
+    "KLAC",
+    "AMAT",
+    "UNH"
   ],
   "meta": {
-    "PDD": {
-      "ticker": "PDD",
-      "source": "discovery",
-      "price": 85.07,
-      "pct_change": 9.88,
-      "vol_ratio": 3.78,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
     "SOXL": {
       "ticker": "SOXL",
       "source": "discovery",
-      "price": 40.57,
-      "pct_change": 17.71,
-      "vol_ratio": 3.04,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.7,
-      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "PANW": {
-      "ticker": "PANW",
-      "source": "discovery",
-      "price": 364.5,
-      "pct_change": 7.31,
-      "vol_ratio": 3.02,
+      "price": 35.83,
+      "pct_change": 20.87,
+      "vol_ratio": 4.81,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
@@ -46,25 +24,73 @@
     "TQQQ": {
       "ticker": "TQQQ",
       "source": "discovery",
-      "price": 46.12,
-      "pct_change": 12.09,
-      "vol_ratio": 2.81,
+      "price": 45.13,
+      "pct_change": 7.88,
+      "vol_ratio": 3.95,
       "near_52wk": false,
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
     },
-    "RIOT": {
-      "ticker": "RIOT",
+    "LRCX": {
+      "ticker": "LRCX",
       "source": "discovery",
-      "price": 17.73,
-      "pct_change": 2.77,
-      "vol_ratio": 1.59,
+      "price": 183.6,
+      "pct_change": 9.87,
+      "vol_ratio": 2.3,
       "near_52wk": false,
       "news_polarity": null,
-      "claude_confidence": 0.65,
-      "claude_reasoning": "Riot Platforms appears to be moving on credible fundamental catalyst: AI data center lease deals (specifically Anthropic partnerships) that represent a business model diversification beyond Bitcoin mining, with Q3 2026 results providing a concrete valuation anchor for the data center narrative \u2014 this is a legitimate re-rating story worth monitoring for 1-3 sessions.",
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "MU": {
+      "ticker": "MU",
+      "source": "discovery",
+      "price": 626.4,
+      "pct_change": 9.29,
+      "vol_ratio": 2.14,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "KLAC": {
+      "ticker": "KLAC",
+      "source": "discovery",
+      "price": 127.21,
+      "pct_change": 10.14,
+      "vol_ratio": 2.03,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "AMAT": {
+      "ticker": "AMAT",
+      "source": "discovery",
+      "price": 309.81,
+      "pct_change": 8.59,
+      "vol_ratio": 2.0,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
+    "UNH": {
+      "ticker": "UNH",
+      "source": "discovery",
+      "price": 340.03,
+      "pct_change": 2.93,
+      "vol_ratio": 2.24,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.63,
+      "claude_reasoning": "A TD Cowen Buy upgrade with an identifiable catalyst (clarity on Medicare Advantage star-rating litigation risk) provides a credible near-term fundamental driver for the rebound, though the ongoing CMS lawsuit adds uncertainty that limits conviction.",
       "gap_catalyst": false
     }
   }
