@@ -1,10 +1,14 @@
 {
   "tickers": [
-    "ZS",
     "CRWD",
+    "GOOGL",
     "SOXL",
+    "SMCI",
     "TSM",
-    "TQQQ"
+    "TQQQ",
+    "TSLA",
+    "ZS",
+    "NVDA"
   ],
   "meta": {
     "ZS": {
@@ -66,6 +70,54 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "NVDA": {
+      "ticker": "NVDA",
+      "source": "premarket_gap_news",
+      "price": 156.07,
+      "pct_change": 24.21,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "TSLA": {
+      "ticker": "TSLA",
+      "source": "premarket_gap_news",
+      "price": 380.11,
+      "pct_change": 9.79,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.14,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 23.35,
+      "pct_change": 7.68,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.2,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "GOOGL": {
+      "ticker": "GOOGL",
+      "source": "premarket_gap_news",
+      "price": 280.53,
+      "pct_change": 5.61,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.11,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
