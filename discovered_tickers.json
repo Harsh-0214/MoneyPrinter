@@ -1,9 +1,21 @@
 {
   "tickers": [
-    "LI",
-    "MU"
+    "SOXL",
+    "LI"
   ],
   "meta": {
+    "SOXL": {
+      "ticker": "SOXL",
+      "source": "discovery",
+      "price": 36.17,
+      "pct_change": 10.97,
+      "vol_ratio": 4.12,
+      "near_52wk": false,
+      "news_polarity": null,
+      "claude_confidence": 0.7,
+      "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
+      "gap_catalyst": false
+    },
     "LI": {
       "ticker": "LI",
       "source": "discovery",
@@ -14,18 +26,6 @@
       "news_polarity": null,
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
-      "gap_catalyst": false
-    },
-    "MU": {
-      "ticker": "MU",
-      "source": "discovery",
-      "price": 599.5,
-      "pct_change": 4.85,
-      "vol_ratio": 1.82,
-      "near_52wk": false,
-      "news_polarity": null,
-      "claude_confidence": 0.65,
-      "claude_reasoning": "David Tepper's Appaloosa making MU its largest position signals high-conviction institutional accumulation driven by AI-related HBM memory demand, a credible fundamental catalyst, though the patent fee headline (~$1.5B liability) introduces near-term uncertainty that warrants close monitoring rather than aggressive positioning.",
       "gap_catalyst": false
     }
   }
