@@ -1,7 +1,10 @@
 {
   "tickers": [
+    "PLTR",
+    "LI",
+    "AMD",
     "SOXL",
-    "LI"
+    "SMCI"
   ],
   "meta": {
     "SOXL": {
@@ -27,6 +30,42 @@
       "claude_confidence": 0.7,
       "claude_reasoning": "auto-pass: vol>=2x and move>=7% (strong price action)",
       "gap_catalyst": false
+    },
+    "SMCI": {
+      "ticker": "SMCI",
+      "source": "premarket_gap_news",
+      "price": 24.19,
+      "pct_change": 6.94,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.19,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "PLTR": {
+      "ticker": "PLTR",
+      "source": "premarket_gap_news",
+      "price": 168.68,
+      "pct_change": 4.62,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.18,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
+    },
+    "AMD": {
+      "ticker": "AMD",
+      "source": "premarket_gap_news",
+      "price": 423.5,
+      "pct_change": 2.52,
+      "vol_ratio": null,
+      "near_52wk": false,
+      "news_polarity": 0.2,
+      "claude_confidence": null,
+      "claude_reasoning": null,
+      "gap_catalyst": true
     }
   }
 }
